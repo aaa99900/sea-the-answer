@@ -1,0 +1,2 @@
+# Optional: only needed for PDF ingestion (Python 3.9+).
+pypdf==6.19.0

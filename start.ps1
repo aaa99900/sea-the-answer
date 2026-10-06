@@ -1,6 +1,6 @@
 param(
     [ValidateRange(1, 65535)][int]$Port = 5173,
-    [ValidateSet('serve', 'test', 'ingest', 'check')][string]$Task = 'serve',
+    [ValidateSet('serve', 'test', 'ingest', 'ingest-pdf', 'check')][string]$Task = 'serve',
     [string]$Document = 'knowledge/seed.json',
     [switch]$Lan,
     [string]$NodePath
@@ -31,6 +31,7 @@ function Test-NodeRuntime([string]$Executable) {
 $taskArguments = @(switch ($Task) {
     'test' { @('--test') + @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'tests') -Filter '*.test.mjs' | ForEach-Object FullName) }
     'ingest' { @('scripts/ingest.mjs', $Document) }
+    'ingest-pdf' { @('scripts/ingest-pdf.mjs', $Document) }
     'check' { @('-p', 'process.version') }
     default { @('server.mjs') }
 })

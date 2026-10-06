@@ -28,7 +28,7 @@ export function validateDocument(raw) {
   object(raw);
   const id = string(raw.id, '문서 ID', 80);
   requireValue(/^[a-z0-9][a-z0-9-]*$/.test(id), '문서 ID는 영문 소문자·숫자·하이픈만 사용합니다.');
-  requireValue(['official-summary', 'onboard', 'sample'].includes(raw.kind), '문서 종류가 올바르지 않습니다.');
+  requireValue(['official-summary', 'onboard', 'sample', 'pdf'].includes(raw.kind), '문서 종류가 올바르지 않습니다.');
   const url = raw.url || null;
   if (url) {
     let parsed; try { parsed = new URL(url); } catch { /* rejected below */ }
@@ -37,9 +37,19 @@ export function validateDocument(raw) {
   requireValue(raw.kind !== 'official-summary' || !!url, '공식 안내 요약에는 원문 URL이 필요합니다.');
   const reviewedAt = string(raw.reviewedAt, '확인일', 10);
   requireValue(/^\d{4}-\d{2}-\d{2}$/.test(reviewedAt) && Number.isFinite(Date.parse(reviewedAt)) && new Date(reviewedAt).toISOString().slice(0, 10) === reviewedAt, '확인일은 유효한 YYYY-MM-DD 형식이어야 합니다.');
-  requireValue(Array.isArray(raw.sections) && raw.sections.length > 0 && raw.sections.length <= 100, '문서에는 1~100개 절이 필요합니다.');
-  const sections = raw.sections.map(s => { object(s); return { heading: string(s.heading, '절 제목', 200), text: string(s.text, '본문', 20000) }; });
-  requireValue(sections.reduce((n, s) => n + s.text.length, 0) <= 100000, '문서 본문은 100,000자 이하여야 합니다.');
+  const maxSections = raw.kind === 'pdf' ? 10000 : 100;
+  const maxCharacters = raw.kind === 'pdf' ? 20000000 : 100000;
+  requireValue(Array.isArray(raw.sections) && raw.sections.length > 0 && raw.sections.length <= maxSections, `문서에는 1~${maxSections}개 절이 필요합니다.`);
+  const sections = raw.sections.map(s => {
+    object(s);
+    const section = { heading: string(s.heading, '절 제목', 200), text: string(s.text, '본문', 20000) };
+    if (s.page !== undefined || raw.kind === 'pdf') {
+      requireValue(Number.isSafeInteger(s.page) && s.page >= 1 && s.page <= 5000, '페이지는 1~5000 사이의 정수여야 합니다.');
+      section.page = s.page;
+    }
+    return section;
+  });
+  requireValue(sections.reduce((n, s) => n + s.text.length, 0) <= maxCharacters, `문서 본문은 ${maxCharacters}자 이하여야 합니다.`);
   return { id, title: string(raw.title, '문서 제목', 200), kind: raw.kind, url,
     reference: string(raw.reference, '출처 조항', 200), version: string(raw.version, '버전', 100), reviewedAt,
     language: ['ko', 'en'].includes(raw.language) ? raw.language : 'ko', sections };
@@ -53,7 +63,7 @@ export function prepareDocument(raw) {
     // Paragraph/sentence boundaries where possible, hard upper bound for long lines.
     const pieces = section.text.split(/(?<=[.!?])\s+|\n+/u).filter(Boolean);
     let text = '';
-    const flush = () => { if (text.trim()) chunks.push({ heading: section.heading, text: text.trim() }); text = ''; };
+    const flush = () => { if (text.trim()) chunks.push({ heading: section.heading, text: text.trim(), page: section.page ?? null }); text = ''; };
     for (const piece of pieces) {
       if (text.length + piece.length > 900) flush();
       if (piece.length > 900) { for (let i = 0; i < piece.length; i += 900) { text = piece.slice(i, i + 900); flush(); } }
@@ -61,6 +71,6 @@ export function prepareDocument(raw) {
     }
     flush();
   }
-  return { ...doc, revisionId, hash, chunks: chunks.map((c, i) => ({ ...c, id: `${revisionId}-${i + 1}`, position: i + 1,
+  return { ...doc, revisionId, hash, chunks: chunks.map((c, i) => ({ ...c, id: `${revisionId}-${i + 1}`, document_id: revisionId, title: doc.title, position: i + 1,
     terms: tokens(`${doc.title} ${doc.reference} ${c.heading} ${c.text}`).join(' ') })) };
 }

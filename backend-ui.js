@@ -12,9 +12,9 @@ async function apiRequest(path, body) {
 function registerEvidence(documents) {
   for (const d of documents) {
     if (!/^[a-z0-9-]+$/.test(d.id)) continue;
-    DOCS[d.id] = { id: d.id, title: d.title, category: d.kind === 'official-summary' ? '공식 안내 요약' : d.kind === 'sample' ? '가상 샘플 문서' : '선내 문서',
-      ref: d.reference, version: `${d.version} · 확인 ${d.reviewed_at}`, location: d.sections.map(s => s.heading).join(' / '),
-      url: d.url, body: d.sections.map(s => s.text), note: d.kind === 'sample' ? '검색 시험용 가상 자료입니다.' : '저장한 문서 버전입니다. 최신 개정과 선박별 적용 여부는 별도로 확인하세요.', backend: true };
+    DOCS[d.id] = { id: d.id, title: d.title, category: d.kind === 'pdf' ? '수집 PDF' : d.kind === 'official-summary' ? '공식 안내 요약' : d.kind === 'sample' ? '가상 샘플 문서' : '선내 문서',
+      ref: d.reference, version: `${d.version} · ${d.kind === 'pdf' ? '파일 수정일' : '확인'} ${d.reviewed_at}`, location: d.kind === 'pdf' ? d.reference : d.sections.map(s => s.heading).join(' / '),
+      url: d.url, body: d.sections.map(s => `${s.page ? `[PDF p.${s.page}] ` : ''}${s.text}`), note: d.kind === 'pdf' ? 'PDF의 물리적 페이지 번호입니다. 인쇄 쪽수와 다를 수 있습니다. 자동 추출 텍스트이며 검토·승인 여부는 확인하지 않았습니다.' : d.kind === 'sample' ? '검색 시험용 가상 자료입니다.' : '저장한 문서 버전입니다. 최신 개정과 선박별 적용 여부는 별도로 확인하세요.', backend: true };
   }
 }
 function initializeBackend() {
@@ -73,7 +73,7 @@ function backendResultView() {
   const warning = r.warnings.length ? '<p class="inline-note">외부 모델 답변을 생성하지 못해 검색된 근거 문단을 표시합니다.</p>' : '';
   return `<section class="result-card"><div class="result-heading"><span class="answer-icon">${ico('book')}</span><div><div class="eyebrow">HAEDAP KNOWLEDGE</div><h2>${r.status === 'insufficient_evidence' ? '답변할 근거가 충분하지 않습니다.' : r.generation === 'llm' ? '검색 근거로 정리한 답변입니다.' : '질문과 관련된 근거 문단입니다.'}</h2></div>${chip(r.generation === 'llm' ? 'AI 초안' : '문서 검색','soft')}</div>
     <section class="result-block"><p class="small muted">${esc(r.notice)}</p>${warning}
-    ${r.statements.map(s => { const e = r.evidence.find(e => e.id === s.chunkId); return `<p class="answer-summary">${esc(s.text)} <button class="citation" data-doc="${esc(e.document_id)}">[${sources.indexOf(e.document_id) + 1}]</button></p><details class="formula"><summary>근거 위치 · ${esc(e.heading)}</summary><p>${esc(s.quote)}</p><small>${esc(e.version)} · ${esc(e.kind === 'sample' ? '가상 자료' : '저장 문서')}</small></details>`; }).join('')}
+    ${r.statements.map(s => { const e = r.evidence.find(e => e.id === s.chunkId); return `<p class="answer-summary">${esc(s.text)} <button class="citation" data-doc="${esc(e.document_id)}">[${sources.indexOf(e.document_id) + 1}]</button></p><details class="formula"><summary>근거 위치 · ${esc(e.title)}${e.page ? ` · PDF p.${esc(e.page)}` : ''} · ${esc(e.heading)}</summary><p>${esc(s.quote)}</p><small>${esc(e.version)} · ${esc(e.kind === 'sample' ? '가상 자료' : '저장 문서')}</small></details>`; }).join('')}
     ${r.status === 'insufficient_evidence' ? '<p>등록된 문서에서 질문을 뒷받침할 내용을 찾지 못했습니다. 질문을 구체화하거나 관련 문서를 추가해 주세요.</p>' : ''}
     ${r.toolRuns.map(t => `<div class="ops-record"><strong>입력값으로 계산한 결과</strong><p>CO₂ ${t.emission.toLocaleString('ko-KR')} t · 단순 집약도 ${t.intensity.toFixed(2)} gCO₂/(DWT·nm)</p><small>공식 CII 등급 미산정 · ${esc(t.version)}</small></div>`).join('')}</section>
     ${sources.length ? sourceCards(sources) : ''}<div class="result-footer"><span>저장 문서의 확인일·적용 조건을 검토하세요.</span>${r.statements.length || r.toolRuns.length ? btn('보고서에 담기','add-backend-result','primary') : ''}</div></section>`;
@@ -84,7 +84,7 @@ function addBackendResult() {
   const ids = [...new Set(r.statements.map(s => r.evidence.find(e => e.id === s.chunkId)?.document_id).filter(Boolean))];
   const body = [`## ${r.question}`, r.notice, ...r.statements.map(s => {
     const e = r.evidence.find(e => e.id === s.chunkId);
-    return `${s.text}\n근거: ${e.title} / ${e.heading} / ${e.version} / ${e.id}`;
+    return `${s.text}\n근거: ${e.title}${e.page ? ` / PDF p.${e.page}` : ''} / ${e.heading} / ${e.version} / ${e.id}`;
   }), ...r.toolRuns.map(t => `계산: CO₂ ${t.emission} t; 단순 집약도 ${t.intensity} gCO₂/(DWT·nm). 공식 CII 등급 미산정.\n계산 기록: ${t.id} / ${t.version}`)].join('\n\n');
   addReport(body, ids, r.toolRuns.length ? '종합 검토' : '규정 검토');
 }

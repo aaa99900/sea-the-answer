@@ -3,6 +3,8 @@
 .verification/
 node_modules/
 data/
+# Source PDF documents are local inputs and must not be committed.
+data/pdfs/**/*.pdf
 .env
 .env.*
 !.env.example

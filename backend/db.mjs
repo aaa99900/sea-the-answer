@@ -30,8 +30,16 @@ export function openDatabase(path) {
     );
     CREATE TABLE IF NOT EXISTS queries (
       id TEXT PRIMARY KEY, question TEXT NOT NULL, response TEXT NOT NULL, created_at TEXT NOT NULL
-    );
-    PRAGMA user_version=1;`);
+    );`);
+  // Additive migration: existing chunks, FTS entries and report citations stay intact.
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (!db.prepare('PRAGMA table_info(chunks)').all().some(column => column.name === 'page')) {
+      db.exec('ALTER TABLE chunks ADD COLUMN page INTEGER CHECK(page IS NULL OR page BETWEEN 1 AND 5000)');
+    }
+    if (db.prepare('PRAGMA user_version').get().user_version < 2) db.exec('PRAGMA user_version=2');
+    db.exec('COMMIT');
+  } catch (error) { db.exec('ROLLBACK'); db.close(); throw error; }
   return db;
 }
 export function importDocuments(db, input) {
@@ -50,7 +58,7 @@ export function importDocuments(db, input) {
       else {
         db.prepare('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,1,?)').run(d.revisionId, d.id, d.hash, d.title, d.kind, d.url, d.reference, d.version, d.reviewedAt, d.language, new Date().toISOString());
         for (const c of d.chunks) {
-          db.prepare('INSERT INTO chunks VALUES (?,?,?,?,?)').run(c.id, d.revisionId, c.position, c.heading, c.text);
+          db.prepare('INSERT INTO chunks(id,document_id,position,heading,text,page) VALUES (?,?,?,?,?,?)').run(c.id, d.revisionId, c.position, c.heading, c.text, c.page);
           db.prepare('INSERT INTO chunks_fts(chunk_id,terms) VALUES (?,?)').run(c.id, c.terms);
         }
       }
@@ -62,7 +70,7 @@ export function importDocuments(db, input) {
 }
 export function listDocuments(db) {
   return db.prepare('SELECT * FROM documents ORDER BY active DESC, title, imported_at DESC').all().map(d => ({ ...d,
-    sections: db.prepare('SELECT id, heading, text, position FROM chunks WHERE document_id=? ORDER BY position').all(d.id) }));
+    sections: db.prepare('SELECT id, document_id, page, heading, text, position FROM chunks WHERE document_id=? ORDER BY position').all(d.id).map(c => ({ ...c, title: d.title })) }));
 }
 export function retrieve(db, question, { kind = 'all', limit = 5 } = {}) {
   string(question, '질문', 2000);

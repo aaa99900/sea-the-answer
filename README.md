@@ -4,7 +4,7 @@
 
 **이 README가 프로젝트의 기본 실행·구현 안내서입니다.** 처음 참여한 사람도 순서대로 따라 할 수 있도록 유지합니다. 앞으로 기능·설정·실행 방법이 바뀌면 해당 설명과 맨 아래 변경 이력을 함께 업데이트합니다.
 
-마지막 업데이트: **2026-09-28**
+마지막 업데이트: **2026-10-01**
 
 ## 목차
 
@@ -30,7 +30,7 @@
 |---|---|---|
 | 설계 | 화면과 주요 사용 흐름 구체화 | 실제 데이터·운영 환경의 상세 설계 |
 | UI 프로토타입 | 대시보드, 지도, 검색, 계산, 보고서, 모바일 화면 구현 | 사용자 피드백 반영 |
-| RAG/DB/Tool | 문서 수집·검색, SQLite 저장, 계산 API 구현 | 문서 확충, 실제 모델 호출 검증, 검색 고도화 |
+| RAG/DB/Tool | JSON·텍스트 PDF 수집, 페이지 보존, FTS5/BM25 검색, SQLite 저장, 계산 API 구현 | OCR, 문서 확충, 실제 모델 호출 검증, 검색 고도화 |
 | 통합 | 검색·근거·보고서·계산 연결, 같은 네트워크용 LAN 실행 | 실제 선박 DB·AIS·기상 연결 |
 | 평가 | 기능 테스트와 브라우저 동작 확인 | 검색 정확도·AI 답변 품질·성능 평가 |
 
@@ -49,6 +49,8 @@
 | API 키·인터넷 | 외부 AI 사용 시 필요합니다. 지도 배경·공식 원문 링크도 인터넷을 사용합니다. |
 
 기본 검색·DB·계산에는 외부 API 키가 필요하지 않습니다. 현재 외부 npm 패키지를 사용하지 않아 **`npm install`과 별도 DB 설치도 필요하지 않습니다.**
+
+PDF를 새로 수집할 때만 **Python 3.9 이상 + `requirements-pdf.txt`의 pypdf**가 추가로 필요합니다. 이미 등록된 PDF 검색에는 Python이 필요하지 않습니다.
 
 ### 가장 쉬운 실행 방법: 더블클릭
 
@@ -233,6 +235,9 @@ Remove-NetFirewallRule -Name 'Haedap-LAN-TCP-5173'
 | [backend/validation.mjs](backend/validation.mjs) | 공통 입력 검사와 오류 형식 |
 | [knowledge/seed.json](knowledge/seed.json) | 초기 문서 4개 |
 | [scripts/ingest.mjs](scripts/ingest.mjs) | 문서를 수집하는 명령 |
+| [scripts/ingest-pdf.mjs](scripts/ingest-pdf.mjs), [scripts/extract-pdf.py](scripts/extract-pdf.py) | PDF 1~3개 수집 명령과 Python 페이지별 텍스트 추출기 |
+| [backend/pdf.mjs](backend/pdf.mjs), [requirements-pdf.txt](requirements-pdf.txt) | PDF 페이지를 기존 문서 형식으로 변환, 선택적 추출 의존성 |
+| [tests/pdf.test.mjs](tests/pdf.test.mjs) | 페이지 보존, 기존 DB 이전, PDF 추출·검색, 화면 출처 표시 검증 |
 | [tests/backend.test.mjs](tests/backend.test.mjs), [tests/server.test.mjs](tests/server.test.mjs) | 백엔드·HTTP 테스트 |
 | [tests/network.test.mjs](tests/network.test.mjs), [tests/launcher.test.mjs](tests/launcher.test.mjs) | 네트워크 허용 범위와 CMD·PowerShell·LAN 실행 검증 |
 | [scripts/browser-smoke.mjs](scripts/browser-smoke.mjs) | 실제 Chrome 검증 |
@@ -244,7 +249,7 @@ Remove-NetFirewallRule -Name 'Haedap-LAN-TCP-5173'
 
 ## 5. 검색할 문서 추가하기
 
-현재 수집기는 **JSON 문서 배열**을 받습니다. PDF나 URL에서 본문을 자동 추출하는 기능은 아직 없습니다. 확인한 본문을 아래 형식으로 작성하세요.
+기존 수집기는 **JSON 문서 배열**을 받습니다. 아래 JSON 절차를 그대로 사용할 수 있으며, 텍스트 PDF는 이 절 끝의 **PDF 수집** 절차로 등록합니다. URL 자동 수집과 이미지 OCR은 아직 없습니다.
 
 ### 1단계: 문서 파일 만들기
 
@@ -274,13 +279,13 @@ Remove-NetFirewallRule -Name 'Haedap-LAN-TCP-5173'
 |---|---|
 | `id` | 고정 문서 이름. 영문 소문자·숫자·하이픈만 사용하고 개정 시에도 유지 |
 | `title` | 화면에 보일 문서 제목 |
-| `kind` | 공식 안내 요약 `official-summary`, 선내 문서 `onboard`, 가상 자료 `sample` |
+| `kind` | 공식 안내 요약 `official-summary`, 선내 문서 `onboard`, 가상 자료 `sample`. PDF 수집기는 `pdf`를 지정 |
 | `reference` | 문서 번호·규정 조항 등 사람이 확인할 출처 위치 |
 | `version` | 작성·개정 버전 |
 | `reviewedAt` | 실제 확인일. `YYYY-MM-DD` 형식 |
 | `language` | 한국어 `ko`, 영어 `en` |
 | `url` | 원문 HTTPS 주소. `official-summary`에서는 필수, 나머지에서는 선택 |
-| `sections` | 절 제목 `heading`과 본문 `text`의 목록 |
+| `sections` | 절 제목 `heading`과 본문 `text`의 목록. 선택적 `page`는 1~5000 정수이며 `pdf`에서는 필수 |
 
 분류 이름만으로 공식성이 검증되지는 않습니다. 등록자가 원문과 요약의 정확성을 확인해야 합니다.
 
@@ -301,6 +306,40 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1 -Task ingest -Document .\kn
 개정할 때는 같은 `id`를 유지하고 본문·`version`·`reviewedAt`을 수정해 재수집합니다. 새 버전만 검색하고 이전 버전은 기존 보고서 인용을 위해 보존합니다.
 
 **파일 수정만으로 기존 DB는 바뀌지 않습니다.** `knowledge/seed.json`을 수정했을 때도 수집 명령을 다시 실행합니다. 초기 문서는 빈 DB에만 자동 등록됩니다.
+
+### PDF 수집: 페이지 추출 → 기존 청크 → SQLite 검색
+
+프로젝트 루트에서 실행합니다. Python을 설치한 뒤 다음 명령으로 PDF용 의존성을 준비하세요. Windows에서 `python` 대신 `py`를 사용한다면 `py -m pip install -r requirements-pdf.txt`로 설치하고, `py -c "import sys; print(sys.executable)"`로 나온 경로를 `HAEDAP_PYTHON`에 지정합니다.
+
+```powershell
+python -m pip install -r requirements-pdf.txt
+# python 명령이 없는 경우 실제 실행 파일의 경로 지정
+# $env:HAEDAP_PYTHON = 'C:\Python312\python.exe'
+```
+
+PDF 원본을 `data/pdfs/ABS`, `DNV`, `KR`, `MEPC`, `MSC`, `LR` 중 해당 폴더에 보관합니다. `data/` 전체가 Git 제외 대상이므로 원본과 DB는 커밋되지 않습니다. 수집기는 하위 폴더를 자동 순회하지 않고 **지정한 PDF 1~3개만** 처리합니다. 다음 예제 파일이 없다면 실제 파일명으로 바꾸세요.
+
+```powershell
+# Node가 PATH에 없어도 기존 Windows 런처로 PDF 1개 수집
+powershell -ExecutionPolicy Bypass -File .\start.ps1 -Task ingest-pdf -Document "data/pdfs/ABS/MVR Part-5D-Offshore-Support-Vessels-for-Specialized-Services-jul-2026.pdf"
+
+# Node/npm을 설치한 환경에서는 아래 명령도 가능
+npm run ingest:pdf -- "data/pdfs/ABS/MVR Part-5D-Offshore-Support-Vessels-for-Specialized-Services-jul-2026.pdf"
+# 여러 개: npm run ingest:pdf -- "data/pdfs/ABS/one.pdf" "data/pdfs/DNV/two.pdf"
+```
+
+기본 대상은 기존 `data/haedap.sqlite`입니다. 첫 실행은 DB를 스키마 v2로 이전하여 `chunks.page` 열만 추가합니다. 기존 문서·FTS 색인·보고서와 인용 ID는 보존됩니다. 기존 DB가 있다면 서버를 종료하고 `data/`를 별도로 복사한 뒤 실행하고, 서버도 새 코드로 재시작하세요. 별도 DB에서 먼저 확인하려면 수집 전 `$env:HAEDAP_DB_PATH = 'data/pdf-test.sqlite'`를 설정합니다. 이 경우 검색 서버에도 같은 값을 지정하고, 확인 후 `Remove-Item Env:HAEDAP_DB_PATH`로 해제합니다.
+
+성공 출력의 `created` / `updated` / `unchanged`와 함께 `pages`, `textPages`, `emptyPages`, `characters`를 확인합니다. 새 수집에는 `chunks` 개수도 표시됩니다. 동일 경로·동일 내용·동일 메타데이터의 재수집은 중복을 만들지 않습니다. 같은 경로의 수정본은 새 개정으로 저장하고 이전 인용을 보존합니다. 파일을 옮기거나 이름을 바꾸면 새 문서 ID가 됩니다.
+
+수집 후 서버를 켜고 규정 검색에서 PDF 본문의 단어(위 ABS 예: `offshore support vessels`)를 검색합니다. **전체 문서** 또는 **선내 문서** 필터를 사용하세요. `IMO 공식 안내` 필터는 기존 요약 문서만 검색합니다. 결과의 근거 위치에 **파일명 · PDF p.번호**가 표시되고 보고서에 담을 때도 페이지가 포함됩니다. `/api/search`와 `/api/ask`의 `evidence`에는 `document_id`, `title`, `page`, `heading`, `text`가 있습니다. `document_id`는 개정별 ID이고 제목은 `documents.title`과 연결하여 반환합니다.
+
+- `page`는 표지 포함 **1부터 시작하는 PDF 물리 페이지**입니다. 인쇄 쪽수와 다를 수 있습니다. 페이지가 없는 기존 JSON 청크는 DB/API에서 `null`입니다.
+- 페이지의 첫 번째 텍스트 줄을 임시 `heading`으로 사용합니다. 규정의 조항 계층을 자동 해석하지 않습니다. 청크는 페이지 경계를 넘지 않고 기존 최대 900자 분할·토큰화·FTS5/BM25를 사용합니다.
+- PDF 메타데이터는 파일명, 상대 경로, 파일 SHA-256 버전, 파일 수정일을 사용합니다. 기존 `reviewedAt` 필드에 들어가는 PDF 파일 수정일은 사람의 검토일이나 승인 증명이 아닙니다.
+- PDF당 128 MiB, 5,000페이지, 추출 본문 20,000,000자, 변환 절 10,000개, 추출 시간 180초로 제한합니다. 일반 JSON의 100절·100,000자 제한은 유지합니다.
+- 빈/이미지 페이지는 번호를 보존하면서 검색에서 제외하고 `emptyPages`로 알립니다. 전체가 이미지인 PDF는 OCR 필요 오류로 종료합니다. 암호화 PDF는 지원하지 않습니다.
+- 표·수식·다단 편집의 읽기 순서나 의미를 재구성하지 않습니다. 원문 PDF를 웹으로 제공하거나 외부 서비스에 업로드하지 않습니다. ChromaDB·임베딩·벡터·하이브리드 검색은 구현하지 않았습니다.
 
 ## 6. AI 답변 생성 연결하기
 
@@ -336,6 +375,8 @@ AI 옵션을 켜면 질문과 검색 문단이 외부 모델로 전송됩니다.
 | 질문·검색 근거·응답 | `queries` |
 
 현재 UI는 **현재 초안 1개**를 저장·불러옵니다. 계정·권한 관리나 보고서 목록은 아직 없습니다. 여러 창의 편집은 버전 충돌로 감지하며, DB 초안을 다시 불러와 해결합니다. 기존 브라우저 초안을 DB 내용으로 자동 덮어쓰지 않습니다.
+
+스키마 v2의 `chunks.page`에는 PDF 페이지 번호를 저장합니다. `title`은 `documents`에 한 번 저장하고 청크·검색 응답에 연결합니다. 기존 v1 DB는 `openDatabase()`에서 자동 이전하며 기존 청크 페이지는 `NULL`로 남습니다.
 
 백업은 서버를 Ctrl+C로 종료한 뒤 `data/` 폴더를 별도 위치에 복사합니다. `.env`에서 DB 경로를 바꿨다면 그 위치를 백업합니다. 실행 중에는 `-wal`, `-shm` 보조 파일을 사용할 수 있으므로 **실행 중인 DB 파일 하나만 복사하지 마세요.** 복원도 서버를 종료한 뒤 진행하며 현재 데이터를 먼저 별도로 보관합니다.
 
@@ -427,6 +468,23 @@ Node가 인식된다면 `npm test`도 가능합니다. 테스트는 실제 사�
 
 **2026-09-28 확인 결과: 15개 통과, 실패 0개.** CMD·PowerShell에서 서버 시작 및 이 PC의 실제 LAN 주소를 통한 API 호출까지 확인했습니다. 독립된 휴대폰·다른 PC에서의 연결은 아직 직접 검증하지 않았습니다. Windows 런처 테스트는 다른 운영체제에서는 건너뜁니다.
 
+### PDF 자동 검증
+
+전체 테스트 명령은 기존과 같습니다. Python/pypdf가 없으면 추출기 테스트 1개를 건너뛰며, 페이지 변환·DB 이전·검색·UI 표시 테스트는 계속 실행합니다. 실제 PDF 검증은 파일 하나를 명시했을 때만 수행합니다.
+
+```powershell
+# 위에서 Python 의존성을 설치한 뒤 프로젝트 루트에서 실행
+$env:HAEDAP_TEST_PDF = (Resolve-Path "data/pdfs/ABS/MVR Part-5D-Offshore-Support-Vessels-for-Specialized-Services-jul-2026.pdf").Path
+powershell -ExecutionPolicy Bypass -File .\start.ps1 -Task test
+Remove-Item Env:HAEDAP_TEST_PDF
+```
+
+PDF 테스트는 임시 DB를 사용하고 종료 시 정리합니다. 작은 3페이지 PDF 테스트 자료 1개와 명시한 실제 PDF 1개만 사용하며, 빈 페이지 번호, 재수집, 구버전 DB 보존, 기존 JSON 공존, 문서명·페이지 표시를 확인합니다. PDF 내용이 바뀌거나 다른 파일을 선택하면 검증용 질문 `offshore support vessels`도 해당 문서에 맞춰야 합니다.
+
+**2026-10-01 검증: 기존 15개 + PDF 관련 6개 = 21개 통과, 실패·건너뜀 0개.** Python 3.12.10 / pypdf 6.19.0과 VS Code의 Node v24.20.0을 사용했습니다. 실제 대상은 ABS Part 5D PDF 1개(387페이지, 804,656자, 1,110청크)이며 다른 6개 원본은 수집하지 않았습니다. 별도 `.verification/pdf-cli-*/test.sqlite`에서 기존 JSON CLI → PDF CLI 등록도 확인했습니다. PDF 검색의 문서명·페이지 표시와 보고서 전달은 자동 UI 테스트로 검증했고, 기존 Chrome 점검도 11개 통과했습니다. PDF 페이지 표시의 수동 브라우저 검토나 전체 문서의 추출 정확도 평가는 수행하지 않았습니다. 처음 샌드박스 실행의 Windows 자식 프로세스 정리 제한을 해소한 뒤 전체 테스트를 통과했습니다.
+
+이번 환경에 준비한 Python은 Git에서 제외되는 `.verification/pdf-runtime/python.exe`에 있습니다. 이 PC에서는 `$env:HAEDAP_PYTHON = (Resolve-Path '.verification/pdf-runtime/python.exe').Path`로 사용할 수 있습니다. 새로 받은 프로젝트에는 이 검증 런타임이 없으므로 위 Python 설치 절차를 따르세요.
+
 ### 실제 Chrome 검증
 
 Chrome이 설치돼 있고 Node가 인식된다면 다음을 실행합니다.
@@ -464,6 +522,9 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 | 재시작 후 요청 토큰 오류 | 화면을 새로고침하거나 `/api/health`에서 토큰을 다시 받습니다. |
 | 문서 수정이 반영되지 않음 | 수정 후 ingest 명령을 실행했는지, 서버와 수집 명령이 같은 DB 경로를 사용하는지 확인합니다. |
 | 수집 시 JSON 오류 | 큰따옴표·쉼표·최상위 배열·필수 항목·UTF-8 저장을 확인합니다. JSON에는 주석을 넣지 않습니다. |
+| PDF 수집 시 Python/pypdf 오류 | `python -m pip install -r requirements-pdf.txt` 실행 후 `HAEDAP_PYTHON`이 같은 Python을 가리키는지 확인합니다. |
+| PDF 추출 텍스트가 없음 | 이미지/스캔 PDF는 OCR이 필요합니다. 현재 OCR은 미구현입니다. 일부 빈 페이지는 `emptyPages`에서 확인합니다. |
+| PDF는 등록됐지만 검색되지 않음 | 전체/선내 문서 필터, 본문에 실제 존재하는 단어, 서버·수집기의 DB 경로가 같은지 확인합니다. |
 | 검색 근거가 없음 | 등록 본문과 필터를 확인하고 핵심 용어로 검색합니다. 현재는 의미 기반 검색이 아닙니다. |
 | AI 옵션 비활성화 | 키와 모델 ID를 모두 설정한 뒤 서버 재시작·화면 새로고침을 합니다. |
 | AI 대신 근거 문단 표시 | 기본 모드이거나 모델 실패 후 전환입니다. 설정·연결·모델 사용 권한을 확인합니다. |
@@ -474,7 +535,7 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 
 ## 12. 다음 작업과 문서 관리
 
-다음 작업은 승인 문서 확충·개정 관리, 실제 모델 연결과 품질 평가, 검색 평가용 질문·정답 근거 작성, 실제 선박 DB·AIS·기상 통합입니다. 필요에 따라 벡터 검색, PDF/OCR, 계정·권한, 다중 보고서, 배포·복구 체계를 추가합니다.
+다음 작업은 승인 문서 확충·개정 관리, 실제 모델 연결과 품질 평가, 검색 평가용 질문·정답 근거 작성, 실제 선박 DB·AIS·기상 통합입니다. 텍스트 PDF 수집은 구현됐으며 OCR·표 구조 복원은 남아 있습니다. 필요에 따라 벡터 검색, 계정·권한, 다중 보고서, 배포·복구 체계를 추가합니다.
 
 **앞으로 작업이 끝날 때마다 이 README를 함께 업데이트합니다.** 변경 이력뿐 아니라 사용자가 따라 할 본문도 수정합니다.
 
@@ -493,6 +554,7 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 
 | 날짜 | 변경 내용 | 검증·남은 사항 |
 |---|---|---|
+| 2026-10-01 | 최소 PDF ingest 추가: 페이지별 추출 → 기존 청크 → SQLite FTS5/BM25, 페이지 열 마이그레이션, 검색·보고서 출처 표시와 실행 안내 | 기존 포함 21개 테스트·기존 Chrome 11개 통과. 실제 PDF 1개 387페이지/1,110청크 확인. OCR·추출 품질 평가·벡터 검색 미구현 |
 | 2026-09-28 | 런타임 자동 탐색 보강, 로컬·LAN 실행 파일과 서버 옵션, 접속 주소 출력, 연결 서브넷 검사, 선택적 방화벽 설정 및 다른 기기 실행 안내 추가 | 자동 테스트 15개, 로컬·LAN 브라우저 각 11개 통과. 독립된 다른 기기 연결·공용 Wi-Fi 통과는 미검증 |
 | 2026-09-28 | README를 실행·사용·수집·설정·DB·구현·API·테스트·문제 해결 안내로 확장. 지속 업데이트 지침 추가 | 경로·예제와 현재 코드 대조. 문서 정리로 외부 모델 검증이 추가된 것은 아님 |
 | 2026-09-28 | SQLite DB, 문서 수집·검색, 선택적 모델 생성, 계산 Tool, 주요 UI 연결 구현 | 백엔드 10개·브라우저 11개 통과. 실제 모델·운항 데이터·품질 평가는 남음 |
