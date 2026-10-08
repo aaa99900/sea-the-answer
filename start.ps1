@@ -1,6 +1,6 @@
 param(
     [ValidateRange(1, 65535)][int]$Port = 5173,
-    [ValidateSet('serve', 'test', 'ingest', 'ingest-pdf', 'check')][string]$Task = 'serve',
+    [ValidateSet('serve', 'test', 'ingest', 'ingest-pdf', 'migrate-postgres', 'check')][string]$Task = 'serve',
     [string]$Document = 'knowledge/seed.json',
     [switch]$Lan,
     [string]$NodePath
@@ -32,6 +32,7 @@ $taskArguments = @(switch ($Task) {
     'test' { @('--test') + @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'tests') -Filter '*.test.mjs' | ForEach-Object FullName) }
     'ingest' { @('scripts/ingest.mjs', $Document) }
     'ingest-pdf' { @('scripts/ingest-pdf.mjs', $Document) }
+    'migrate-postgres' { if ($PSBoundParameters.ContainsKey('Document')) { @('scripts/migrate-sqlite-to-postgres.mjs', $Document) } else { @('scripts/migrate-sqlite-to-postgres.mjs') } }
     'check' { @('-p', 'process.version') }
     default { @('server.mjs') }
 })
@@ -53,7 +54,7 @@ $previousElectronMode = $env:ELECTRON_RUN_AS_NODE
 foreach ($candidate in ($candidates | Select-Object -Unique)) {
     if (Test-NodeRuntime $candidate) {
         Write-Host "Runtime: $candidate"
-        if ($Task -eq 'check') { Write-Host 'SQLite ready' }
+        if ($Task -eq 'check') { Write-Host 'Node runtime ready (PostgreSQL and optional SQLite)' }
         $env:ELECTRON_RUN_AS_NODE = '1'
         # Piping also waits for Windows GUI executables such as Code.exe.
         $ErrorActionPreference = 'Continue'

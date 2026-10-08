@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDatabase, importDocuments } from './backend/db.mjs';
+import { openDatabase, importDocuments, countDocuments } from './backend/db.mjs';
 import { createApi } from './backend/api.mjs';
 import { serverOptions, lanInterfaces, createNetworkPolicy } from './backend/network.mjs';
 
@@ -15,9 +15,22 @@ if (config.help) { console.log('Usage: node server.mjs [--lan] [--port 5173]\nDe
 const { port } = config;
 const interfaces = lanInterfaces();
 const allowRequest = createNetworkPolicy(config, interfaces);
-const db = openDatabase(resolve(root, process.env.HAEDAP_DB_PATH || 'data/haedap.sqlite'));
+let db;
+try {
+  const target = process.env.HAEDAP_DB_BACKEND === 'sqlite'
+    ? resolve(root, process.env.HAEDAP_DB_PATH || 'data/haedap.sqlite') : process.env.DATABASE_URL;
+  db = await openDatabase(target);
+} catch (error) {
+  console.error(`Database startup failed: ${error.message}`);
+  process.exit(1);
+}
 // Seed once; subsequent starts must not replace a user's newer imported revisions.
-if (!db.prepare('SELECT id FROM documents LIMIT 1').get()) importDocuments(db, JSON.parse(await readFile(resolve(root, 'knowledge/seed.json'), 'utf8')));
+try {
+  if (!(await countDocuments(db))) await importDocuments(db, JSON.parse(await readFile(resolve(root, 'knowledge/seed.json'), 'utf8')));
+} catch (error) {
+  console.error(`Database seed failed: ${error.message}`);
+  await db.close(); process.exit(1);
+}
 const api = createApi(db, { allowRequest });
 const publicFiles = new Set(['index.html', 'app.js', 'backend-ui.js', 'operations.js', 'style.css', 'operations.css', 'favicon.svg']);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.map': 'application/json; charset=utf-8' };
@@ -46,9 +59,9 @@ const server = http.createServer(async (req, res) => {
     send(500, 'Server error');
   }
 });
-server.on('error', error => {
+server.on('error', async error => {
   console.error(error.code === 'EADDRINUSE' ? `Port ${port} is in use. Stop the existing server or run with --port ${port < 65535 ? port + 1 : 5173}.` : error.message);
-  db.close(); process.exitCode = 1;
+  await db.close(); process.exitCode = 1;
 });
 server.listen(port, config.host, () => {
   console.log(`HAEDAP: http://127.0.0.1:${port}\nMode: ${config.lan ? 'LAN' : 'Local (this PC only)'}`);
@@ -61,4 +74,4 @@ server.listen(port, config.host, () => {
 });
 server.requestTimeout = 35000;
 server.headersTimeout = 10000;
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { server.close(() => { db.close(); process.exit(0); }); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { server.close(async () => { await db.close(); process.exit(0); }); });

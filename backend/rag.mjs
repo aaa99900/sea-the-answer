@@ -40,9 +40,9 @@ export async function answerQuestion(db, input, options = {}) {
   requireValue(['extractive', 'llm'].includes(mode), '답변 모드가 올바르지 않습니다.');
   requireValue(input.language === undefined || ['ko', 'en'].includes(input.language), '지원하지 않는 언어입니다.');
   const env = options.env || process.env;
-  const evidence = retrieve(db, question, { kind: input.filter || 'all' });
+  const evidence = await retrieve(db, question, { kind: input.filter || 'all' });
   const toolRuns = [];
-  if (input.calculation !== undefined) toolRuns.push(runTool(db, 'calculate_emissions', input.calculation));
+  if (input.calculation !== undefined) toolRuns.push(await runTool(db, 'calculate_emissions', input.calculation));
   const warnings = [];
   let generation = 'extractive';
   let statements = evidence.slice(0, 3).map(e => ({ text: e.text, chunkId: e.id, quote: e.text }));
@@ -56,7 +56,7 @@ export async function answerQuestion(db, input, options = {}) {
       } catch { warnings.push('MODEL_FAILED_EXTRACTIVE_FALLBACK'); }
     }
   }
-  return logQuery(db, question, { question, generation, status: insufficient ? 'insufficient_evidence' : 'evidence_found',
+  return await logQuery(db, question, { question, generation, status: insufficient ? 'insufficient_evidence' : 'evidence_found',
     statements, evidence, toolRuns, warnings,
     notice: generation === 'extractive' ? '검색된 문단을 그대로 표시합니다. 질문 전체에 대한 답변 여부와 적용 조건은 근거에서 확인하세요.' : '검색 근거로 생성한 초안입니다. 인용과 적용 조건을 확인하세요.' });
 }

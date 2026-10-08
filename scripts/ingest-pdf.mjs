@@ -16,10 +16,12 @@ try {
     inputs.push(await extractPdfDocument(file));
   }
   // Extract every input before opening the DB; importDocuments commits the batch atomically.
-  const db = openDatabase(resolve(root, process.env.HAEDAP_DB_PATH || 'data/haedap.sqlite'));
+  const target = process.env.HAEDAP_DB_BACKEND === 'sqlite'
+    ? resolve(root, process.env.HAEDAP_DB_PATH || 'data/haedap.sqlite') : process.env.DATABASE_URL;
+  const db = await openDatabase(target);
   try {
-    const imported = importDocuments(db, inputs.map(input => input.document));
+    const imported = await importDocuments(db, inputs.map(input => input.document));
     console.log(JSON.stringify(imported.map((result, index) => ({ ...result, title: inputs[index].document.title,
       ...inputs[index].summary, warning: inputs[index].summary.emptyPages.length ? '빈/이미지 페이지는 제외했습니다. OCR은 수행하지 않습니다.' : null })), null, 2));
-  } finally { db.close(); }
+  } finally { await db.close(); }
 } catch (error) { console.error(error.message); process.exitCode = 1; }

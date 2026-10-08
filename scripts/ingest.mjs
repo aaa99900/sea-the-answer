@@ -9,7 +9,9 @@ const path = process.argv[2];
 if (!path) { console.error('Usage: node scripts/ingest.mjs knowledge/seed.json'); process.exitCode = 1; }
 else {
   const raw = await readFile(resolve(path), 'utf8');
-  const db = openDatabase(resolve(root, process.env.HAEDAP_DB_PATH || 'data/haedap.sqlite'));
-  try { console.log(JSON.stringify(importDocuments(db, JSON.parse(raw.replace(/^\uFEFF/, ''))), null, 2)); }
-  finally { db.close(); }
+  const target = process.env.HAEDAP_DB_BACKEND === 'sqlite'
+    ? resolve(root, process.env.HAEDAP_DB_PATH || 'data/haedap.sqlite') : process.env.DATABASE_URL;
+  const db = await openDatabase(target);
+  try { console.log(JSON.stringify(await importDocuments(db, JSON.parse(raw.replace(/^\uFEFF/, ''))), null, 2)); }
+  finally { await db.close(); }
 }

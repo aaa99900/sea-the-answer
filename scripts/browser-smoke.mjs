@@ -18,7 +18,7 @@ const run = await mkdtemp(join(workspace, '.verification', 'backend-browser-'));
 const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
 const port = probe.address().port; await new Promise(r => probe.close(r));
 const server = spawn(process.execPath, ['server.mjs', ...(lan ? ['--lan'] : [])], { cwd: workspace, windowsHide: true, stdio: 'ignore',
-  env: { ...process.env, PORT: String(port), HAEDAP_DB_PATH: join(run, 'test.sqlite'), OPENAI_API_KEY: '', OPENAI_MODEL: '' } });
+  env: { ...process.env, PORT: String(port), HAEDAP_DB_BACKEND: 'sqlite', HAEDAP_DB_PATH: join(run, 'test.sqlite'), OPENAI_API_KEY: '', OPENAI_MODEL: '' } });
 let browser, socket;
 const checks = [], exceptions = [];
 const pause = ms => new Promise(r => setTimeout(r, ms));

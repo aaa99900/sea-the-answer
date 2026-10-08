@@ -10,9 +10,17 @@
     "dev": "node server.mjs",
     "test": "node --test tests/*.test.mjs",
     "ingest": "node scripts/ingest.mjs",
-    "ingest:pdf": "node scripts/ingest-pdf.mjs"
+    "ingest:pdf": "node scripts/ingest-pdf.mjs",
+    "migrate:postgres": "node scripts/migrate-sqlite-to-postgres.mjs"
   },
   "engines": {
     "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11"
   }
 }

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { AppError, requireValue } from './validation.mjs';
-import { listDocuments, getReport, saveReport, retrieve } from './db.mjs';
+import { countDocuments, listDocuments, getReport, saveReport, retrieve } from './db.mjs';
 import { answerQuestion, modelConfigured } from './rag.mjs';
 import { runTool, toolDefinitions } from './tools.mjs';
 
@@ -32,11 +32,12 @@ export function createApi(db, options = {}) {
       requireValue(!req.headers.origin || req.headers.origin === `http://${host}`, '동일 출처 요청만 허용합니다.', 'ORIGIN_DENIED', 403);
       requireValue(!['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']), '동일 출처 요청만 허용합니다.', 'ORIGIN_DENIED', 403);
       const method = req.method;
-      if (method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true, storage: 'sqlite', retrieval: 'fts5-bm25-ko-bigram',
+      if (method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true, storage: db.kind === 'postgres' ? 'postgresql' : 'sqlite',
+        retrieval: db.kind === 'postgres' ? 'postgres-tsrank-ko-bigram' : 'fts5-bm25-ko-bigram',
         llmConfigured: modelConfigured(options.env), csrfToken: token,
-        documents: db.prepare('SELECT count(*) AS count FROM documents WHERE active=1').get().count });
-      if (method === 'GET' && pathname === '/api/documents') return json(res, 200, { documents: listDocuments(db) });
-      if (method === 'GET' && pathname === '/api/reports/current') return json(res, 200, { report: getReport(db) });
+        documents: await countDocuments(db) });
+      if (method === 'GET' && pathname === '/api/documents') return json(res, 200, { documents: await listDocuments(db) });
+      if (method === 'GET' && pathname === '/api/reports/current') return json(res, 200, { report: await getReport(db) });
       if (method === 'GET' && pathname === '/api/tools') return json(res, 200, { tools: toolDefinitions });
       if (method !== 'POST') throw new AppError(404, 'NOT_FOUND', 'API 경로를 찾을 수 없습니다.');
       requireValue(req.headers['x-haedap-token'] === token, '서버 연결을 새로고침한 뒤 다시 시도하세요.', 'SESSION_EXPIRED', 403);
@@ -45,12 +46,12 @@ export function createApi(db, options = {}) {
       try {
         const body = await readJson(req);
         if (pathname === '/api/ask') return json(res, 200, await answerQuestion(db, body, options));
-        if (pathname === '/api/search') return json(res, 200, { evidence: retrieve(db, body?.question, { kind: body?.filter || 'all' }) });
+        if (pathname === '/api/search') return json(res, 200, { evidence: await retrieve(db, body?.question, { kind: body?.filter || 'all' }) });
         if (pathname === '/api/reports/current') {
           requireValue(body && !Array.isArray(body) && (body.id === undefined || body.id === 'current'), '현재 초안만 저장할 수 있습니다.');
-          return json(res, 200, { report: saveReport(db, { ...body, id: 'current' }) });
+          return json(res, 200, { report: await saveReport(db, { ...body, id: 'current' }) });
         }
-        if (pathname.startsWith('/api/tools/')) return json(res, 200, { result: runTool(db, pathname.slice('/api/tools/'.length), body) });
+        if (pathname.startsWith('/api/tools/')) return json(res, 200, { result: await runTool(db, pathname.slice('/api/tools/'.length), body) });
         throw new AppError(404, 'NOT_FOUND', 'API 경로를 찾을 수 없습니다.');
       } finally { active--; }
     } catch (error) {

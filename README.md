@@ -4,7 +4,7 @@
 
 **이 README가 프로젝트의 기본 실행·구현 안내서입니다.** 처음 참여한 사람도 순서대로 따라 할 수 있도록 유지합니다. 앞으로 기능·설정·실행 방법이 바뀌면 해당 설명과 맨 아래 변경 이력을 함께 업데이트합니다.
 
-마지막 업데이트: **2026-10-01**
+마지막 업데이트: **2026-10-08**
 
 ## 목차
 
@@ -30,7 +30,7 @@
 |---|---|---|
 | 설계 | 화면과 주요 사용 흐름 구체화 | 실제 데이터·운영 환경의 상세 설계 |
 | UI 프로토타입 | 대시보드, 지도, 검색, 계산, 보고서, 모바일 화면 구현 | 사용자 피드백 반영 |
-| RAG/DB/Tool | JSON·텍스트 PDF 수집, 페이지 보존, FTS5/BM25 검색, SQLite 저장, 계산 API 구현 | OCR, 문서 확충, 실제 모델 호출 검증, 검색 고도화 |
+| RAG/DB/Tool | JSON·텍스트 PDF 수집, 페이지 보존, PostgreSQL 전문 검색·저장, 계산 API 구현. 기존 SQLite FTS5/BM25도 선택 가능 | OCR, 문서 확충, 실제 모델 호출 검증, 검색 고도화 |
 | 통합 | 검색·근거·보고서·계산 연결, 같은 네트워크용 LAN 실행 | 실제 선박 DB·AIS·기상 연결 |
 | 평가 | 기능 테스트와 브라우저 동작 확인 | 검색 정확도·AI 답변 품질·성능 평가 |
 
@@ -45,14 +45,34 @@
 | 프로젝트 폴더 전체 | 화면 파일뿐 아니라 `backend/`, `knowledge/`, 서버 파일도 함께 받아야 합니다. |
 | 서버를 실행할 PC | Windows는 실행 파일을 제공하며, macOS/Linux는 Node 명령으로 실행합니다. |
 | 접속할 기기의 웹 브라우저 | 서버 PC뿐 아니라 같은 네트워크의 PC·휴대폰·태블릿에서도 사용할 수 있습니다. 접속만 하는 기기에는 Node나 프로젝트 설치가 필요 없습니다. |
-| Node.js 22.13 이상 또는 호환되는 VS Code | 실행 도구가 `node:sqlite`를 사용할 수 있는 런타임을 찾습니다. |
+| Node.js 22.13 이상과 npm | PostgreSQL 연결용 `pg` 패키지를 설치해야 합니다. Windows 실행 도구는 호환되는 VS Code 런타임도 찾지만, 처음 `npm ci`에는 npm이 필요합니다. |
+| PostgreSQL 12 이상 서버 | 로컬 PC 또는 접속 가능한 서버에 전용 사용자와 빈 데이터베이스가 필요합니다. 생성된 검색 열을 사용합니다. |
 | API 키·인터넷 | 외부 AI 사용 시 필요합니다. 지도 배경·공식 원문 링크도 인터넷을 사용합니다. |
 
-기본 검색·DB·계산에는 외부 API 키가 필요하지 않습니다. 현재 외부 npm 패키지를 사용하지 않아 **`npm install`과 별도 DB 설치도 필요하지 않습니다.**
+기본 검색·DB·계산에는 외부 AI API 키가 필요하지 않습니다. 다만 **`npm ci`와 PostgreSQL 서버 설정은 필요**합니다. DB는 데이터를 보관하는 장치이며, PostgreSQL은 별도로 실행되는 DB 서버입니다. 이 PC의 예전 SQLite 파일은 자동으로 PostgreSQL에 옮겨지지 않습니다.
 
 PDF를 새로 수집할 때만 **Python 3.9 이상 + `requirements-pdf.txt`의 pypdf**가 추가로 필요합니다. 이미 등록된 PDF 검색에는 Python이 필요하지 않습니다.
 
-### 가장 쉬운 실행 방법: 더블클릭
+### 1단계: PostgreSQL과 패키지 준비
+
+아래 명령은 모두 **프로젝트 폴더를 연 PowerShell 터미널**에서 실행합니다. PostgreSQL을 설치하고 실행한 다음 SQL Shell (`psql`)에서 관리자 `postgres` 사용자로 접속해 다음 두 문장을 실행하세요. 예시 암호는 실제로 사용할 새 암호로 **두 곳 모두** 바꿉니다. 기존 DB가 있다면 새 전용 DB를 만들고, 기존 데이터를 지우지 마세요.
+
+```sql
+CREATE ROLE haedap LOGIN PASSWORD 'REPLACE_WITH_YOUR_PASSWORD';
+CREATE DATABASE haedap OWNER haedap;
+```
+
+Node.js 22.13 이상을 설치하고 프로젝트 루트에서 패키지를 설치합니다. `npm ci`는 `package-lock.json`에 고정된 패키지를 설치하며, 기존 `node_modules` 내용은 교체합니다. 문서·보고서 DB나 PDF 원본은 건드리지 않습니다.
+
+```powershell
+node --version
+npm ci
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+마지막 명령은 `.env`가 없을 때만 예시를 복사하며 기존 파일을 보존합니다. `.env`의 `DATABASE_URL`에서 `REPLACE_WITH_YOUR_PASSWORD`를 방금 설정한 암호로 바꿉니다. 암호에 `@`, `:`, `/`, `#` 같은 특수문자가 있으면 URL 인코딩이 필요하므로 처음에는 영문·숫자 암호를 사용하는 편이 쉽습니다. `.env`는 Git에서 제외되며 공유하거나 커밋하지 않습니다.
+
+### 2단계: 서버 실행하기
 
 1. 프로젝트 폴더에서 **`start.cmd`를 더블클릭**합니다.
 2. 실행 창에 `HAEDAP: http://127.0.0.1:5173`이 나오면 창을 열어 둡니다.
@@ -62,7 +82,7 @@ PDF를 새로 수집할 때만 **Python 3.9 이상 + `requirements-pdf.txt`의 p
 
 다른 기기에서도 접속하려면 `start.cmd` 대신 **`start-lan.cmd`를 더블클릭**합니다. 두 실행 파일은 같은 서버·DB를 사용하며 접속 허용 범위만 다릅니다. 한 번에 필요한 실행 파일 하나만 켜세요.
 
-첫 실행 시 `data/haedap.sqlite` 파일과 초기 문서 4개가 자동 생성됩니다. 기존 DB가 있으면 내용을 유지합니다. `index.html`을 더블클릭하는 대신 서버 주소로 접속하세요.
+첫 실행 시 **지정한 PostgreSQL 데이터베이스**에 테이블을 만들고, 비어 있으면 초기 문서 4개를 등록합니다. 기존 데이터가 있으면 유지합니다. DB 연결에 실패하면 서버가 시작되지 않으므로 실행 창의 오류와 아래 문제 해결 표를 확인하세요. `index.html`을 더블클릭하는 대신 서버 주소로 접속하세요.
 
 ### 터미널에서 실행하기: Windows
 
@@ -72,7 +92,7 @@ PDF를 새로 수집할 때만 **Python 3.9 이상 + `requirements-pdf.txt`의 p
 .\start.cmd
 ```
 
-이 명령은 더블클릭과 동일한 실행 경로입니다. **현재 PC에는 `node`·`npm` 명령이 없어도 VS Code 런타임을 자동으로 찾아 실행하도록 조정했습니다.**
+이 명령은 더블클릭과 동일한 실행 경로입니다. Windows 런처는 VS Code 런타임도 찾지만, 위 `npm ci`를 먼저 완료해야 합니다.
 
 같은 네트워크의 다른 기기에도 열려면 다음을 실행합니다.
 
@@ -98,7 +118,7 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1 -Port 5174
 
 LAN 모드의 포트도 `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Lan -Port 5174`로 지정합니다. 포트 우선순위는 실행 시 지정값 → `PORT` 환경변수 또는 `.env` 값 → 기본 `5173`입니다.
 
-실행 환경만 확인하려면 아래 명령을 사용합니다. 실제로 선택한 실행 파일, `SQLite ready`, Node 버전이 표시됩니다.
+실행 환경만 확인하려면 아래 명령을 사용합니다. 실제로 선택한 실행 파일과 Node 버전이 표시됩니다. 이 명령은 PostgreSQL 연결 여부까지 검사하지 않습니다.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Task check
@@ -199,7 +219,7 @@ Remove-NetFirewallRule -Name 'Haedap-LAN-TCP-5173'
 |---|---|
 | UI / 프런트엔드 | 브라우저 화면과 버튼 동작 |
 | 백엔드 | 검색·저장·계산 요청을 처리하는 서버 |
-| DB / SQLite | 문서와 보고서 등을 파일에 지속적으로 저장하는 장치 |
+| DB / PostgreSQL | 문서와 보고서 등을 서버에 지속적으로 저장하는 장치. 예전 SQLite 파일 방식도 선택 가능 |
 | 청크 | 긴 문서를 검색하기 좋은 크기로 나눈 문단 |
 | RAG | 관련 문서를 검색한 뒤 그 근거를 모델에 제공해 답변하게 하는 방식 |
 | LLM | 근거를 읽고 자연어 답변을 작성하는 AI 모델 |
@@ -207,7 +227,7 @@ Remove-NetFirewallRule -Name 'Haedap-LAN-TCP-5173'
 | API | 화면이나 다른 프로그램이 서버 기능을 호출하는 통로 |
 
 ```text
-문서 JSON → 수집 명령 → 형식 검사·문단 분할 → SQLite에 저장·검색 색인 생성
+문서 JSON/PDF → 수집 명령 → 형식 검사·페이지별 문단 분할 → PostgreSQL에 저장·검색 색인 생성
 
 화면에서 질문 → /api/ask → 관련 문단 검색
                            ├─ 기본: 검색 문단 표시
@@ -229,16 +249,18 @@ Remove-NetFirewallRule -Name 'Haedap-LAN-TCP-5173'
 | [backend/api.mjs](backend/api.mjs) | API 경로와 요청 검사 |
 | [backend/network.mjs](backend/network.mjs) | 로컬/LAN 실행 옵션, 접속 주소·서브넷 검사 |
 | [backend/knowledge.mjs](backend/knowledge.mjs) | 문서 형식 검사, 문단 분할, 검색어 처리 |
-| [backend/db.mjs](backend/db.mjs) | DB 테이블, 문서 수집·검색, 보고서·실행 기록 저장 |
+| [backend/db.mjs](backend/db.mjs), [backend/postgres.mjs](backend/postgres.mjs), [backend/sqlite.mjs](backend/sqlite.mjs) | DB 선택, PostgreSQL 저장·전문 검색, 선택적 기존 SQLite 저장·FTS5/BM25 검색 |
 | [backend/rag.mjs](backend/rag.mjs) | 검색과 모델 생성 연결, 인용 검사, 실패 처리 |
 | [backend/tools.mjs](backend/tools.mjs) | 배출량·항해 시각 계산 |
 | [backend/validation.mjs](backend/validation.mjs) | 공통 입력 검사와 오류 형식 |
 | [knowledge/seed.json](knowledge/seed.json) | 초기 문서 4개 |
 | [scripts/ingest.mjs](scripts/ingest.mjs) | 문서를 수집하는 명령 |
+| [scripts/migrate-sqlite-to-postgres.mjs](scripts/migrate-sqlite-to-postgres.mjs) | 기존 SQLite 문서·청크·보고서·기록을 빈 PostgreSQL DB로 복사 |
 | [scripts/ingest-pdf.mjs](scripts/ingest-pdf.mjs), [scripts/extract-pdf.py](scripts/extract-pdf.py) | PDF 1~3개 수집 명령과 Python 페이지별 텍스트 추출기 |
 | [backend/pdf.mjs](backend/pdf.mjs), [requirements-pdf.txt](requirements-pdf.txt) | PDF 페이지를 기존 문서 형식으로 변환, 선택적 추출 의존성 |
 | [tests/pdf.test.mjs](tests/pdf.test.mjs) | 페이지 보존, 기존 DB 이전, PDF 추출·검색, 화면 출처 표시 검증 |
 | [tests/backend.test.mjs](tests/backend.test.mjs), [tests/server.test.mjs](tests/server.test.mjs) | 백엔드·HTTP 테스트 |
+| [tests/postgres.test.mjs](tests/postgres.test.mjs) | PostgreSQL 호환 엔진에서 DB·API·기존 DB 복사 검증 |
 | [tests/network.test.mjs](tests/network.test.mjs), [tests/launcher.test.mjs](tests/launcher.test.mjs) | 네트워크 허용 범위와 CMD·PowerShell·LAN 실행 검증 |
 | [scripts/browser-smoke.mjs](scripts/browser-smoke.mjs) | 실제 Chrome 검증 |
 | [.env.example](.env.example) | 선택적 서버 설정 예시 |
@@ -307,7 +329,7 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1 -Task ingest -Document .\kn
 
 **파일 수정만으로 기존 DB는 바뀌지 않습니다.** `knowledge/seed.json`을 수정했을 때도 수집 명령을 다시 실행합니다. 초기 문서는 빈 DB에만 자동 등록됩니다.
 
-### PDF 수집: 페이지 추출 → 기존 청크 → SQLite 검색
+### PDF 수집: 페이지 추출 → 기존 청크 → PostgreSQL 검색
 
 프로젝트 루트에서 실행합니다. Python을 설치한 뒤 다음 명령으로 PDF용 의존성을 준비하세요. Windows에서 `python` 대신 `py`를 사용한다면 `py -m pip install -r requirements-pdf.txt`로 설치하고, `py -c "import sys; print(sys.executable)"`로 나온 경로를 `HAEDAP_PYTHON`에 지정합니다.
 
@@ -328,14 +350,14 @@ npm run ingest:pdf -- "data/pdfs/ABS/MVR Part-5D-Offshore-Support-Vessels-for-Sp
 # 여러 개: npm run ingest:pdf -- "data/pdfs/ABS/one.pdf" "data/pdfs/DNV/two.pdf"
 ```
 
-기본 대상은 기존 `data/haedap.sqlite`입니다. 첫 실행은 DB를 스키마 v2로 이전하여 `chunks.page` 열만 추가합니다. 기존 문서·FTS 색인·보고서와 인용 ID는 보존됩니다. 기존 DB가 있다면 서버를 종료하고 `data/`를 별도로 복사한 뒤 실행하고, 서버도 새 코드로 재시작하세요. 별도 DB에서 먼저 확인하려면 수집 전 `$env:HAEDAP_DB_PATH = 'data/pdf-test.sqlite'`를 설정합니다. 이 경우 검색 서버에도 같은 값을 지정하고, 확인 후 `Remove-Item Env:HAEDAP_DB_PATH`로 해제합니다.
+기본 대상은 `.env`의 `DATABASE_URL`이 지정한 PostgreSQL DB입니다. 수집 명령과 서버가 **같은 DB 연결 주소**를 사용해야 검색에 보입니다. 다른 DB에서 시험하려면 별도 빈 PostgreSQL DB를 만들고 두 프로세스에 같은 `DATABASE_URL`을 설정하세요. 기존 SQLite 자료를 계속 사용하거나 이전하려면 아래 [DB 저장과 백업](#7-db-저장과-백업)을 먼저 확인하세요.
 
 성공 출력의 `created` / `updated` / `unchanged`와 함께 `pages`, `textPages`, `emptyPages`, `characters`를 확인합니다. 새 수집에는 `chunks` 개수도 표시됩니다. 동일 경로·동일 내용·동일 메타데이터의 재수집은 중복을 만들지 않습니다. 같은 경로의 수정본은 새 개정으로 저장하고 이전 인용을 보존합니다. 파일을 옮기거나 이름을 바꾸면 새 문서 ID가 됩니다.
 
 수집 후 서버를 켜고 규정 검색에서 PDF 본문의 단어(위 ABS 예: `offshore support vessels`)를 검색합니다. **전체 문서** 또는 **선내 문서** 필터를 사용하세요. `IMO 공식 안내` 필터는 기존 요약 문서만 검색합니다. 결과의 근거 위치에 **파일명 · PDF p.번호**가 표시되고 보고서에 담을 때도 페이지가 포함됩니다. `/api/search`와 `/api/ask`의 `evidence`에는 `document_id`, `title`, `page`, `heading`, `text`가 있습니다. `document_id`는 개정별 ID이고 제목은 `documents.title`과 연결하여 반환합니다.
 
 - `page`는 표지 포함 **1부터 시작하는 PDF 물리 페이지**입니다. 인쇄 쪽수와 다를 수 있습니다. 페이지가 없는 기존 JSON 청크는 DB/API에서 `null`입니다.
-- 페이지의 첫 번째 텍스트 줄을 임시 `heading`으로 사용합니다. 규정의 조항 계층을 자동 해석하지 않습니다. 청크는 페이지 경계를 넘지 않고 기존 최대 900자 분할·토큰화·FTS5/BM25를 사용합니다.
+- 페이지의 첫 번째 텍스트 줄을 임시 `heading`으로 사용합니다. 규정의 조항 계층을 자동 해석하지 않습니다. 청크는 페이지 경계를 넘지 않고 기존 최대 900자 분할·토큰화를 사용합니다. PostgreSQL은 `tsvector`/`ts_rank_cd`, 선택적 SQLite는 FTS5/BM25로 검색합니다.
 - PDF 메타데이터는 파일명, 상대 경로, 파일 SHA-256 버전, 파일 수정일을 사용합니다. 기존 `reviewedAt` 필드에 들어가는 PDF 파일 수정일은 사람의 검토일이나 승인 증명이 아닙니다.
 - PDF당 128 MiB, 5,000페이지, 추출 본문 20,000,000자, 변환 절 10,000개, 추출 시간 180초로 제한합니다. 일반 JSON의 100절·100,000자 제한은 유지합니다.
 - 빈/이미지 페이지는 번호를 보존하면서 검색에서 제외하고 `emptyPages`로 알립니다. 전체가 이미지인 PDF는 OCR 필요 오류로 종료합니다. 암호화 PDF는 지원하지 않습니다.
@@ -349,7 +371,7 @@ npm run ingest:pdf -- "data/pdfs/ABS/MVR Part-5D-Offshore-Support-Vessels-for-Sp
 2. 아래 값을 채웁니다. 모델에는 사용할 수 있는 Responses API·Structured Outputs 지원 모델의 실제 ID를 넣습니다.
 
 ```dotenv
-HAEDAP_DB_PATH=data/haedap.sqlite
+DATABASE_URL=postgresql://haedap:REPLACE_WITH_YOUR_PASSWORD@127.0.0.1:5432/haedap
 OPENAI_API_KEY=발급받은_실제_API_키
 OPENAI_MODEL=사용할_실제_모델_ID
 ```
@@ -364,31 +386,47 @@ AI 옵션을 켜면 질문과 검색 문단이 외부 모델로 전송됩니다.
 
 ## 7. DB 저장과 백업
 
-기본 저장 위치는 **`data/haedap.sqlite`**입니다. SQLite는 별도 DB 서버 대신 파일에 데이터를 저장합니다.
+기본 저장 위치는 **`.env`의 `DATABASE_URL`이 가리키는 PostgreSQL DB**입니다. DB 주소·계정·암호를 바꾸면 서버와 수집 명령을 다시 시작하세요. 기존 SQLite 파일은 자동으로 이동하거나 삭제하지 않습니다.
 
 | 내용 | 테이블 |
 |---|---|
 | 문서와 개정 이력 | `documents` |
-| 분할한 문단과 검색 색인 | `chunks`, `chunks_fts` |
+| 분할한 문단과 검색 색인 | PostgreSQL: `chunks`의 `search_vector`와 GIN 색인. SQLite: `chunks`, `chunks_fts` |
 | 보고서 초안 | `reports` |
 | Tool 입력·출력·계산 버전 | `tool_runs` |
 | 질문·검색 근거·응답 | `queries` |
 
 현재 UI는 **현재 초안 1개**를 저장·불러옵니다. 계정·권한 관리나 보고서 목록은 아직 없습니다. 여러 창의 편집은 버전 충돌로 감지하며, DB 초안을 다시 불러와 해결합니다. 기존 브라우저 초안을 DB 내용으로 자동 덮어쓰지 않습니다.
 
-스키마 v2의 `chunks.page`에는 PDF 페이지 번호를 저장합니다. `title`은 `documents`에 한 번 저장하고 청크·검색 응답에 연결합니다. 기존 v1 DB는 `openDatabase()`에서 자동 이전하며 기존 청크 페이지는 `NULL`로 남습니다.
+두 DB 방식 모두 `chunks.page`에 PDF 페이지 번호를 저장합니다. `title`은 `documents`에 한 번 저장하고 검색 응답에 연결합니다. 기존 SQLite v1 파일은 SQLite 모드로 열 때 v2로 자동 이전하며 기존 청크 페이지는 `NULL`로 남습니다.
 
-백업은 서버를 Ctrl+C로 종료한 뒤 `data/` 폴더를 별도 위치에 복사합니다. `.env`에서 DB 경로를 바꿨다면 그 위치를 백업합니다. 실행 중에는 `-wal`, `-shm` 보조 파일을 사용할 수 있으므로 **실행 중인 DB 파일 하나만 복사하지 마세요.** 복원도 서버를 종료한 뒤 진행하며 현재 데이터를 먼저 별도로 보관합니다.
+PostgreSQL 전체 백업은 `pg_dump`를 사용합니다. 다음 명령은 프로젝트 폴더에서 실행하는 예시이며 `haedap` DB의 백업 파일을 만듭니다. **같은 파일명으로 다시 실행하면 기존 백업을 덮을 수 있으므로** 매번 다른 파일명을 사용하세요. 암호 입력은 `pg_dump`가 요청합니다. 복원은 기존 데이터를 덮을 수 있으므로 이 문서의 자동 명령에 포함하지 않았습니다. 실제 복원 전에는 현재 DB를 별도로 백업하고 대상 DB를 확인하세요.
 
-화면의 **초안 백업 (.json)**은 현재 보고서만 내보내는 기능으로 전체 DB 백업과 다릅니다. `data/`는 Git 저장 대상에서 제외되므로 코드만 복사하면 기존 DB는 함께 이동하지 않습니다.
+```powershell
+pg_dump -h 127.0.0.1 -U haedap -d haedap -Fc -f .\haedap-backup.dump
+```
+
+기존 `data/haedap.sqlite`가 있다면 다음 중 하나를 선택할 수 있습니다.
+
+- **기존 파일로 계속 실행:** `.env`에 `HAEDAP_DB_BACKEND=sqlite`와 `HAEDAP_DB_PATH=data/haedap.sqlite`를 지정합니다. 이 모드는 기존 FTS5/BM25 검색을 유지합니다. 서버를 끄고 DB 파일을 백업하세요. 실행 중에는 `-wal`, `-shm` 파일이 있을 수 있으므로 DB 파일 하나만 복사하지 마세요.
+- **PostgreSQL로 복사:** 먼저 서버를 종료하고 SQLite 파일을 백업합니다. **비어 있는 전용 PostgreSQL DB**를 준비하고 `.env`에 `DATABASE_URL`을 설정한 뒤 다음 명령을 실행합니다. 스크립트는 원본 SQLite를 읽기 전용으로 열어 문서·청크·페이지·보고서·계산/질문 기록을 복사하며, 대상에 데이터가 있으면 중단합니다. 원본 파일은 그대로 둡니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start.ps1 -Task migrate-postgres -Document data/haedap.sqlite
+# Node/npm이 PATH에 있다면: npm run migrate:postgres -- data/haedap.sqlite
+```
+
+복사 완료 후 `.env`에서 `HAEDAP_DB_BACKEND=sqlite`를 지우거나 주석 처리하고 서버를 다시 시작해 `/api/health`, 문서 검색, 기존 보고서를 확인하세요. 이미 PostgreSQL에 초기 문서 4개를 시드했다면 이 복사 스크립트는 덮어쓰지 않으며, 별도의 새 빈 DB를 마련해야 합니다.
+
+화면의 **초안 백업 (.json)**은 현재 보고서만 내보내는 기능으로 전체 DB 백업과 다릅니다. `data/`와 `.env`는 Git 저장 대상에서 제외되므로 코드를 push해도 DB 내용·PDF 원본·암호는 함께 이동하지 않습니다.
 
 ## 8. 기능 구현·수정 순서
 
 ### 검색 기능 수정
 
 1. `backend/knowledge.mjs`의 `validateDocument`, `prepareDocument`, `tokens`에서 문서 형식·분할·검색어 처리를 확인합니다.
-2. `backend/db.mjs`의 `importDocuments`, `retrieve`에서 수집·검색을 확인합니다.
-3. 현재 검색은 SQLite FTS5/BM25에 단어·한국어 2글자 조각·한영 용어 사전을 적용합니다. 의미 기반 검색을 추가하려면 임베딩 생성·저장·검색을 별도로 구현합니다.
+2. `backend/db.mjs`의 분기와 `backend/postgres.mjs`의 `importDocuments`, `retrieve`에서 수집·검색을 확인합니다. SQLite 모드 수정 시 `backend/sqlite.mjs`도 확인합니다.
+3. 현재 검색은 단어·한국어 2글자 조각·한영 용어 사전을 적용합니다. PostgreSQL은 `tsvector`와 `ts_rank_cd`를, SQLite는 FTS5/BM25를 사용합니다. 검색 순위가 두 DB에서 완전히 같지는 않습니다. 의미 기반 검색을 추가하려면 임베딩 생성·저장·검색을 별도로 구현합니다.
 4. 검색어 처리나 청크 구조를 바꾸면 기존 색인도 갱신합니다. 현재는 분할 버전 문자열을 올리고 문서를 재수집해 새 리비전을 만드는 방식을 사용할 수 있습니다. 이전 인용은 보존합니다.
 5. 한영 질문·관련 없는 질문·문서 필터를 테스트합니다.
 
@@ -458,13 +496,15 @@ Invoke-RestMethod -Uri "$base/api/tools/calculate_emissions" -Method Post -Heade
 
 ### 백엔드·HTTP 테스트
 
-Node가 PATH에 없어도 실행 도구로 테스트할 수 있습니다.
+`npm ci`를 마친 뒤 실행 도구로 테스트할 수 있습니다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start.ps1 -Task test
 ```
 
-Node가 인식된다면 `npm test`도 가능합니다. 테스트는 실제 사용 DB와 별도의 DB를 사용하며 문서 개정, 검색, 저장 충돌, 재시작 후 유지, 계산 경계값, 모델 인용·실패 처리, API 요청 검사를 확인합니다. 네트워크·포트 검사와 CMD·PowerShell·LAN 실행 검사도 포함합니다. Windows 런처 검증의 실행 로그와 결과는 `.verification/launcher-*/`에 보관합니다.
+Node가 인식된다면 `npm test`도 가능합니다. 테스트는 실제 사용 DB와 별도의 임시 DB를 사용합니다. PostgreSQL 테스트는 패키지에 포함된 PostgreSQL 호환 엔진(PGlite)과 연결 프로토콜로 문서 수집·검색·저장·API·SQLite 자료 복사를 검증하므로 별도 DB 서버 없이 실행됩니다. 독립적으로 설치한 PostgreSQL 서버에 대한 실연동은 아직 검증하지 않았습니다. 기존 SQLite·네트워크·런처 테스트도 유지합니다. Windows 런처 로그는 `.verification/launcher-*/`에 보관합니다.
+
+**2026-10-08 검증: 26개 통과, 실패·건너뜀 0개.** 실제 ABS PDF 1개(387페이지, 1,110청크)를 지정한 전체 테스트입니다. SQLite FTS5/BM25, PostgreSQL 호환 엔진의 검색·API·자료 복사, Windows 로컬/LAN 실행을 포함합니다. 독립 PostgreSQL 서버 연결과 브라우저 수동 검토는 이번 변경에서 수행하지 않았습니다.
 
 **2026-09-28 확인 결과: 15개 통과, 실패 0개.** CMD·PowerShell에서 서버 시작 및 이 PC의 실제 LAN 주소를 통한 API 호출까지 확인했습니다. 독립된 휴대폰·다른 PC에서의 연결은 아직 직접 검증하지 않았습니다. Windows 런처 테스트는 다른 운영체제에서는 건너뜁니다.
 
@@ -512,19 +552,22 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 
 | 증상 | 확인·해결 방법 |
 |---|---|
-| `node`·`npm`을 찾을 수 없음 | `start.cmd`나 `start.ps1`을 사용합니다. 호환 런타임이 없으면 Node.js 22.13 이상이 필요합니다. |
-| `node:sqlite`를 찾을 수 없음 | 선택된 런타임의 버전과 SQLite 지원 여부를 확인합니다. |
+| `node`·`npm`을 찾을 수 없음 | Node.js 22.13 이상과 npm을 설치한 뒤 새 터미널에서 `node --version`, `npm --version`, `npm ci`를 실행합니다. `start.cmd`가 VS Code 런타임을 찾아도 패키지는 먼저 설치해야 합니다. |
+| `Cannot find package 'pg'` | 프로젝트 루트에서 `npm ci`를 실행하고 다시 시작합니다. |
+| `DATABASE_URL is required` | `.env.example`을 `.env`로 복사하고 `DATABASE_URL`의 사용자·암호·주소·DB 이름을 실제 값으로 바꿉니다. |
+| PostgreSQL 연결 거부·인증 실패 | PostgreSQL 서버 실행 여부, 포트 5432, 전용 DB와 사용자, `.env` 암호를 확인합니다. DB를 만든 뒤 서버를 다시 시작합니다. |
+| `node:sqlite`를 찾을 수 없음 | SQLite 호환 모드·기존 DB 복사·테스트에는 Node.js 22.13 이상이 필요합니다. |
 | `Port 5173 is in use` | 기존 실행 창을 확인하거나 `-Port 5174`로 실행하고 접속 주소도 변경합니다. |
 | 백엔드 연결 실패 | 서버 실행 여부와 주소를 확인합니다. HTML 파일 직접 열기는 사용하지 않습니다. |
 | 이 PC에서는 열리지만 다른 기기는 실패 | `start-lan.cmd` 실행 여부, 실행 창의 LAN 주소, 같은 네트워크 연결, 방화벽 프로필·포트, 공유기의 기기 격리를 순서대로 확인합니다. |
 | LAN 실행 후 주소가 표시되지 않음 | Wi-Fi/유선 IPv4 연결을 확인하고 서버를 재시작합니다. |
 | LAN에서 403 응답 | 실행 창에 표시된 IP·포트로 접속합니다. 네트워크 변경 후에는 서버를 재시작합니다. |
 | 재시작 후 요청 토큰 오류 | 화면을 새로고침하거나 `/api/health`에서 토큰을 다시 받습니다. |
-| 문서 수정이 반영되지 않음 | 수정 후 ingest 명령을 실행했는지, 서버와 수집 명령이 같은 DB 경로를 사용하는지 확인합니다. |
+| 문서 수정이 반영되지 않음 | 수정 후 ingest 명령을 실행했는지, 서버와 수집 명령이 같은 `DATABASE_URL`(또는 SQLite 경로)을 사용하는지 확인합니다. |
 | 수집 시 JSON 오류 | 큰따옴표·쉼표·최상위 배열·필수 항목·UTF-8 저장을 확인합니다. JSON에는 주석을 넣지 않습니다. |
 | PDF 수집 시 Python/pypdf 오류 | `python -m pip install -r requirements-pdf.txt` 실행 후 `HAEDAP_PYTHON`이 같은 Python을 가리키는지 확인합니다. |
 | PDF 추출 텍스트가 없음 | 이미지/스캔 PDF는 OCR이 필요합니다. 현재 OCR은 미구현입니다. 일부 빈 페이지는 `emptyPages`에서 확인합니다. |
-| PDF는 등록됐지만 검색되지 않음 | 전체/선내 문서 필터, 본문에 실제 존재하는 단어, 서버·수집기의 DB 경로가 같은지 확인합니다. |
+| PDF는 등록됐지만 검색되지 않음 | 전체/선내 문서 필터, 본문에 실제 존재하는 단어, 서버·수집기의 DB 연결 설정이 같은지 확인합니다. |
 | 검색 근거가 없음 | 등록 본문과 필터를 확인하고 핵심 용어로 검색합니다. 현재는 의미 기반 검색이 아닙니다. |
 | AI 옵션 비활성화 | 키와 모델 ID를 모두 설정한 뒤 서버 재시작·화면 새로고침을 합니다. |
 | AI 대신 근거 문단 표시 | 기본 모드이거나 모델 실패 후 전환입니다. 설정·연결·모델 사용 권한을 확인합니다. |
@@ -554,6 +597,7 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 
 | 날짜 | 변경 내용 | 검증·남은 사항 |
 |---|---|---|
+| 2026-10-08 | 기본 DB를 PostgreSQL로 전환, 전문 검색과 PDF 페이지·보고서 저장, SQLite 읽기 전용 복사 도구 및 선택적 FTS5/BM25 호환 모드 추가 | 실제 PDF 1개 포함 전체 26개 테스트 통과. 독립 PostgreSQL 서버 실연동은 미검증 |
 | 2026-10-01 | 최소 PDF ingest 추가: 페이지별 추출 → 기존 청크 → SQLite FTS5/BM25, 페이지 열 마이그레이션, 검색·보고서 출처 표시와 실행 안내 | 기존 포함 21개 테스트·기존 Chrome 11개 통과. 실제 PDF 1개 387페이지/1,110청크 확인. OCR·추출 품질 평가·벡터 검색 미구현 |
 | 2026-09-28 | 런타임 자동 탐색 보강, 로컬·LAN 실행 파일과 서버 옵션, 접속 주소 출력, 연결 서브넷 검사, 선택적 방화벽 설정 및 다른 기기 실행 안내 추가 | 자동 테스트 15개, 로컬·LAN 브라우저 각 11개 통과. 독립된 다른 기기 연결·공용 Wi-Fi 통과는 미검증 |
 | 2026-09-28 | README를 실행·사용·수집·설정·DB·구현·API·테스트·문제 해결 안내로 확장. 지속 업데이트 지침 추가 | 경로·예제와 현재 코드 대조. 문서 정리로 외부 모델 검증이 추가된 것은 아님 |

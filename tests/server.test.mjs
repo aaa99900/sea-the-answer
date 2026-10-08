@@ -14,7 +14,7 @@ test('HTTP integration: ingestion, search, tools, persistence, input and origin 
   const port = probe.address().port; await new Promise(r => probe.close(r));
   const root = new URL('../', import.meta.url);
   const child = spawn(process.execPath, ['server.mjs'], { cwd: root, windowsHide: true,
-    env: { ...process.env, PORT: String(port), HAEDAP_DB_PATH: join(temp, 'db.sqlite'), OPENAI_API_KEY: '', OPENAI_MODEL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    env: { ...process.env, PORT: String(port), HAEDAP_DB_BACKEND: 'sqlite', HAEDAP_DB_PATH: join(temp, 'db.sqlite'), OPENAI_API_KEY: '', OPENAI_MODEL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let logs = ''; child.stdout.on('data', d => { logs += d; }); child.stderr.on('data', d => { logs += d; });
   const base = `http://127.0.0.1:${port}`;
   try {

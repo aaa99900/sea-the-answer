@@ -24,7 +24,7 @@ test('Windows launchers: CMD local, PowerShell local, CMD LAN; same-origin API o
       const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
       const port = probe.address().port; await new Promise(r => probe.close(r));
       const child = spawn(config.command, [...config.args, '-Port', String(port)], { cwd: root, windowsHide: true,
-        env: { ...process.env, HAEDAP_NO_PAUSE: '1', HAEDAP_DB_PATH: join(temp, `db-${index}.sqlite`), OPENAI_API_KEY: '', OPENAI_MODEL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+        env: { ...process.env, HAEDAP_NO_PAUSE: '1', HAEDAP_DB_BACKEND: 'sqlite', HAEDAP_DB_PATH: join(temp, `db-${index}.sqlite`), OPENAI_API_KEY: '', OPENAI_MODEL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
       let logs = ''; child.stdout.on('data', d => { logs += d; }); child.stderr.on('data', d => { logs += d; });
       try {
         const local = `http://127.0.0.1:${port}`;
