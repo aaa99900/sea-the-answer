@@ -11,6 +11,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep, basename } from 'node:path';
 import { openDatabase, importDocuments, listDocuments, retrieve, saveReport, getReport, countDocuments } from '../backend/db.mjs';
+import { openDatabase as openLegacyDatabase, importDocuments as importLegacyDocuments,
+  retrieve as retrieveLegacy, saveReport as saveLegacyReport, getReport as getLegacyReport } from './support/sqlite.mjs';
 import { answerQuestion } from '../backend/rag.mjs';
 import { runTool } from '../backend/tools.mjs';
 
@@ -31,6 +33,9 @@ async function fixture(t) {
 }
 
 test('PostgreSQL initializes and searches JSON and paged PDF chunks', async t => {
+  assert.throws(() => openDatabase(), /PostgreSQL URL/);
+  assert.throws(() => openDatabase(':memory:'), /PostgreSQL URL/);
+  assert.throws(() => openDatabase('data/haedap.sqlite'), /PostgreSQL URL/);
   const db = await fixture(t);
   assert.equal(db.kind, 'postgres');
   assert.equal((await db.pool.query("SELECT indexname FROM pg_indexes WHERE indexname='chunks_search_vector_idx'")).rows.length, 1);
@@ -106,7 +111,7 @@ test('HTTP server uses PostgreSQL for search, reports and tools', { timeout: 300
   const port = httpProbe.address().port; await new Promise(resolve => httpProbe.close(resolve));
   const root = new URL('../', import.meta.url);
   const child = spawn(process.execPath, ['server.mjs'], { cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, DATABASE_URL: `postgresql://postgres@127.0.0.1:${pgPort}/postgres`, HAEDAP_DB_BACKEND: '', PORT: String(port), OPENAI_API_KEY: '', OPENAI_MODEL: '' } });
+    env: { ...process.env, DATABASE_URL: `postgresql://postgres@127.0.0.1:${pgPort}/postgres`, HAEDAP_DB_POOL_SIZE: '1', PORT: String(port), OPENAI_API_KEY: '', OPENAI_MODEL: '' } });
   let logs = ''; child.stdout.on('data', data => { logs += data; }); child.stderr.on('data', data => { logs += data; });
   try {
     const base = `http://127.0.0.1:${port}`;
@@ -140,12 +145,12 @@ test('SQLite migration copies documents, citations and logs without changing the
     rmSync(dir, { recursive: true, force: true });
   });
   const path = join(dir, 'original.sqlite');
-  const source = openDatabase(path);
-  importDocuments(source, seed);
-  const citation = retrieve(source, '황 함유량')[0].document_id;
-  saveReport(source, { title: '기존', type: '규정 검토', text: '보존할 초안', sources: [citation], version: 0 });
-  await runTool(source, 'calculate_emissions', { fuel: 10, factor: 3, dwt: 100, distance: 10 });
-  await answerQuestion(source, { question: '황 함유량 기준' });
+  const source = openLegacyDatabase(path);
+  importLegacyDocuments(source, seed);
+  const citation = retrieveLegacy(source, '황 함유량')[0].document_id;
+  saveLegacyReport(source, { title: '기존', type: '규정 검토', text: '보존할 초안', sources: [citation], version: 0 });
+  source.prepare('INSERT INTO tool_runs VALUES (?,?,?,?,?,?)').run('old-tool', 'calculate_emissions', '1', '{}', '{"version":"1"}', new Date().toISOString());
+  source.prepare('INSERT INTO queries VALUES (?,?,?,?)').run('old-query', '황 함유량 기준', '{}', new Date().toISOString());
   source.close();
   const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
@@ -170,7 +175,7 @@ test('SQLite migration copies documents, citations and logs without changing the
       cwd: new URL('../', import.meta.url), env: { ...process.env, DATABASE_URL: url }, windowsHide: true, timeout: 20000,
     }));
   } finally { await pgdb.close(); }
-  const again = openDatabase(path);
-  assert.equal(getReport(again).text, '보존할 초안');
+  const again = openLegacyDatabase(path);
+  assert.equal(getLegacyReport(again).text, '보존할 초안');
   again.close();
 });

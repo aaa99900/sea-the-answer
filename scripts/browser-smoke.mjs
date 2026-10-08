@@ -1,4 +1,4 @@
-// Optional real-browser integration check. Uses Chrome's DevTools protocol, no npm dependencies.
+// Optional real-browser integration check. Uses Chrome's DevTools protocol and an isolated PostgreSQL test server.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readFile, mkdtemp, mkdir, writeFile } from 'node:fs/promises';
@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { openDatabase, importDocuments } from '../backend/db.mjs';
 import { lanInterfaces } from '../backend/network.mjs';
+import { socketDatabase } from '../tests/support/postgres.mjs';
 
 const workspace = fileURLToPath(new URL('../', import.meta.url));
 const lan = process.argv.includes('--lan');
@@ -17,8 +18,9 @@ await mkdir(join(workspace, '.verification'), { recursive: true });
 const run = await mkdtemp(join(workspace, '.verification', 'backend-browser-'));
 const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
 const port = probe.address().port; await new Promise(r => probe.close(r));
+const postgres = await socketDatabase();
 const server = spawn(process.execPath, ['server.mjs', ...(lan ? ['--lan'] : [])], { cwd: workspace, windowsHide: true, stdio: 'ignore',
-  env: { ...process.env, PORT: String(port), HAEDAP_DB_BACKEND: 'sqlite', HAEDAP_DB_PATH: join(run, 'test.sqlite'), OPENAI_API_KEY: '', OPENAI_MODEL: '' } });
+  env: { ...process.env, PORT: String(port), DATABASE_URL: postgres.url, HAEDAP_DB_POOL_SIZE: '1', OPENAI_API_KEY: '', OPENAI_MODEL: '' } });
 let browser, socket;
 const checks = [], exceptions = [];
 const pause = ms => new Promise(r => setTimeout(r, ms));
@@ -74,9 +76,10 @@ try {
   await evaluate(`navigate('ask'); document.getElementById('query').value='초콜릿 케이크 레시피'; document.getElementById('search-form').requestSubmit()`);
   await waitJs('state.result==="backend" && !state.loading', 'Unknown question');
   assert.equal(await evaluate('backend.result.status'), 'insufficient_evidence'); checks.push('No-evidence response');
-  const db = openDatabase(join(run, 'test.sqlite'));
-  try { importDocuments(db, [{ id: 'new-manual', title: '<img src=x onerror="window.injected=true">', kind: 'onboard', reference: 'TEST-MANUAL', version: '1', reviewedAt: '2026-09-28',
-    sections: [{ heading: '신규문서', text: '신규문서유입검증용 본문입니다. 브라우저 접속 후에 수집한 문서도 근거로 열 수 있어야 합니다.' }] }]); } finally { db.close(); }
+  // PGlite's test socket accepts one network client; inject through its in-process pool.
+  const db = await openDatabase(postgres.url, { pool: postgres.directPool });
+  try { await importDocuments(db, [{ id: 'new-manual', title: '<img src=x onerror="window.injected=true">', kind: 'onboard', reference: 'TEST-MANUAL', version: '1', reviewedAt: '2026-09-28',
+    sections: [{ heading: '신규문서', text: '신규문서유입검증용 본문입니다. 브라우저 접속 후에 수집한 문서도 근거로 열 수 있어야 합니다.' }] }]); } finally { await db.close(); }
   await evaluate(`document.getElementById('query').value='신규문서유입검증용'; document.getElementById('search-form').requestSubmit()`);
   await waitJs('state.result==="backend" && !state.loading', 'New document search');
   await evaluate('document.querySelector(".citation").click()');
@@ -97,4 +100,5 @@ try {
   for (const child of [browser, server].filter(Boolean)) {
     if (child.exitCode === null && child.signalCode === null) { const done = once(child, 'exit'); child.kill(); await done; }
   }
+  await postgres.close();
 }

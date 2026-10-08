@@ -2,7 +2,9 @@
 
 처음 실행하거나 구현 흐름을 따라가려면 [README](../README.md)를 먼저 보세요. README를 기본 실행·구현 안내서로 유지하며, 이 문서는 백엔드의 세부 동작과 제한 사항을 설명합니다.
 
-현재 구현은 한 PC에서 실행하는 백엔드입니다. 기본 모드는 해당 PC에서 사용하며 LAN 모드에서는 같은 네트워크의 기기가 브라우저로 접속해 문서·DB를 공유합니다. 기본 DB는 PostgreSQL이며 Node.js 22.13 이상, `npm ci`, 실행 중인 PostgreSQL 12 이상 서버와 `.env`의 `DATABASE_URL`이 필요합니다. 외부 AI API 키는 기본 기능에 필요하지 않습니다. 기존 SQLite는 명시적으로 선택하는 호환 모드입니다.
+현재 구현은 한 PC에서 실행하는 백엔드입니다. 기본 모드는 해당 PC에서 사용하며 LAN 모드에서는 같은 네트워크의 기기가 브라우저로 접속해 문서·DB를 공유합니다. 실행 DB는 PostgreSQL만 지원하며 Node.js 22.13 이상, `npm ci`, 실행 중인 PostgreSQL 12 이상 서버와 `.env`의 `DATABASE_URL`이 필요합니다. 외부 AI API 키는 기본 기능에 필요하지 않습니다. 과거 SQLite 파일은 일회성 복사 도구의 입력으로만 사용할 수 있습니다.
+
+PostgreSQL 연결 풀은 기본 5개 연결을 사용합니다. 작은 테스트 서버 등에서 제한이 필요하면 `.env`에 `HAEDAP_DB_POOL_SIZE=1`처럼 1~20 사이 정수를 설정할 수 있습니다. 테스트의 PGlite 소켓은 1개 연결로 실행합니다.
 
 마지막 업데이트: 2026-10-08. PDF 신규 수집에만 Python 3.9+와 `requirements-pdf.txt`의 pypdf 6.19.0이 필요합니다. 기존 JSON 수집과 이미 저장된 문서 검색에는 Python이 필요하지 않습니다.
 
@@ -28,7 +30,7 @@ Node가 PATH에 있으면 `npm start`, `npm run start:lan`, `npm test`, `npm run
 
 1. `knowledge/seed.json`의 초기 문서 4개를 빈 DB에 수집합니다. IMO 공식 웹 안내를 확인해 작성한 한국어 요약 2개와 명시적으로 표시한 가상 문서 2개입니다. 공식 규정 전문을 수집한 상태는 아닙니다.
 2. 절·문장 경계로 본문을 최대 900자 청크로 나눕니다. 문서 ID·버전·확인일·출처 URL·조항·절 제목과 콘텐츠 해시를 보존합니다. 소수점은 분할하지 않습니다. PDF는 페이지마다 별도 절을 만들므로 청크가 페이지 경계를 넘지 않습니다.
-3. 기본 PostgreSQL은 `tsvector` GIN 색인과 `ts_rank_cd` 순위로 검색합니다. 선택적 SQLite 모드는 기존 FTS5/BM25를 유지합니다. 양쪽 모두 한국어 단어·2글자 조각과 작은 한·영 용어 사전을 사용하지만 순위가 같지는 않습니다. **현재 검색은 어휘 기반이며 임베딩·벡터 검색은 구현하지 않았습니다.**
+3. PostgreSQL의 `tsvector` GIN 색인과 `ts_rank_cd` 순위로 검색합니다. 한국어 단어·2글자 조각과 작은 한·영 용어 사전을 사용합니다. **현재 검색은 어휘 기반이며 임베딩·벡터 검색은 구현하지 않았습니다.**
 4. 기본 모드는 검색된 문단을 그대로 보여줍니다. 질문 전체를 해결한 생성 답변이라고 표시하지 않습니다. 근거가 없으면 답변을 보류합니다. 문서 필터는 검색 단계에 적용합니다.
 5. 외부 모델을 설정하고 화면에서 선택하면 검색 문단을 근거로 답변을 생성합니다. 문장마다 존재하는 청크 ID와 해당 청크에 실제 존재하는 인용문을 검사합니다. 모델 오류·잘못된 인용·불완전한 출력에는 근거 문단으로 전환하고 전환 사실을 표시합니다.
 
@@ -64,7 +66,7 @@ Node가 PATH에 있으면 `npm start`, `npm run start:lan`, `npm test`, `npm run
 
 ### PDF 페이지 수집
 
-`scripts/ingest-pdf.mjs` → `backend/pdf.mjs` → `scripts/extract-pdf.py`(pypdf) → 기존 `importDocuments` / `prepareDocument` → PostgreSQL 전문 검색 순서입니다. SQLite를 명시적으로 선택하면 FTS5/BM25로 저장·검색합니다. 기존 JSON 수집기와 `rag.mjs`의 검색 흐름은 유지합니다.
+`scripts/ingest-pdf.mjs` → `backend/pdf.mjs` → `scripts/extract-pdf.py`(pypdf) → 기존 `importDocuments` / `prepareDocument` → PostgreSQL 전문 검색 순서입니다. 기존 JSON 수집기와 `rag.mjs`의 검색 흐름은 유지합니다.
 
 프로젝트 루트에서 다음 명령을 사용합니다.
 
@@ -80,7 +82,7 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1 -Task ingest-pdf -Document 
 - 원본별 최대 128 MiB, 5,000페이지, 본문 20,000,000자, 변환 절 10,000개, 추출 시간 180초입니다. PDF 페이지는 필요하면 20,000자 절로 나눈 뒤 기존 청크 분할을 적용합니다. 일반 JSON 제한은 그대로입니다.
 - `kind: pdf`, `title: 파일명`, `reference: data/pdfs 기준 경로`, `version: 원본 SHA-256`을 사용합니다. 논리 ID는 상대 경로의 해시이므로 같은 경로의 변경본은 새 개정, 이동·이름 변경은 새 문서입니다. `reviewedAt`에는 PDF 파일 수정일이 들어가며 UI에 **파일 수정일**로 표시합니다. 실제 검토/승인을 뜻하지 않습니다.
 - `sections[].page`는 표지 포함 1부터 시작하는 물리 페이지로, 인쇄 쪽수와 다를 수 있습니다. `heading`은 페이지 첫 줄을 사용하며 조항 계층을 분석하지 않습니다. 빈 페이지 번호도 유지하며 검색에서는 빈 페이지를 제외하고 경고합니다. 전체가 이미지이면 OCR 필요 오류입니다. 암호화 PDF는 거부합니다.
-- 새 PostgreSQL DB의 `chunks.page`는 선택적 정수 필드입니다. 기존 SQLite v1 파일을 SQLite 모드에서 열면 v2로 이전하고 기존 JSON 해시·ID·FTS 색인·보고서를 보존하며 페이지는 `NULL`로 남깁니다. 청크의 문서명은 `documents.title`과 연결합니다.
+- PostgreSQL DB의 `chunks.page`는 선택적 정수 필드입니다. 과거 SQLite 파일은 앱에서 열 수 없고 일회성 복사 도구로 빈 PostgreSQL DB에 가져올 수 있습니다. 기존 페이지 정보가 없으면 `NULL`로 남고, 청크의 문서명은 `documents.title`과 연결합니다.
 - `/api/search`, `/api/ask`의 검색 청크에는 `document_id`, `title`, `page`, `heading`, `text`가 포함됩니다. `/api/documents`의 절에도 같은 정보를 반환합니다. 검색 화면과 보고서에 문서명·페이지를 표시합니다.
 - PDF는 전체/선내 문서 필터에 포함됩니다. `imo` 필터의 공식 안내 요약과는 별도 분류입니다. PDF 원본 제공, OCR, 표/수식 복원, 임베딩·벡터·하이브리드 검색은 구현하지 않습니다.
 
@@ -90,11 +92,11 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1 -Task ingest-pdf -Document 
 
 ## DB와 보고서
 
-기본 DB는 `.env`의 `DATABASE_URL`이 가리키는 PostgreSQL입니다. `documents`, `chunks`(생성된 `search_vector` 및 GIN 색인), `reports`, `tool_runs`, `queries` 테이블을 사용합니다. 문서와 보고서뿐 아니라 질문, 검색 근거, 답변, 계산 입력·출력도 DB에 저장합니다. API 키는 DB·브라우저에 저장하지 않습니다. 선택적 SQLite는 `HAEDAP_DB_BACKEND=sqlite`와 `HAEDAP_DB_PATH`로 지정하며 기존 `chunks_fts`를 유지합니다.
+실행 DB는 `.env`의 `DATABASE_URL`이 가리키는 PostgreSQL뿐입니다. URL이 없거나 PostgreSQL 형식이 아니면 시작하지 않습니다. `documents`, `chunks`(생성된 `search_vector` 및 GIN 색인), `reports`, `tool_runs`, `queries` 테이블을 사용합니다. 문서와 보고서뿐 아니라 질문, 검색 근거, 답변, 계산 입력·출력도 DB에 저장합니다. API 키는 DB·브라우저에 저장하지 않습니다.
 
 보고서 화면에서 **초안 저장**을 누르면 현재 초안을 DB에 저장합니다. **DB 초안 불러오기**로 다시 열 수 있습니다. 기존 브라우저 초안을 자동 덮어쓰지 않습니다. 여러 창의 동시 편집은 버전 검사로 충돌을 알려주며, DB 초안을 다시 불러와 해결합니다. 서버 재시작 후에는 화면을 새로고침하세요. 샘플 모드에서는 기존 브라우저 저장 기능을 사용합니다.
 
-이 단계는 현재 초안 1개를 위한 API입니다. LAN 접속 기기도 같은 초안을 공유하며 저장 버전으로 충돌을 감지합니다. 사용자 계정, 권한 구분, 다중 보고서 목록, 공개 인터넷 배포는 포함하지 않습니다. PostgreSQL은 `pg_dump`로 백업합니다. SQLite 호환 모드의 파일은 서버를 종료한 뒤 복사하세요. 실행 중 파일 복사는 WAL 상태를 누락할 수 있습니다.
+이 단계는 현재 초안 1개를 위한 API입니다. LAN 접속 기기도 같은 초안을 공유하며 저장 버전으로 충돌을 감지합니다. 사용자 계정, 권한 구분, 다중 보고서 목록, 공개 인터넷 배포는 포함하지 않습니다. PostgreSQL은 `pg_dump`로 백업합니다. 과거 SQLite 파일은 복사 전에 백업하고, 실행 중이었다면 서버를 종료한 뒤 복사하세요. 실행 중 파일 하나만 복사하면 WAL 상태를 누락할 수 있습니다.
 
 ## 계산 Tool
 
@@ -135,7 +137,9 @@ POST 요청은 `Content-Type: application/json`과 health가 돌려주는 `X-Hae
 
 ## 이번 검증과 남은 단계
 
-2026-10-08 기본 PostgreSQL 전환 후 실제 ABS PDF 1개를 포함한 전체 자동 테스트 26개가 통과했습니다(실패·건너뜀 0). PostgreSQL 호환 엔진 PGlite와 pg 연결 프로토콜로 DB·HTTP·SQLite 자료 복사를 검증했습니다. 기존 SQLite FTS5/BM25와 Windows 런처도 확인했습니다. 독립적으로 설치한 PostgreSQL 서버 실연동과 이번 변경의 수동 브라우저 검토는 수행하지 않았습니다.
+2026-10-08 PostgreSQL 전용 전환 후 실제 ABS PDF 1개를 포함한 전체 자동 테스트 26개가 통과했습니다(실패·건너뜀 0). JSON/PDF 수집, 검색·보고서, HTTP·Windows 실행기와 기존 SQLite 파일의 일회성 복사를 확인했습니다. SQLite 테스트 코드는 복사 입력 검증용이며 앱 실행 DB로 제공되지 않습니다. PGlite 기반 테스트 서버와 로컬 Chrome의 검색·근거·보고서·계산·새 문서 반영·모바일 화면 11개 점검도 통과했습니다. 독립 설치형 PostgreSQL 서버 연결과 다른 기기의 접속은 이번에 검증하지 않았습니다.
+
+2026-10-08 이전 SQLite 호환 단계에서는 실제 ABS PDF 1개를 포함한 전체 자동 테스트 26개가 통과했습니다(실패·건너뜀 0). 당시 PostgreSQL 호환 엔진 PGlite와 pg 연결 프로토콜로 DB·HTTP·SQLite 자료 복사를 검증했고, SQLite FTS5/BM25와 Windows 런처도 확인했습니다. 위 PostgreSQL 전용 전환으로 현재 앱에는 SQLite 실행 모드가 없습니다.
 
 2026-10-01 PDF 수집 변경 후 기존 15개와 새 PDF 관련 6개, 총 21개 테스트가 통과했습니다(실패·건너뜀 0). Python 3.12.10 / pypdf 6.19.0 / Node v24.20.0을 사용했습니다. 실제 대상은 ABS Part 5D PDF 1개로, 전체 387페이지에서 804,656자를 추출해 1,110청크를 저장하고 문서명·페이지 검색 및 재수집을 검증했습니다. 나머지 실제 PDF 6개는 처리하지 않았습니다. 작은 3페이지 테스트 PDF로 중간 빈 페이지의 번호도 확인했습니다. 별도 DB의 JSON CLI → PDF CLI 등록, 기존 Chrome 점검 11개도 통과했습니다. 페이지 표시와 보고서 전달은 자동 UI 테스트이며 수동 PDF 화면 검토·전체 추출 정확도 평가는 아닙니다. 샌드박스의 Windows 자식 프로세스 정리 제한으로 첫 시도가 중단되어 정상 권한으로 전체 테스트를 재실행했습니다.
 

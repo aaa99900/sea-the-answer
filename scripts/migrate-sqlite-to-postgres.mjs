@@ -10,7 +10,7 @@ try { process.loadEnvFile(resolve(root, '.env')); } catch (error) { if (error.co
 let source, target, client;
 try {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL을 .env에 설정하세요.');
-  const path = resolve(root, process.argv[2] || process.env.HAEDAP_DB_PATH || 'data/haedap.sqlite');
+  const path = resolve(root, process.argv[2] || 'data/haedap.sqlite');
   if (!(await stat(path)).isFile()) throw new Error(`SQLite 파일이 아닙니다: ${path}`);
   // Read-only open leaves the original database and WAL files unchanged.
   source = new DatabaseSync(path, { readOnly: true });

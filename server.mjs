@@ -17,9 +17,11 @@ const interfaces = lanInterfaces();
 const allowRequest = createNetworkPolicy(config, interfaces);
 let db;
 try {
-  const target = process.env.HAEDAP_DB_BACKEND === 'sqlite'
-    ? resolve(root, process.env.HAEDAP_DB_PATH || 'data/haedap.sqlite') : process.env.DATABASE_URL;
-  db = await openDatabase(target);
+  const maxConnections = Number(process.env.HAEDAP_DB_POOL_SIZE || 5);
+  if (!Number.isInteger(maxConnections) || maxConnections < 1 || maxConnections > 20) {
+    throw new Error('HAEDAP_DB_POOL_SIZE must be an integer from 1 to 20.');
+  }
+  db = await openDatabase(process.env.DATABASE_URL, { maxConnections });
 } catch (error) {
   console.error(`Database startup failed: ${error.message}`);
   process.exit(1);

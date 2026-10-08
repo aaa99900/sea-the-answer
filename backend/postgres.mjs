@@ -32,8 +32,8 @@ const schema = [
   )`,
 ];
 
-export async function openDatabase(connectionString, { pool: suppliedPool } = {}) {
-  const pool = suppliedPool || new Pool({ connectionString, max: 5, connectionTimeoutMillis: 5000 });
+export async function openDatabase(connectionString, { pool: suppliedPool, maxConnections = 5 } = {}) {
+  const pool = suppliedPool || new Pool({ connectionString, max: maxConnections, connectionTimeoutMillis: 5000 });
   try {
     for (const statement of schema) await pool.query(statement);
     return { kind: 'postgres', pool, close: () => pool.end() };

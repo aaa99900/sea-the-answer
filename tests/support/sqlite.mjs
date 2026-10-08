@@ -1,10 +1,10 @@
-// Legacy SQLite backend retained for existing FTS5/BM25 data and tests.
+// Test fixture for importing old SQLite data; not an application database backend.
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { prepareDocument, tokens } from './knowledge.mjs';
-import { object, string, requireValue } from './validation.mjs';
+import { prepareDocument, tokens } from '../../backend/knowledge.mjs';
+import { object, string, requireValue } from '../../backend/validation.mjs';
 
 export function openDatabase(path) {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });

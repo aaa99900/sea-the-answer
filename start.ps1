@@ -12,7 +12,7 @@ function Test-NodeRuntime([string]$Executable) {
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { return $false }
     $probe = New-Object System.Diagnostics.Process
     $probe.StartInfo.FileName = $Executable
-    $probe.StartInfo.Arguments = '-e "try{require(''node:sqlite'');process.exit(typeof process.loadEnvFile===''function''?0:1)}catch(e){process.exit(1)}"'
+    $probe.StartInfo.Arguments = '-e "const [major,minor]=process.versions.node.split(''.'').map(Number);process.exit(major>22||(major===22&&minor>=13)?0:1)"'
     $probe.StartInfo.UseShellExecute = $false
     $probe.StartInfo.CreateNoWindow = $true
     $probe.StartInfo.RedirectStandardOutput = $true
@@ -54,7 +54,7 @@ $previousElectronMode = $env:ELECTRON_RUN_AS_NODE
 foreach ($candidate in ($candidates | Select-Object -Unique)) {
     if (Test-NodeRuntime $candidate) {
         Write-Host "Runtime: $candidate"
-        if ($Task -eq 'check') { Write-Host 'Node runtime ready (PostgreSQL and optional SQLite)' }
+        if ($Task -eq 'check') { Write-Host 'Node runtime ready (PostgreSQL)' }
         $env:ELECTRON_RUN_AS_NODE = '1'
         # Piping also waits for Windows GUI executables such as Code.exe.
         $ErrorActionPreference = 'Continue'

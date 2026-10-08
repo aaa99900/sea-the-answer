@@ -7,6 +7,7 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { lanInterfaces } from '../backend/network.mjs';
+import { socketDatabase } from './support/postgres.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 test('Windows launchers: CMD local, PowerShell local, CMD LAN; same-origin API on LAN address', { skip: process.platform !== 'win32', timeout: 60000 }, async () => {
@@ -21,10 +22,11 @@ test('Windows launchers: CMD local, PowerShell local, CMD LAN; same-origin API o
       { name: 'LAN double-click entry point', command: 'cmd.exe', args: ['/d', '/c', 'start-lan.cmd'], lan: true },
     ];
     for (const [index, config] of configurations.entries()) {
+      const postgres = await socketDatabase();
       const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
       const port = probe.address().port; await new Promise(r => probe.close(r));
       const child = spawn(config.command, [...config.args, '-Port', String(port)], { cwd: root, windowsHide: true,
-        env: { ...process.env, HAEDAP_NO_PAUSE: '1', HAEDAP_DB_BACKEND: 'sqlite', HAEDAP_DB_PATH: join(temp, `db-${index}.sqlite`), OPENAI_API_KEY: '', OPENAI_MODEL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+        env: { ...process.env, HAEDAP_NO_PAUSE: '1', DATABASE_URL: postgres.url, HAEDAP_DB_POOL_SIZE: '1', OPENAI_API_KEY: '', OPENAI_MODEL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
       let logs = ''; child.stdout.on('data', d => { logs += d; }); child.stderr.on('data', d => { logs += d; });
       try {
         const local = `http://127.0.0.1:${port}`;
@@ -34,6 +36,7 @@ test('Windows launchers: CMD local, PowerShell local, CMD LAN; same-origin API o
           if (child.exitCode !== null) break;
         }
         assert.ok(health?.ok, `${config.name}: ${logs}`);
+        assert.equal(health.storage, 'postgresql');
         assert.equal((await fetch(local + '/')).status, 200);
         assert.ok(logs.includes(config.lan ? 'Mode: LAN' : 'Mode: Local'), logs);
         if (config.lan) {
@@ -57,6 +60,7 @@ test('Windows launchers: CMD local, PowerShell local, CMD LAN; same-origin API o
           execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
           await exited;
         }
+        await postgres.close();
       }
     }
   } finally {

@@ -32,8 +32,8 @@ export function createApi(db, options = {}) {
       requireValue(!req.headers.origin || req.headers.origin === `http://${host}`, '동일 출처 요청만 허용합니다.', 'ORIGIN_DENIED', 403);
       requireValue(!['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']), '동일 출처 요청만 허용합니다.', 'ORIGIN_DENIED', 403);
       const method = req.method;
-      if (method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true, storage: db.kind === 'postgres' ? 'postgresql' : 'sqlite',
-        retrieval: db.kind === 'postgres' ? 'postgres-tsrank-ko-bigram' : 'fts5-bm25-ko-bigram',
+      if (method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true, storage: 'postgresql',
+        retrieval: 'postgres-tsrank-ko-bigram',
         llmConfigured: modelConfigured(options.env), csrfToken: token,
         documents: await countDocuments(db) });
       if (method === 'GET' && pathname === '/api/documents') return json(res, 200, { documents: await listDocuments(db) });

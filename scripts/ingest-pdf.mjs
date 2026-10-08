@@ -16,9 +16,7 @@ try {
     inputs.push(await extractPdfDocument(file));
   }
   // Extract every input before opening the DB; importDocuments commits the batch atomically.
-  const target = process.env.HAEDAP_DB_BACKEND === 'sqlite'
-    ? resolve(root, process.env.HAEDAP_DB_PATH || 'data/haedap.sqlite') : process.env.DATABASE_URL;
-  const db = await openDatabase(target);
+  const db = await openDatabase(process.env.DATABASE_URL);
   try {
     const imported = await importDocuments(db, inputs.map(input => input.document));
     console.log(JSON.stringify(imported.map((result, index) => ({ ...result, title: inputs[index].document.title,

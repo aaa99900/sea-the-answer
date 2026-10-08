@@ -6,7 +6,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep, basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import vm from 'node:vm';
-import { openDatabase, importDocuments, retrieve, listDocuments, saveReport, getReport } from '../backend/db.mjs';
+import { importDocuments, retrieve, listDocuments } from '../backend/db.mjs';
+import { openDatabase as openLegacyDatabase, importDocuments as importLegacyDocuments,
+  retrieve as retrieveLegacy, saveReport as saveLegacyReport, getReport as getLegacyReport } from './support/sqlite.mjs';
+import { database } from './support/postgres.mjs';
 import { prepareDocument } from '../backend/knowledge.mjs';
 import { pdfDocument, extractPdfDocument } from '../backend/pdf.mjs';
 import { answerQuestion } from '../backend/rag.mjs';
@@ -25,8 +28,8 @@ function temporary(t) {
   return dir;
 }
 
-test('PDF page metadata survives chunking, FTS/BM25, answers and document listing', async t => {
-  const db = openDatabase(':memory:'); t.after(() => db.close());
+test('PDF page metadata survives chunking, PostgreSQL search, answers and document listing', async t => {
+  const db = await database(t);
   const input = pdfDocument(pages, metadata);
   assert.deepEqual(input.summary.emptyPages, [2]);
   assert.equal(input.summary.pages, 3);
@@ -38,21 +41,21 @@ test('PDF page metadata survives chunking, FTS/BM25, answers and document listin
     assert.ok([1, 3].includes(chunk.page));
     assert.ok(chunk.text.length <= 900);
   }
-  importDocuments(db, [input.document]);
-  const hits = retrieve(db, 'Propulsion', { kind: 'manual' });
+  await importDocuments(db, [input.document]);
+  const hits = await retrieve(db, 'Propulsion', { kind: 'manual' });
   assert.equal(hits.length, 1);
   for (const key of ['document_id', 'title', 'page', 'heading', 'text']) assert.ok(hits[0][key]);
   assert.equal(hits[0].page, 3);
   assert.equal(hits[0].title, metadata.title);
   assert.equal(typeof hits[0].rank, 'number');
-  assert.deepEqual(retrieve(db, 'Propulsion', { kind: 'imo' }), []);
+  assert.deepEqual(await retrieve(db, 'Propulsion', { kind: 'imo' }), []);
   assert.equal((await answerQuestion(db, { question: 'Propulsion' })).evidence[0].page, 3);
-  assert.ok(listDocuments(db)[0].sections.every(c => c.page && c.title && c.document_id));
-  assert.equal(importDocuments(db, [input.document])[0].status, 'unchanged');
+  assert.ok((await listDocuments(db))[0].sections.every(c => c.page && c.title && c.document_id));
+  assert.equal((await importDocuments(db, [input.document]))[0].status, 'unchanged');
   const updated = pdfDocument([{ page: 1, text: 'Replacement inspection.' }], { ...metadata, version: 'test-2' });
-  importDocuments(db, [updated.document]);
-  assert.deepEqual(retrieve(db, 'Propulsion'), []);
-  assert.ok(listDocuments(db).find(d => !d.active).sections.some(c => c.page === 3));
+  await importDocuments(db, [updated.document]);
+  assert.deepEqual(await retrieve(db, 'Propulsion'), []);
+  assert.ok((await listDocuments(db)).find(d => !d.active).sections.some(c => c.page === 3));
 });
 
 test('PDF validation rejects invalid pages and textless files; JSON keeps its old hash and limits', () => {
@@ -69,23 +72,23 @@ test('PDF validation rejects invalid pages and textless files; JSON keeps its ol
   assert.equal(prepareDocument(large.document).sections.length, 101);
 });
 
-test('schema v1 migration preserves JSON chunks, search index, reports and old revision IDs', t => {
+test('legacy SQLite fixture preserves source data for one-time PostgreSQL migration', t => {
   const file = join(temporary(t), 'legacy.sqlite');
-  let db = openDatabase(file);
+  let db = openLegacyDatabase(file);
   try {
-    importDocuments(db, seed);
-    const old = retrieve(db, '황 함유량')[0];
-    saveReport(db, { title: '기존 보고서', type: '규정 검토', text: '유지할 내용', sources: [old.document_id], version: 0 });
+    importLegacyDocuments(db, seed);
+    const old = retrieveLegacy(db, '황 함유량')[0];
+    saveLegacyReport(db, { title: '기존 보고서', type: '규정 검토', text: '유지할 내용', sources: [old.document_id], version: 0 });
     db.exec('ALTER TABLE chunks DROP COLUMN page; PRAGMA user_version=1;');
-    db.close(); db = openDatabase(file);
+    db.close(); db = openLegacyDatabase(file);
     assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
-    assert.equal(retrieve(db, '황 함유량')[0].id, old.id);
-    assert.equal(retrieve(db, '황 함유량')[0].page, null);
-    assert.equal(getReport(db).sources[0], old.document_id);
-    assert.ok(importDocuments(db, seed).every(r => r.status === 'unchanged'));
-    importDocuments(db, [pdfDocument(pages, metadata).document]);
-    db.close(); db = openDatabase(file);
-    assert.equal(retrieve(db, 'Propulsion')[0].page, 3);
+    assert.equal(retrieveLegacy(db, '황 함유량')[0].id, old.id);
+    assert.equal(retrieveLegacy(db, '황 함유량')[0].page, null);
+    assert.equal(getLegacyReport(db).sources[0], old.document_id);
+    assert.ok(importLegacyDocuments(db, seed).every(r => r.status === 'unchanged'));
+    importLegacyDocuments(db, [pdfDocument(pages, metadata).document]);
+    db.close(); db = openLegacyDatabase(file);
+    assert.equal(retrieveLegacy(db, 'Propulsion')[0].page, 3);
   } finally { db.close(); }
 });
 
@@ -134,29 +137,26 @@ test('real PDF parser preserves blank page offsets and rejects paths outside PDF
   assert.match(result.document.sections.find(s => s.page === 3).text, /Propulsion/);
   const otherRoot = join(dir, 'unrelated'); mkdirSync(otherRoot);
   await assert.rejects(extractPdfDocument(file, { python, root: otherRoot }), /data\/pdfs/);
-  const db = openDatabase(':memory:');
-  try { importDocuments(db, [result.document]); assert.equal(retrieve(db, 'Propulsion')[0].page, 3); }
-  finally { db.close(); }
+  const db = await database(t);
+  await importDocuments(db, [result.document]);
+  assert.equal((await retrieve(db, 'Propulsion'))[0].page, 3);
 });
 
 test('one explicitly selected local PDF: complete extraction, JSON coexistence, reimport and page search', {
   skip: !process.env.HAEDAP_TEST_PDF && 'Set HAEDAP_TEST_PDF to one PDF under data/pdfs', timeout: 240000,
 }, async t => {
   assert.ok(available, 'Python/pypdf is required for the selected PDF');
-  const file = join(temporary(t), 'actual.sqlite');
   const result = await extractPdfDocument(process.env.HAEDAP_TEST_PDF, { python });
-  let db = openDatabase(file);
-  try {
-    importDocuments(db, seed);
-    assert.equal(importDocuments(db, [result.document])[0].status, 'created');
-    assert.equal(importDocuments(db, [result.document])[0].status, 'unchanged');
-    db.close(); db = openDatabase(file);
-    const hits = retrieve(db, 'offshore support vessels');
+  const db = await database(t, seed);
+  {
+    assert.equal((await importDocuments(db, [result.document]))[0].status, 'created');
+    assert.equal((await importDocuments(db, [result.document]))[0].status, 'unchanged');
+    const hits = await retrieve(db, 'offshore support vessels');
     assert.ok(hits.some(h => h.title === result.document.title && h.page > 0));
     assert.ok(hits.every(h => h.document_id && h.heading && h.text));
-    const stored = listDocuments(db).find(d => d.logical_id === result.document.id);
+    const stored = (await listDocuments(db)).find(d => d.logical_id === result.document.id);
     assert.deepEqual([...new Set(stored.sections.map(c => c.page))], result.document.sections.map(s => s.page).filter((p, i, a) => a.indexOf(p) === i));
     t.diagnostic(JSON.stringify({ title: result.document.title, ...result.summary, chunks: stored.sections.length,
       search: hits.slice(0, 3).map(h => ({ title: h.title, page: h.page })) }));
-  } finally { db.close(); }
+  }
 });
