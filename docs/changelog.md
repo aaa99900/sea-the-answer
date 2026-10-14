@@ -4,7 +4,9 @@
 
 ## 2026-10-14 — CI 워크플로 분리
 
-PR #11의 검토 의견에 따라 `.github/workflows/verify.yaml`을 LLM 기능 변경과 별도 PR로 분리했다. 최신 main `76620c7`을 기준으로 backend·frontend·Compose e2e 검증만 추가하며 모델 호출 코드·환경변수 계약은 변경하지 않는다. 기존 워크플로의 push·main 대상 PR·수동 실행, 읽기 전용 저장소 권한, 동시 실행 취소와 e2e 정리를 유지한다. 원격 실행 결과는 확인 후 기록한다.
+PR #11의 검토 의견에 따라 `.github/workflows/verify.yaml`을 [CI PR #14](https://github.com/dudco/sea-the-answer/pull/14)로 분리했다. 최신 main `76620c7`을 기준으로 backend·frontend·Compose e2e 검증만 추가하며 모델 호출 코드·환경변수 계약은 [기능 PR #13](https://github.com/dudco/sea-the-answer/pull/13)에 둔다. 기존 워크플로의 push·main 대상 PR·수동 실행, 읽기 전용 저장소 권한, 동시 실행 취소와 e2e 정리를 유지한다.
+
+2026-10-14 커밋 `8112816`의 [fork Actions](https://github.com/cxo-ca/sea-the-answer/actions/runs/38518455486)가 성공했다. Linux / Python 3.13.16 / PostgreSQL 18에서 backend 151개 통과·실 데이터셋 4개 건너뜀(기존 Starlette/httpx 경고 1건), frontend 4개·Next.js 16.3.8 빌드, Compose 구성 3종과 Docker Chromium e2e 1개를 통과했다. 테스트 컨테이너·네트워크 정리도 확인했다. 실제 외부 모델 호출은 실행하지 않았다. 이후 이 결과 기록만 문서로 추가했다.
 
 ## 변경 이력
 
