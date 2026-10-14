@@ -1,6 +1,6 @@
 # 해답 — SEA THE ANSWER
 
-현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-13**
+현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-14**
 
 선내 문서 근거와 운항 기록을 함께 보여 주는 선박 업무 지원 앱입니다. 화면은 Next.js, `/api/*`는 Python FastAPI, 저장소는 PostgreSQL이며, 저장소 최상위에서 `docker compose` 하나로 셋을 함께 실행합니다.
 
@@ -139,6 +139,8 @@ e2e는 앱과 분리된 테스트 스택(`e2e-db`·`e2e-migrate`·`e2e-backend`�
 - 의존 서비스까지 자동으로 멈추는 Compose 옵션은 없어서, 끝나면 `down`으로 정리합니다. `--attach-dependencies`는 쓰지 마세요. `e2e-migrate`가 끝나는 순간 중단되어 **테스트를 돌리지 않고도 종료 코드 0**이 나옵니다(2026-10-13 확인).
 
 Docker 없이 e2e를 돌리려면 **빈 DB로 띄운 스택**에 대고 `e2e/`에서 `npm ci`, `npx playwright install chromium`, `npx playwright test`를 실행합니다(주소는 `E2E_BASE_URL`, 기본 `http://127.0.0.1:5173`). 시나리오가 예시 데이터를 넣고 건수를 확인하므로 데이터가 있는 DB에서는 실패합니다.
+
+push·PR에는 [GitHub Actions 검증](.github/workflows/verify.yaml)이 연결됩니다. 백엔드 테스트(임시 PostgreSQL 포함), 프런트 단위 테스트·빌드, 운영·개발·e2e Compose 구성 검사와 격리된 브라우저 e2e를 실행합니다. 실제 모델 키는 사용하지 않습니다. CI는 LLM 기능 PR #13과 별도로 관리합니다.
 
 ## 설정 (`.env`)
 

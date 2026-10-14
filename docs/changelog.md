@@ -2,6 +2,10 @@
 
 버전을 올리거나 검증을 수행하면 이 파일에 기록합니다. 검증은 **실제로 수행한 것만** 날짜·환경과 함께 적고, 수행하지 않은 범위는 따로 적습니다.
 
+## 2026-10-14 — CI 워크플로 분리
+
+PR #11의 검토 의견에 따라 `.github/workflows/verify.yaml`을 LLM 기능 변경과 별도 PR로 분리했다. 최신 main `76620c7`을 기준으로 backend·frontend·Compose e2e 검증만 추가하며 모델 호출 코드·환경변수 계약은 변경하지 않는다. 기존 워크플로의 push·main 대상 PR·수동 실행, 읽기 전용 저장소 권한, 동시 실행 취소와 e2e 정리를 유지한다. 원격 실행 결과는 확인 후 기록한다.
+
 ## 변경 이력
 
 - **문서 전처리 / 2026-10-13**: Python 전처리 모듈과 페이지·조항·문장 경계 청킹을 구현. 최신 main 통합에서는 모듈을 `backend/api/rag_preprocessing.py`로 옮기고 `api/store/documents.py`에 연결했다. API·테이블·개정 해시·기존 청크를 유지하며 검증 도구도 backend/pytest·e2e 패키지로 재배치했다. [구현·실행·머지 안내](plans/2026-10-13-rag-preprocessing.md).
