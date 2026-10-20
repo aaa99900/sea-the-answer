@@ -160,7 +160,8 @@ Chat Completions의 텍스트는 `choices[0].message.content`에서 읽는다. J
 - [x] PR #11 당시 Compose는 모델 설정을 backend에만 전달하며 기본 e2e에는 실제 모델 설정을 전달하지 않았다. 당시 Linux CI 검사·격리 e2e 통과는 이전 변경 검증이며, 현재 CI 워크플로는 별도 PR로 분리한다.
 - [x] 실제 동국 AI Chat에서 문서 질문 1건 이상이 `generation=llm`, 유효 인용, 모델 실패 경고 없음으로 확인된다. (2026-10-14, `https://factchat-cloud.mindlogic.ai/v1/gateway` · `gpt-6-luna`, [변경 이력](../changelog.md))
 - [x] 2026-10-14 검토 반영 코드에 별도 워크플로만 추가한 검증 브랜치에서 PostgreSQL 포함 백엔드 245개, 프런트 테스트·빌드, Compose 3종·Docker e2e와 정리 통과. 실제 모델 연결 검증은 포함하지 않는다([검증 기록](../changelog.md)).
-- [ ] 실제 로컬 Ollama에서도 위 기준을 확인하고, Docker 사용 시 컨테이너에서 호스트 모델에 도달함을 확인한다.
+- [x] 실제 로컬 Ollama의 영문 답변에서 `generation=llm`·유효 인용·실패 경고 없음을 확인했다(2026-10-21, Ollama 0.40.6·`qwen2.5:3b`·`json_schema`). 한국어 요청은 근거 부족 응답이므로 한국어 품질 수용 기준을 충족한 것으로 간주하지 않는다.
+- [ ] Docker 컨테이너 → 호스트 Ollama 연결은 미검증이다. 호스트에서 직접 실행한 결과와 구분한다.
 
 ## 6. 열린 질문
 

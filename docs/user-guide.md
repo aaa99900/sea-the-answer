@@ -108,18 +108,20 @@ seed는 **빈 DB에서만** 적용됩니다. 이미 쓰던 DB에 새 기본 문�
 ```bash
 ollama serve
 # 다른 터미널에서 실행
-ollama pull qwen2.5:1.5b
+ollama pull qwen2.5:3b
 ollama list
-ollama run qwen2.5:1.5b "Reply OK"
+ollama run qwen2.5:3b "Reply OK"
 ```
 
 백엔드도 같은 PC에서 직접 실행할 때는 기존 루트 `.env`의 해당 항목만 수정하고 백엔드를 재시작합니다.
 
 ```dotenv
 LLM_API_BASE_URL=http://127.0.0.1:11434/v1
-OPENAI_MODEL=qwen2.5:1.5b
+OPENAI_MODEL=qwen2.5:3b
 LLM_RESPONSE_FORMAT=json_schema
 ```
+
+위 예시는 2026-10-21 검증 환경을 재현하는 설정입니다. 3B의 영문 근거 답변은 확인했지만 한국어 질문은 근거 부족 응답을 반환했습니다. 1.5B에서는 형식·인용 오류도 관찰했습니다. 따라서 한국어 업무용 모델 선정과 품질 평가는 별도로 필요합니다. 검증용 3B 모델에는 [Qwen Research License](https://ollama.com/library/qwen2.5:3b)가 적용됩니다.
 
 로컬 주소에는 OpenAI·동국 키를 전송하지 않습니다. 다른 공급자를 위해 보관 중인 키를 지울 필요는 없습니다. 모델 최초 적재가 오래 걸리면 `ollama run`으로 먼저 적재한 뒤 질문합니다. 앱의 모델 응답 제한은 25초이며, 시간 초과·잘못된 인용은 발췌로 전환합니다. 문서 검색 결과가 없는 질문은 모델 호출 자체를 하지 않습니다.
 

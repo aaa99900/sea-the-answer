@@ -39,11 +39,11 @@
 
 ### plans — 작업 계획
 
-- [인증·Ollama·CI](plans/2026-10-21-crew-admin-auth.md) — 진행 중
+- [인증·Ollama·CI](plans/2026-10-21-crew-admin-auth.md) — 보류 (#14 관리자 병합 대기, 구현·검증 완료)
 
 | 문서 | 상태 |
 |---|---|
-| [`plans/2026-10-13-openai-compatible-chat.md`](plans/2026-10-13-openai-compatible-chat.md) — 모델 호출 전환·#11 검토 반영·CI 분리·후속 PR | 진행 중 |
+| [`plans/2026-10-13-openai-compatible-chat.md`](plans/2026-10-13-openai-compatible-chat.md) — 모델 호출 전환·인증·공급자 실검증, CI 분리 | 보류 (#14 관리자 병합 대기) |
 | [`plans/2026-10-13-rag-preprocessing.md`](plans/2026-10-13-rag-preprocessing.md) — Python 해사 문서 전처리·청킹 및 새 구조 통합 | 완료 |
 | [`plans/2026-10-08-team-module-integration.md`](plans/2026-10-08-team-module-integration.md) — RAG·LLM·Tool 팀 모듈 연결 로드맵 | 초안 |
 | [`plans/2026-10-08-tools-and-data-preparation-docs.md`](plans/2026-10-08-tools-and-data-preparation-docs.md) — 역할4 PR 문서·모듈 구조 정리 | 완료 |

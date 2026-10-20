@@ -1,9 +1,9 @@
 # 선원·관리자 인증과 로컬 모델 검증
 
-- 상태: 진행 중
+- 상태: 보류 (#14 관리자 병합 대기; 구현·검증·PR 제출 완료)
 - 작성: Codex · 2026-10-21
 - 담당: 정호영(cxo-ca)
-- 관련: [인증 계약](../specs/authentication.md), [ADR 0016](../adr/0016-crew-admin-authentication.md), [CI PR #14](https://github.com/dudco/sea-the-answer/pull/14)
+- 관련: [인증 계약](../specs/authentication.md), [ADR 0016](../adr/0016-crew-admin-authentication.md), [구현 PR #18](https://github.com/dudco/sea-the-answer/pull/18), [CI PR #14](https://github.com/dudco/sea-the-answer/pull/14)
 
 ## 1. 배경과 목표
 
@@ -26,9 +26,9 @@
 
 ### 2단계 — Ollama와 운영
 
-- [ ] 로컬 실행 도구·모델 확보 및 실제 Chat Completions 호출.
-- [ ] 실제 앱 경로의 인용 검증과 실패 시 발췌 전환 확인.
-- [ ] 운영·설정·실제 검증 결과 문서 갱신.
+- [x] 로컬 실행 도구·모델 확보 및 실제 Chat Completions 호출.
+- [x] 실제 앱 경로의 인용 검증과 실패 시 발췌 전환 확인. 영문 성공, 한국어 근거 부족 응답은 품질 한계로 기록.
+- [x] 운영·설정·실제 검증 결과 문서 갱신.
 - 완료 조건: 모의 응답과 실제 로컬 호출을 구분한 재현 기록이 있다.
 
 ### 3단계 — 통합과 CI
@@ -60,3 +60,6 @@
 - 2026-10-21: 사용자가 계정 발급·로그인 전 접근 정책 모두 실제 규정을 근거로 결정하도록 요청. `feature/crew-admin-auth`에서 시작.
 - 2026-10-21: Windows·PostgreSQL 18.6에서 backend 329 통과·4 건너뜀, 인증 집중 26 통과, frontend 4 통과·빌드 성공, 실제 Chrome 전체 시나리오 1 통과(56.9초). Docker 미설치로 Compose는 원격 CI에서 별도 확인한다. 계정 `cxo-ca`의 upstream 권한은 `push=false`, `maintain=false`로 #14 병합은 저장소 관리자가 수행해야 한다.
 - 2026-10-21: [원격 검증 39482809765](https://github.com/cxo-ca/sea-the-answer/actions/runs/39482809765)의 backend·frontend·e2e 모두 성공. 인증 구현 `a1d2d93`에 #14 워크플로만 더한 `cce3c71`로 실행했다. #14의 README 날짜 한 줄을 맞춘 `cfa7fb5`를 본인 CI 브랜치에 추가했고 `git merge-tree`로 인증 브랜치와 충돌 없음을 확인했다. CI 워크플로는 인증 PR에 포함하지 않는다.
+- 2026-10-21: 최종 코드 `8d67a50` + #14 워크플로의 [CI 39486841355](https://github.com/cxo-ca/sea-the-answer/actions/runs/39486841355)도 세 작업 모두 성공했다. #14 자체 최신 커밋 `cfa7fb5`의 [CI 39483905479](https://github.com/cxo-ca/sea-the-answer/actions/runs/39483905479) 역시 모두 성공. PR #18은 main과 충돌 없이 제출됐다.
+- 2026-10-21: Ollama 0.40.6·`qwen2.5:3b`·`json_schema`의 실제 로컬 호출 검증. 선원 인증 API → 실제 PostgreSQL 검색 → 실제 Ollama에서 영문 `generation=llm`·유효 인용·실패 경고 없음(9.91초), 없는 모델 요청은 발췌 전환을 확인했다. 한국어 요청은 근거 부족 응답이므로 한국어 품질이 검증됐다고 표시하지 않는다. 1.5B의 형식·인용 오류도 확인했다. 자세한 환경·한계는 [변경 이력](../changelog.md) 참고.
+- 남은 처리: upstream 관리자에게 #14·#18 검토와 병합을 요청할 수 있는 상태다. #14의 실제 병합은 권한 제약으로 미완료다. 한국어 모델 품질 개선과 Docker → 호스트 모델 연결 검증은 별도 후속 범위로 남긴다.

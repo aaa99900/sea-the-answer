@@ -14,8 +14,8 @@
 
 | 문서 | 내용 | 상태 |
 |---|---|---|
-| [`2026-10-21-crew-admin-auth.md`](2026-10-21-crew-admin-auth.md) | 인증 우선 구현·로컬 Ollama 실제 검증·CI 후속 병합 | 진행 중 |
-| [`2026-10-13-openai-compatible-chat.md`](2026-10-13-openai-compatible-chat.md) | 모델 호출 전환·#11 검토 반영·CI 분리·후속 PR | 진행 중 |
+| [`2026-10-21-crew-admin-auth.md`](2026-10-21-crew-admin-auth.md) | 인증 구현·Ollama 실검증·CI 성공, PR 제출 | 보류 (#14 관리자 병합 대기) |
+| [`2026-10-13-openai-compatible-chat.md`](2026-10-13-openai-compatible-chat.md) | 모델 호출 전환·인증·공급자 실검증, CI 분리 | 보류 (#14 관리자 병합 대기) |
 | [`2026-10-13-rag-preprocessing.md`](2026-10-13-rag-preprocessing.md) | Python 해사 문서 전처리·청킹, 실제 PDF 검증 및 새 구조 통합 | 완료 |
 | [`2026-10-08-team-module-integration.md`](2026-10-08-team-module-integration.md) | RAG·LLM·Tool·문서 형식 등 팀 모듈 연결 로드맵 | 초안 |
 | [`2026-10-08-tools-and-data-preparation-docs.md`](2026-10-08-tools-and-data-preparation-docs.md) | 역할4 PR 문서·모듈 구조 정리 | 완료 |
