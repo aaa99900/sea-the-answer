@@ -36,6 +36,8 @@ def test_real_document_upload_search_revision_access_and_rollback(database):
     client = TestClient(main.app, base_url="http://localhost:5173")
     guest = TestClient(main.app, base_url="http://localhost:5173")
     guest_headers = {"X-Haedap-Token": guest.get("/api/health").json()["csrfToken"]}
+    assert post(guest, guest_headers, payload()).status_code == 401
+    guest_headers = login(guest, "crew")
     assert post(guest, guest_headers, payload()).status_code == 403
     headers = login(client)
     data = payload()

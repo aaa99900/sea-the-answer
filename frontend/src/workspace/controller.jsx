@@ -184,6 +184,7 @@ export function createWorkspace() {
     state.askError = '';
     state.reportError = '';
     state.authError = '';
+    state.passwordOpen = false;
     state.adminError = '';
     state.adminLoading = false;
     state.answer = null;
@@ -230,8 +231,11 @@ export function createWorkspace() {
       const health = await api.health(),
         previous = state.user?.id;
       state.health = health;
-      if (!health.user) {
+      if (!health.authenticated) {
+        closeModal();
         resetPrivateState();
+        state.user = health.user;
+        state.loginOpen = true;
         return;
       }
       if (previous && previous !== health.user.id) {
@@ -239,6 +243,13 @@ export function createWorkspace() {
         resetPrivateState();
       }
       state.user = health.user;
+      state.loginOpen = false;
+      if (health.user.must_change_password) {
+        closeModal();
+        resetPrivateState();
+        state.user = health.user;
+        return;
+      }
       await refreshAll();
       state.ready = true;
       if (!health.llmConfigured) state.mode = 'extractive';
@@ -272,6 +283,7 @@ export function createWorkspace() {
     const body = formValues(f);
     const button = f.querySelector('button[type="submit"]') || f.querySelector('button');
     button.disabled = true;
+    state.authBusy = true;
     try {
       await api.request('/api/auth/login', body);
       state.loginOpen = false;
@@ -281,7 +293,33 @@ export function createWorkspace() {
       state.authError = e.message;
       render();
     } finally {
+      state.authBusy = false;
       button.disabled = false;
+      render();
+    }
+  }
+  async function changePassword(f) {
+    const body = formValues(f);
+    state.authError = '';
+    if (body.newPassword !== body.confirmPassword) {
+      state.authError = '새 비밀번호가 일치하지 않습니다.';
+      render();
+      return;
+    }
+    state.authBusy = true;
+    render();
+    try {
+      await api.request('/api/auth/password', body);
+      f.reset();
+      state.passwordOpen = false;
+      await connect();
+      toast('비밀번호를 변경했습니다.');
+    } catch (e) {
+      if (['AUTH_REQUIRED', 'PASSWORD_CHANGE_REQUIRED'].includes(e.code)) await connect();
+      state.authError = e.message;
+    } finally {
+      state.authBusy = false;
+      render();
     }
   }
   async function logout() {
@@ -296,12 +334,15 @@ export function createWorkspace() {
     )
       return;
     await api.request('/api/auth/logout', {});
+    if (state.user) {
+      try { localStorage.removeItem(draftKey()); } catch { /* Storage may be disabled. */ }
+    }
     resetPrivateState();
     closeModal();
     state.loginOpen = false;
     navigate('chat');
     await connect();
-    toast('로그아웃했어요. 기본 기능은 계속 사용할 수 있어요.');
+    toast('로그아웃했습니다.');
   }
   async function refreshAdmin() {
     if (!isAdmin()) return;
@@ -369,7 +410,7 @@ export function createWorkspace() {
       if (state.question.trim() === q) state.question = '';
     } catch (e) {
       if (sequence === state.askSequence) state.askError = e.message;
-      if (e.code === 'AUTH_REQUIRED') await connect();
+      if (['AUTH_REQUIRED', 'PASSWORD_CHANGE_REQUIRED'].includes(e.code)) await connect();
     } finally {
       clearTimeout(timer);
       if (sequence === state.askSequence) {
@@ -731,7 +772,7 @@ export function createWorkspace() {
     } catch (e) {
       if (generation === modalGeneration && error) error.textContent = e.message;
       else toast(e.message);
-      if (e.code === 'AUTH_REQUIRED') await connect();
+      if (['AUTH_REQUIRED', 'PASSWORD_CHANGE_REQUIRED'].includes(e.code)) await connect();
     } finally {
       if (generation === modalGeneration) {
         buttons.forEach((b) => (b.disabled = false));
@@ -1233,7 +1274,7 @@ export function createWorkspace() {
         'restoreForm',
         <>
           {notice(
-            `${dateText(b.createdAt)} 시점으로 문서·기록·보고서·계정·권한을 되돌립니다. 현재 데이터는 복구 직전 자동 보관됩니다. 복구 후 일반 화면으로 돌아옵니다. 관리 기능은 admin / 1234로 다시 로그인합니다.`,
+            `${dateText(b.createdAt)} 시점으로 문서·기록·보고서·계정·권한을 되돌립니다. 현재 데이터는 복구 직전 자동 보관됩니다. 복구 후 해당 시점의 개인 계정으로 다시 로그인해 주세요.`,
             'warning',
           )}
           {field('confirm', '계속하려면 ‘복구’를 입력해 주세요', '', 'text', {
@@ -1285,6 +1326,17 @@ export function createWorkspace() {
     },
     reconnect: connect,
     logout,
+    changePassword: () => {
+      closeModal();
+      state.passwordOpen = true;
+      state.authError = '';
+      render();
+    },
+    cancelPassword: () => {
+      state.passwordOpen = false;
+      state.authError = '';
+      render();
+    },
     refreshAll,
     openLogin: () => {
       closeModal();
@@ -1576,7 +1628,7 @@ export function createWorkspace() {
       await action();
     } catch (e) {
       toast(e.message || '처리에 실패했습니다.');
-      if (e.code === 'AUTH_REQUIRED') await connect();
+      if (['AUTH_REQUIRED', 'PASSWORD_CHANGE_REQUIRED'].includes(e.code)) await connect();
     }
   }
   const handleClick = (e) => {
@@ -1635,6 +1687,7 @@ export function createWorkspace() {
     const f = e.target,
       ids = [
         'authForm',
+        'passwordForm',
         'askForm',
         'docSearch',
         'reportSearch',
@@ -1655,6 +1708,7 @@ export function createWorkspace() {
     if (!f.reportValidity()) return;
     const v = () => formValues(f);
     if (f.id === 'authForm') return run(() => login(f));
+    if (f.id === 'passwordForm') return run(() => changePassword(f));
     if (f.id === 'askForm') return run(() => ask(state.question));
     if (f.id === 'docSearch') {
       state.docQuery = v().query;
@@ -1730,7 +1784,7 @@ export function createWorkspace() {
           closeModal();
           resetPrivateState();
           await connect();
-          toast('복구를 완료했습니다. 관리 기능은 다시 관리자 로그인해 주세요.');
+          toast('복구를 완료했습니다. 다시 로그인해 주세요.');
         }
         if (f.id === 'criterionForm') {
           state.criterion = {

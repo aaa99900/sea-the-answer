@@ -4,10 +4,16 @@
 
 ## 변경 이력
 
+- **개인 계정 인증 / 2026-10-21** (1.4.0 유지, [ADR 0016](adr/0016-crew-admin-authentication.md)): 일반 선원·열람·관리자 개인 계정 로그인, 관리자 계정 발급·회수, 최초·초기화 비밀번호 변경, 익명 업무 API 차단, 계정 버전 기반 세션 회수, 30분 유휴·12시간 절대 만료와 로그인 시도 제한을 구현했다. 내장 관리자 비밀번호를 제거하고 빈 DB의 명시적 초기 관리자 설정으로 전환했다. 기존 계정·보고서를 보존하며 새 마이그레이션에서 기존 계정도 비밀번호 변경을 요구한다. 권한·접속 로그, 운영 절차·인증 명세를 갱신했다. 실제 규정의 적용 범위와 프로젝트 정책을 ADR에 구분했다.
+- **인증·화면 검증 / 2026-10-21**: Windows, Python 3.13.16, PostgreSQL 18.6의 별도 DB에서 backend 전체 **329 통과·4 건너뜀**, 최종 인증 집중 **26 통과**. Node 24.21.0에서 frontend **4 통과**, Next.js 16.3.8 production 빌드 성공. 실제 Chrome → Next standalone → FastAPI → PostgreSQL 통합 시나리오 **1 통과(56.9초)**: 익명 차단, 초기 관리자·선원 비밀번호 변경, 계정 발급, 권한 제한, 문서·PDF·운항·보고서·승인, 백업 복구 후 재로그인, 모바일 탐색. 백업 생성 완료를 기다리도록 테스트를 보완했다. 이 PC에는 Docker가 없어 로컬 결과를 Compose 실행 결과로 표기하지 않는다. Starlette의 기존 httpx 사용 중단 경고 1건은 남아 있다.
+
 - **선택 상자 값이 바뀌지 않던 문제 수정 / 2026-10-15**: 화면 공통 `onInput` 처리에서 바로 다시 그리면서, `change` 이벤트가 값을 저장하기 전에 React가 선택 상자를 이전 값으로 되돌렸다. 질문 화면의 답변 방식·언어·작업 유형·검색 범위와 운항·문서 화면의 `data-field` 선택·날짜 입력이 영향을 받았다. `data-field` 요소는 `input`에서 다시 그리지 않도록 `frontend/src/workspace/controller.jsx` 수정. 검증: 2026-10-15 브라우저에서 실제 사용자 순서(input → change)로 재현 확인, `npm test` 4 통과. 수정 후 화면 재확인은 frontend 재빌드 뒤 진행 예정.
 - **기본 문서 확충 / 2026-10-15** (버전 유지): 원본 PDF와 함께 등록되는 기본 문서 5건(해양환경관리법 법률 제21416호, 선박안전법 제19134호, 해상교통안전법 제19573호, 선박직원법 제21053호 — 2026-10-15 국가법령정보센터에서 받은 본문 PDF; USCG Navigation Rules and Regulations Handbook 2024-08-12 수정판)과 법령 정의 조항·COLREG Rule 3 기반 `해사 기본 용어집`을 `seed.json`에 추가. 법령은 조문 단위, 핸드북은 페이지 단위 절이며 원문 페이지 번호를 보존한다. `seed.json` 항목의 `file` 필드가 `knowledge/` 아래 PDF를 가리키면 `bootstrap()`이 원본을 함께 저장한다(`knowledge/` 밖 경로는 거부). 재생성 스크립트 `scripts/build_seed_documents.py` 추가. 검증: 2026-10-15 `uv run pytest` 242 통과·65 건너뜀(PostgreSQL 필요), 신규 `test_seed_documents.py` 9건 포함. 실제 PostgreSQL 적재와 화면 확인은 미수행. 알려진 한계: 키워드 검색이 조사가 붙은 단어(예: "조종불능선이")를 찾지 못하고 흔한 단어와 핵심 단어를 같은 점수로 세어, 문서가 늘면서 일부 질문의 근거 순위가 나빠진다.
 - **AI 답변 실패 배너 오표시 수정 / 2026-10-14**: 통합 질문 화면이 경고 코드가 하나라도 있으면 "AI 답변을 생성하지 못해…" 배너를 띄워, 모델 답변이 성공(`generation=llm`)해도 `OPERATIONS_CONTEXT_REQUIRED`만으로 실패처럼 보였다. `MODEL_FAILED_EXTRACTIVE_FALLBACK`·`MODEL_NOT_CONFIGURED`일 때만 표시하도록 `frontend/src/views/views.jsx`를 수정. 검증: 2026-10-14 `npm test` 4 통과. 같은 날 동국 AI Chat 게이트웨이(`gpt-6-luna`)로 backend 컨테이너에서 `grounded_statements` 실호출 성공(200, 유효 인용, 4.3초), 웹 화면에서 "연료 황 함유량 기준은?" 질문이 AI 초안으로 표시됨을 확인.
 - **동국 AI Chat 게이트웨이 호스트 / 2026-10-14** (버전 유지, [ADR 0014 제안](adr/0014-mindlogic-gateway-host.md)): 확인된 API 기본 주소 `https://factchat-cloud.mindlogic.ai/v1/gateway`의 정확한 호스트에 `DONGUK_AI_CHAT_API_KEY`를 보내고, 이 호스트에서는 문서 표기대로 `/chat/completions/`로 호출한다. 다른 `*.mindlogic.ai`·유사 도메인에는 키를 보내지 않는다. 검증: 2026-10-14 로컬 작업 폴더의 `backend/`에서 (Linux, Python 3.13) `uv run pytest` 233 통과·65 건너뜀(PostgreSQL 필요 테스트). 실제 게이트웨이 호출·e2e는 미수행.
+
+- **후속 작업 우선순위 기록 / 2026-10-15** (문서만 변경, 버전 유지): 사용자가 지정한 [후속 계획](plans/2026-10-13-openai-compatible-chat.md)에 일반 선원·관리자 인증 우선, 로컬 Ollama 실제 연동 검증·운영 문서 보완, CI PR #14의 추후 병합을 기록했다. 검색·문서 정보 질문·접근 정책 등 사용자 보고 문제를 보존했으며 이번 작업에서 재검증한 결과로 표현하지 않는다.
+
 - **PR #11 검토 반영 / 2026-10-14** (1.4.0 유지, [ADR 0013](adr/0013-provider-credential-isolation.md)): URL·출력 형식 설정을 `LLM_API_BASE_URL`·`LLM_RESPONSE_FORMAT`으로 변경. `OPENAI_MODEL`·`OPENAI_API_KEY`는 유지하고 `DONGUK_AI_CHAT_API_KEY`를 분리했다. URL 호스트에 맞는 공급자 키만 선택하며 로컬 Ollama·기타 호환 서버에는 두 키가 있어도 인증 헤더를 보내지 않는다. CI 워크플로는 기능 변경에서 제거해 별도 PR로 분리한다. 최신 `main`의 RAG 전처리·문서 변경을 함께 보존했다. 기존 `.env`는 재시작 전 이름 변경이 필요하며 자동 수정하지 않는다. 실제 동국·Ollama 접속은 미검증.
 
 - **최초 PR #11의 OpenAI 호환 Chat Completions / 2026-10-13** (버전 유지, [ADR 0012](adr/0012-openai-compatible-chat-completions.md)): #8 머지본 `196ad73`에서 `api/llm.py`로 모델 통신·JSON·인용 검증 분리. 당시 `OPENAI_BASE_URL`·`OPENAI_RESPONSE_FORMAT` 추가, 기존 키·모델 이름 유지. 키 없는 로컬 호환 서버 활성화와 health·답변 설정 판정 통일, 실패·잘림·위조 인용은 기존 발췌 경고로 전환. `.env.example`·Compose·README·공급자 계약 갱신. 당시 PR에 검증 워크플로를 연결했으며 2026-10-14 검토에서 별도 PR로 분리. 동국·Ollama 실접속은 미검증.
@@ -38,6 +44,10 @@
 - **1.2.0 / 2026-09-30**: PDF/CSV, 다중 보고서, 통합 결과, 계정·권한·로그·백업·복구.
 
 ## 검증 기록
+
+### 2026-10-15 — 후속 작업 메모 문서 확인
+
+사용자의 최신 우선순위를 계획에 반영하고 기존 인증 설명·API 계약과 대조했다. 변경 문서의 로컬 파일 링크와 `git diff --check`를 확인했다. 실행 코드 변경이 없어 단위·브라우저 테스트를 실행하지 않았으며, 로그인 구현·실제 Ollama 호출·CI PR 병합도 수행하지 않았다.
 
 ### 2026-10-14 — PR #11 검토 반영 (Windows)
 

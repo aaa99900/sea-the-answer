@@ -197,6 +197,14 @@ class MemoryWorkspace(AnswerStore):
     def bootstrap(self):
         pass
 
+    def authenticate(self, username, password):
+        assert username == "model-test" and password == "model-test-password"
+        return self.user_by_id("model-test")
+
+    def user_by_id(self, user_id):
+        return {"id": "model-test", "username": "model-test", "name": "Model test",
+                "role": "operator", "active": True, "version": 1} if user_id == "model-test" else None
+
     def one(self, query, _params=()):
         if "pg_try_advisory_xact_lock" in query:
             return {"locked": True}
@@ -227,6 +235,9 @@ def api_client(monkeypatch):
     monkeypatch.setattr(deps, "Workspace", MemoryWorkspace)
     monkeypatch.setattr(deps, "initialized", False)
     with TestClient(main.app, base_url="http://localhost:5173") as client:
+        token = client.get("/api/health").json()["csrfToken"]
+        assert client.post("/api/auth/login", headers={"X-Haedap-Token": token},
+                           json={"username": "model-test", "password": "model-test-password"}).status_code == 200
         yield client
 
 

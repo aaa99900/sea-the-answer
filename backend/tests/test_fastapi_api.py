@@ -63,7 +63,8 @@ def test_browser_health_auth_and_question_contract(monkeypatch):
     assert health.status_code == 200
     assert health.json()["storage"] == "postgresql"
     assert health.json()["user"]["role"] == "guest"
-    assert health.json()["documents"] == 1
+    assert health.json()["documents"] == 0
+    assert health.json()["publicAccess"] is False
     token = health.json()["csrfToken"]
     assert "haedap_guest=" in health.headers["set-cookie"]
 
@@ -72,12 +73,12 @@ def test_browser_health_auth_and_question_contract(monkeypatch):
     assert no_token.json()["error"]["code"] == "SESSION_EXPIRED"
     headers = {"X-Haedap-Token": token}
     answer = client.post("/api/ask", headers=headers, json={"question": "규정"})
-    assert answer.status_code == 200
-    assert answer.json()["user"].startswith("guest_")
+    assert answer.status_code == 401
     login = client.post("/api/auth/login", headers=headers, json={"username": "admin", "password": "1234"})
     assert login.status_code == 200
     assert login.json()["user"]["role"] == "admin"
     assert client.get("/api/health").json()["authenticated"] is True
+    assert client.post("/api/ask", headers=headers, json={"question": "규정"}).json()["user"] == ADMIN["id"]
     assert client.post("/api/auth/logout", headers=headers, json={}).status_code == 200
     assert client.get("/api/health").json()["authenticated"] is False
 

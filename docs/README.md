@@ -27,6 +27,8 @@
 
 ### specs — 구현 계약
 
+- [선원·관리자 인증](specs/authentication.md) — 구현됨
+
 | 문서 | 상태 |
 |---|---|
 | [`specs/llm-provider.md`](specs/llm-provider.md) — Chat Completions 공통 설정·공급자 키 격리·인용 검증 | 구현됨 (실제 공급자 미검증) |
@@ -36,6 +38,8 @@
 | [`specs/prepare-data.md`](specs/prepare-data.md) — 데이터 선택·출처·품질·집계 적격성 계약 | 구현됨 |
 
 ### plans — 작업 계획
+
+- [인증·Ollama·CI](plans/2026-10-21-crew-admin-auth.md) — 진행 중
 
 | 문서 | 상태 |
 |---|---|
@@ -49,6 +53,8 @@
 
 ### adr — 설계 결정
 
+- [0016 개인 계정과 서버의 업무 접근 통제](adr/0016-crew-admin-authentication.md) — 채택
+
 추가 제안: [0013 - 제원 후보 별도 보존·MRV 참고 집약도 API](adr/0013-mrv-reference-intensity.md). 팀 PR #11에서 사용하는 0012와 번호를 구분합니다.
 
 | 번호 | 결정 | 상태 |
@@ -56,7 +62,7 @@
 | [0001](adr/0001-docs-directory.md) | 문서를 최상위 `docs/`에 모으고 AGENTS.md를 공통 지침으로 사용 | 채택 |
 | [0002](adr/0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 대체됨(0006) |
 | [0003](adr/0003-sqlite-fts5-local-storage.md) | 내장 SQLite + FTS5로 로컬 저장·검색 | 대체됨(0009) |
-| [0004](adr/0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 채택 |
+| [0004](adr/0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 대체됨(0016) |
 | [0005](adr/0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 | 채택 (일부 0006·0009로 대체) |
 | [0006](adr/0006-nextjs-entry-rewrites-to-api.md) | Next.js를 공개 진입점으로, `/api/*`는 rewrites로 내부 API에 전달 | 채택 (일부 0007로 대체) |
 | [0007](adr/0007-runtime-api-origin-via-proxy.md) | `/api/*` 전달 주소를 실행 시점에 결정(`proxy.js`) | 채택 |

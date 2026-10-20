@@ -36,6 +36,10 @@ x-migrate: &migrate
   restart: "no"
 
 x-backend-env: &backend-env
+  HAEDAP_BOOTSTRAP_USERNAME: ${HAEDAP_BOOTSTRAP_USERNAME:-}
+  HAEDAP_BOOTSTRAP_NAME: ${HAEDAP_BOOTSTRAP_NAME:-}
+  HAEDAP_BOOTSTRAP_PASSWORD: ${HAEDAP_BOOTSTRAP_PASSWORD:-}
+  HAEDAP_HTTPS: ${HAEDAP_HTTPS:-false}
   # Optional: grounded model responses (server-side only).
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   DONGUK_AI_CHAT_API_KEY: ${DONGUK_AI_CHAT_API_KEY:-}
@@ -115,6 +119,10 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-haedap}:${POSTGRES_PASSWORD:-haedap-local}@e2e-db:5432/${POSTGRES_DB:-haedap}
       HAEDAP_ALLOWED_HOSTS: e2e-frontend
+      # Credentials for the disposable, unpublished test stack only.
+      HAEDAP_BOOTSTRAP_USERNAME: e2e-admin
+      HAEDAP_BOOTSTRAP_NAME: E2E administrator
+      HAEDAP_BOOTSTRAP_PASSWORD: E2e-initial-only-2026
       OPENAI_API_KEY: ""
       OPENAI_MODEL: ""
     tmpfs: ["/data/backups:uid=10001,gid=10001"]

@@ -541,7 +541,7 @@ export function createMainViews(model, views) {
                   [
                     '열람 범위',
                     {
-                      all: '누구나 열람',
+                      all: '로그인 사용자',
                       operator: '담당자·관리자',
                       admin: '관리자',
                     }[d.meta.scope],
@@ -587,7 +587,7 @@ export function createMainViews(model, views) {
     );
   }
   function shell(content) {
-    if (state.loginOpen) return authPage();
+    if (state.loginOpen || state.passwordOpen || state.user?.must_change_password || state.user?.role === 'guest') return authPage();
     if (!state.user)
       return (
         <main className={'login-layout'}>
@@ -667,8 +667,9 @@ export function createMainViews(model, views) {
                 <div className={'account-note'}>{roleName[state.user.role]}</div>
               </div>
             </div>
-            <button className={'sidebar-logout'} data-action={isAdmin() ? 'logout' : 'openLogin'}>
-              {isAdmin() ? '로그아웃' : '관리자 로그인'}
+            <button className={'sidebar-logout'} data-action={'changePassword'}>비밀번호 변경</button>
+            <button className={'sidebar-logout'} data-action={'logout'}>
+              {'로그아웃'}
             </button>
           </div>
         </aside>

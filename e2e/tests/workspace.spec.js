@@ -52,9 +52,8 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
   const close = () => action('closeModal').click();
   const submit = (form) => page.locator(form).evaluate((f) => f.requestSubmit());
   const dialogClosed = () => page.waitForFunction(() => !document.querySelector('dialog').open);
-  const login = async (password = '1234') => {
-    await action('openLogin').click();
-    await page.locator('#auth-username').fill('admin');
+  const login = async (password = 'E2e-personal-admin-2026', username = 'e2e-admin') => {
+    await page.locator('#auth-username').fill(username);
     await page.locator('#auth-password').fill(password);
     await submit('#authForm');
   };
@@ -80,11 +79,40 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     );
   const records = async () => (await api('/api/operations')).data.records;
 
-  await test.step('Root redirect, public workspace and brand', async () => {
+  await test.step('Anonymous access blocked; bootstrap password rotation and crew provisioning', async () => {
     await page.goto('/');
-    await action('openLogin').waitFor();
-    await page.waitForURL('**/chat');
+    await page.locator('#authForm').waitFor();
+    expect((await api('/api/documents')).status).toBe(401);
+    await expect(page.locator('#question')).toHaveCount(0);
+    await login('E2e-initial-only-2026');
+    await page.locator('#passwordForm').waitFor();
+    expect((await api('/api/documents')).data.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+    await page.locator('#auth-password').fill('E2e-initial-only-2026');
+    await page.locator('#auth-new-password').fill('E2e-personal-admin-2026');
+    await page.locator('#auth-confirm-password').fill('E2e-personal-admin-2026');
+    await submit('#passwordForm');
+    await page.locator('#question').waitFor();
+    await expect(page).toHaveURL(/\/chat$/);
     await expect(page.locator('.brand small')).toHaveText('SEA THE ANSWER');
+    await go('admin');
+    await action('adminTab').filter({ hasText: '사용자' }).click();
+    await action('newUser').click();
+    await page.locator('#f-name').fill('E2E 선원');
+    await page.locator('#f-username').fill('e2e-crew');
+    await expect(page.locator('#f-role')).toHaveValue('operator');
+    await page.locator('#f-password').fill('E2e-initial-crew-2026');
+    await submit('#userForm');
+    await dialogClosed();
+    await action('logout').click();
+    await page.locator('#authForm').waitFor();
+    await login('E2e-initial-crew-2026', 'e2e-crew');
+    await page.locator('#passwordForm').waitFor();
+    await page.locator('#auth-password').fill('E2e-initial-crew-2026');
+    await page.locator('#auth-new-password').fill('E2e-personal-crew-2026');
+    await page.locator('#auth-confirm-password').fill('E2e-personal-crew-2026');
+    await submit('#passwordForm');
+    await page.locator('#question').waitFor();
+    expect((await api('/api/users')).status).toBe(403);
   });
 
   await test.step('Question, real search, source dialog', async () => {
@@ -96,7 +124,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     await close();
   });
 
-  await test.step('Document routing, direct refresh, guest controls', async () => {
+  await test.step('Document routing, direct refresh, crew controls', async () => {
     await go('docs');
     await expect(action('newDocument')).toHaveCount(0);
     await action('document').first().click();
@@ -108,7 +136,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect(page.url()).toBe(documentUrl);
   });
 
-  await test.step('Guest mutation buttons hidden and backend rejects writes', async () => {
+  await test.step('Crew mutation buttons hidden and backend rejects writes', async () => {
     await go('operations');
     for (const a of ['newShip', 'newRecord', 'importOperations', 'editRecord', 'deleteRecord'])
       await expect(action(a)).toHaveCount(0);
@@ -116,10 +144,12 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
   });
 
   await test.step('Failed login retry, admin login, sample initialization', async () => {
+    await action('logout').click();
+    await page.locator('#authForm').waitFor();
     await login('wrong');
     await page.locator('#authError').filter({ hasText: '올바르지' }).waitFor();
     await expect(page.locator('#authForm button[type=submit]')).toBeEnabled();
-    await page.locator('#auth-password').fill('1234');
+    await page.locator('#auth-password').fill('E2e-personal-admin-2026');
     await submit('#authForm');
     await action('logout').waitFor();
     await go('operations');
@@ -238,9 +268,11 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect(await records()).toHaveLength(22);
   });
 
-  await test.step('Guest report generation, saving, navigation, reload, review submission', async () => {
+  await test.step('Crew report generation, saving, navigation, reload, review submission', async () => {
     await action('logout').click();
-    await action('openLogin').waitFor();
+    await page.locator('#authForm').waitFor();
+    await login('E2e-personal-crew-2026', 'e2e-crew');
+    await page.locator('#question').waitFor();
     await go('reports');
     await action('templateNoon').click();
     await page.waitForFunction(() => document.querySelector('#report-text')?.value.includes('Noon'));
@@ -264,6 +296,8 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
   });
 
   await test.step('Report approval workflow', async () => {
+    await action('logout').click();
+    await page.locator('#authForm').waitFor();
     await login();
     await action('logout').waitFor();
     await go('admin');
@@ -282,13 +316,19 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
 
   await test.step('Backup creation, restoration and login invalidation', async () => {
     await action('adminTab').filter({ hasText: '백업·복구' }).click();
+    const created = page.waitForResponse((response) =>
+      response.url().endsWith('/api/backups') && response.request().method() === 'POST');
     await action('createBackup').click();
-    await action('downloadBackup').first().waitFor();
-    await action('restoreBackup').first().click();
+    const { backup } = await (await created).json();
+    const restore = page.locator(`[data-action=restoreBackup][data-id="${backup.id}"]`);
+    await restore.click();
     await page.locator('#f-confirm').fill('복구');
     await submit('#restoreForm');
-    await action('openLogin').waitFor();
+    await page.locator('#authForm').waitFor();
     expect((await api('/api/health')).data.user.role).toBe('guest');
+    expect((await api('/api/operations')).status).toBe(401);
+    await login();
+    await action('logout').waitFor();
     expect(await records()).toHaveLength(22);
   });
 

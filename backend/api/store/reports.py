@@ -35,7 +35,7 @@ class ReportStore:
         return report
 
     def save_report(self, user: dict, payload: dict) -> dict:
-        self.permit(user, ("admin", "operator", "guest"))
+        self.permit(user, ("admin", "operator"))
         require(isinstance(payload, dict), "보고서가 필요합니다.")
         report_id = payload.get("id") or str(uuid4())
         locked = self.one("SELECT version FROM reports WHERE id=%s FOR UPDATE", (report_id,))
@@ -71,7 +71,7 @@ class ReportStore:
         return self.report(report_id)
 
     def submit_report(self, user: dict, payload: dict) -> dict:
-        self.permit(user, ("admin", "operator", "guest"))
+        self.permit(user, ("admin", "operator"))
         self.one("SELECT version FROM reports WHERE id=%s FOR UPDATE", (payload.get("id", ""),))
         report = self.load_report(user, payload.get("id", ""))
         require(report["version"] == payload.get("version"), "보고서가 변경되었습니다.", "VERSION_CONFLICT", 409)

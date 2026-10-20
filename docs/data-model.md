@@ -60,7 +60,7 @@ erDiagram
 | `document_meta(id, body)` | 개정본별 메타 JSON: `{scope, status, issuer, issuedAt, revisedAt, applicability, revision}` |
 | `document_files(id, name, base64)` | 개정본의 원본 PDF (Base64, 25MB 이하). 새 개정에 파일이 없으면 이전 개정의 PDF를 복사 |
 
-- `scope`: `all`(누구나) · `operator`(담당자·관리자) · `admin`(관리자만). 바꾸면 같은 논리 문서의 **모든 개정본**에 적용.
+- `scope`: `all`(로그인 사용자) · `operator`(담당자·관리자) · `admin`(관리자만). 바꾸면 같은 논리 문서의 **모든 개정본**에 적용.
 - `status`: `active`(사용 중) · `retired`(폐기) · `deleted`(삭제 — 행은 남기고 검색·열람에서 제외).
 - `revision`: 메타 수정 시각(ms). 낙관적 잠금 `expectedMetaRevision`에 사용.
 - 메타가 없으면 기본값 `{scope:'all', status:'active', …, revision:0}`.
@@ -118,7 +118,7 @@ erDiagram
 
 | 테이블 | 컬럼 | 설명 |
 |---|---|---|
-| `users` | `id`, `username`(UNIQUE), `name`, `role`, `password`(`salt:scrypt hex`), `active`, `version` | `role`: `admin`(로그인 가능) · `operator` · `viewer`(이전 버전 호환, 로그인 불가). 기본 `admin`은 고정 |
+| `users` | `id`, `username`(UNIQUE), `name`, `role`, `password`(`salt:scrypt hex`), `active`, `version`, `must_change_password`(boolean, 기본 true) | `role`: `admin`(관리자) · `operator`(선원) · `viewer`(열람); 활성 계정만 로그인. 비밀번호 초기화 후 본인 변경 필수 |
 | `queries` | `id`, `question`, `response`(통합 답변 JSON 전체), `created_at` | 질문 당시 답변 재열람용 |
 | `query_owner` | `id`, `owner` | 질문 소유자 |
 | `tool_runs` | `id`, `tool`, `version`, `input`, `output`, `created_at` | 계산 도구 실행 기록 |
@@ -129,14 +129,15 @@ erDiagram
 `changes.kind`: `document.save`, `document.delete`, `ship.save`, `operation.save`, `operation.import`, `operation.delete`, `report.approve`.
 `changes.status`: 관리자 직접 변경은 즉시 `approved`로 기록. 보고서 검토 요청(및 이전 버전의 요청)은 `pending` → `approved` / `rejected`.
 
-`settings` 키: `schema`(`'2'`), `autoBackup`(`daily`|`off`), `autoBackupDay`(마지막 자동 백업 UTC 날짜), `publicAccessV1`(기본 관리자 일회성 이전 완료 표시).
+`settings` 키: `schema`(`'2'`), `autoBackup`(`daily`|`off`), `autoBackupDay`(마지막 자동 백업 UTC 날짜), `publicAccessV1`(이전 버전 잔존 키; 현재 인증 정책에 사용하지 않음).
 
 ## 6. 식별자와 동시성
 
 - 대부분의 ID는 `randomUUID()`. 문서는 내용 해시 기반 개정 ID.
 - **낙관적 잠금**: `ships`, `operations`, `reports`, `users`는 `version` 정수를 갖고, 요청의 `version`이 DB와 다르면 `409 VERSION_CONFLICT`. 저장 시 +1. 문서는 `expectedId`(현재 개정 ID)와 `expectedMetaRevision`으로 같은 검사를 합니다.
 - 변경은 PostgreSQL 트랜잭션 하나로 처리하며 충돌 제어가 필요한 기존 행은 `FOR UPDATE`로 잠급니다.
-- 일반 사용자 소유자 ID: `guest_` + `haedap_guest` 쿠키 값의 SHA-256.
+- 새 보고서·질문 소유자는 `users.id`입니다. 기존 `guest_` 식별자의 소유 자료는 보존하되 자동 이전하지 않습니다.
+- `20261021000000_user_password_change.sql`이 기존 사용자에게 비밀번호 변경 요구를 추가합니다. 계정 변경은 행 잠금과 계정 관리용 advisory lock으로 직렬화합니다. 계정 버전 변경은 세션을 무효화합니다.
 
 ## 7. 백업 형식
 

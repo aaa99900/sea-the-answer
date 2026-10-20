@@ -2,7 +2,7 @@
 
 - 상태: 구현됨 (1.4.0)
 - 최종 확인: 2026-10-13 (`backend/api/` 대조)
-- 관련: [`../architecture.md`](../architecture.md), [`../data-model.md`](../data-model.md), [`integrated-answer.md`](integrated-answer.md), [ADR 0004](../adr/0004-public-access-admin-only-writes.md)
+- 관련: [`../architecture.md`](../architecture.md), [`../data-model.md`](../data-model.md), [`integrated-answer.md`](integrated-answer.md), [ADR 0016](../adr/0016-crew-admin-authentication.md)
 
 ## 1. 목적
 
@@ -14,50 +14,47 @@
 
 - API 서버(FastAPI)는 Next.js만 닿을 수 있는 곳에 둡니다. compose에서는 내부 네트워크의 `backend:8000`(호스트에 공개하지 않음), 직접 실행에서는 `127.0.0.1:8000`.
 - 실제 호스트 = `X-Forwarded-Host`(Next.js 프록시가 설정) 또는 `Host`. 호스트 이름이 `127.0.0.1`·`localhost`·`HAEDAP_ALLOWED_HOSTS` 중 하나가 아니면 403 `HOST_DENIED`. 포트는 검사하지 않습니다.
-- `Origin`이 있으면 `http://<실제 호스트>`와 같아야 하고, `Sec-Fetch-Site`가 `cross-site`/`same-site`면 거부합니다(403 `ORIGIN_DENIED`).
+- `Origin`이 있으면 `http://<실제 호스트>`(`HAEDAP_HTTPS=true`이면 `https://`)와 같아야 하고, `Sec-Fetch-Site`가 `cross-site`/`same-site`면 거부합니다(403 `ORIGIN_DENIED`).
 - `X-Forwarded-For`는 로그인 시도 제한의 접속자 구분에만 씁니다(API가 내부 네트워크에만 있으므로 신뢰). 권한 판단에는 쓰지 않습니다.
 - 앱 API는 `/api/{path}` 하나가 처리하고, 없는 경로는 404 `NOT_FOUND`. `MARITIME_DATA_API_TOKEN`이 있으면 `/api/maritime-data/*`가 먼저 매칭됩니다([해사 데이터 API](tools.md)).
 
 ## 2. 인증과 쓰기 보호
 
-- `GET /api/health`: 연결 상태, 현재 사용자(관리자 또는 `role:guest`), `authenticated`, `publicAccess:true`, CSRF 토큰, `setupRequired:false`, 공개 문서 수.
-- 시작 시 기본 관리자 `admin / 1234`를 자동 설정합니다(일회성 이전, `settings.publicAccessV1`). 기본 계정은 사용자 변경 API에서 고정입니다.
-- `POST /api/auth/setup`: 사용하지 않으며 **410**.
-- `POST /api/auth/login`, `POST /api/auth/logout`: 관리자만 로그인. `haedap_session` 쿠키(HttpOnly, SameSite=Strict) 발급·폐기. 비밀번호는 salt + scrypt. 기본 관리자만 4자리 비밀번호, 추가 관리자는 10자 이상.
-- 일반 사용자: 32바이트 난수 `haedap_guest` 쿠키(HttpOnly, SameSite=Strict, 최대 1년). DB 소유자 ID는 `guest_` + 쿠키 SHA-256. 인증 수단이 아니라 작업공간 구분용입니다.
-- 요청 헤더 `X-Haedap-Identity`가 현재 쿠키의 사용자와 다르면 **401** — 다른 탭·세션 만료로 사용자가 바뀐 상태에서 이전 사용자의 내용이 저장되는 것을 막습니다. 권한 부여는 이 헤더가 아니라 서버의 역할 검사로 합니다.
-- 세션 12시간, 로그인 실패 횟수 제한, 계정 `version` 변경 시 기존 세션 무효화. 서버 재시작·전체 복구 후 재로그인.
-- **모든 POST**: `Content-Type: application/json` + `X-Haedap-Token`(CSRF) 필요. 같은 출처·Host 검사.
-- 역할: `admin` — 승인·사용자·백업·전체 로그·원본 자료 변경. `guest` — 공개 문서·운항 조회, 질문·계산, 자기 초안 작성·저장·검토 요청. 이전 `operator`/`viewer` 레코드는 보존하지만 로그인 불가.
-- 제한 문서는 검색 입력 단계부터 제외하고, 원본 PDF·이전 버전·보고서 근거·질문 이력 재열람에도 범위를 검사합니다.
-- 본문 크기 제한: `/api/changes` 38MB(PDF 포함 문서 등록), `/api/backups/import` 100MB, 그 외 POST 1MB. JSON이 아니면 **415 `CONTENT_TYPE`**. Next.js 프록시 한도는 101MB, 응답 대기는 60초입니다.
+인증·계정 발급·비밀번호·세션·오류의 계약은 [authentication.md](authentication.md)에 정의합니다. `admin/operator/viewer` 개인 계정으로 로그인하며 업무 API는 익명 접근을 차단합니다. `health.publicAccess=false`; 초기 비밀번호 변경 전에는 업무를 사용할 수 없습니다.
+
+- 모든 POST는 JSON + `X-Haedap-Token`(CSRF)이 필요합니다. 같은 출처·Host를 검사합니다.
+- `X-Haedap-Identity`가 현재 세션 사용자와 다르면 401입니다. 서버가 저장된 역할로 권한을 결정합니다.
+- 문서 범위는 검색 단계부터 원문 PDF·보고서 근거·질문 이력 재열람까지 검사합니다.
+- 요청 크기: `/api/changes` 38MB, `/api/backups/import` 100MB, 그 외 POST 1MB. JSON이 아니면 415입니다.
+- 기존 게스트 식별자와 소유 자료는 보존하지만 로그인 계정으로 자동 이전하지 않습니다.
 
 ## 3. 경로
 
 | 메서드 · 경로 | 권한 | 동작 |
 |---|---|---|
 | GET `/api/health` | 모두 | 상태·사용자·CSRF 토큰 |
-| POST `/api/auth/login` · `/api/auth/logout` | 모두 | 관리자 로그인·로그아웃 |
-| GET `/api/documents` | 모두 | 허용 문서 목록·메타데이터·페이지별 본문 |
-| GET `/api/documents/:id/pdf` | 모두(범위 검사) | 허용된 저장 원본 PDF |
-| GET `/api/operations` | 모두 | 선박과 일별 운항 기록 |
+| POST `/api/auth/login` · `/api/auth/logout` | 모두 | 개인 계정 로그인·로그아웃 |
+| POST `/api/auth/password` | 로그인 계정 | 본인 비밀번호 변경·세션 재발급 |
+| GET `/api/documents` | 로그인 계정 | 허용 문서 목록·메타데이터·페이지별 본문 |
+| GET `/api/documents/:id/pdf` | 로그인 계정(범위 검사) | 허용된 저장 원본 PDF |
+| GET `/api/operations` | 로그인 계정 | 선박과 일별 운항 기록 |
 | POST `/api/operations/validate` | 관리자 | CSV 행 검증 `{rows:[...]}` |
 | POST `/api/operations/example` | 관리자 | 빈 작업공간에 가상 예시 등록 |
 | POST `/api/changes` | 관리자 | `{kind, payload}` 변경 즉시 반영. 일반 사용자는 403 |
 | GET `/api/changes` | 관리자 | 변경·승인 목록 (최근 200) |
 | POST `/api/changes/review` | 관리자 | `{id, decision:"approve"|"reject", note}` |
 | GET/POST `/api/users` | 관리자 | 계정 목록·생성·수정 |
-| POST `/api/ask` | 모두 | 통합 답변 → [`integrated-answer.md`](integrated-answer.md) |
-| POST `/api/search` | 모두 | 열람 범위가 적용된 검색 결과 |
-| GET `/api/history` | 모두(본인) | 당시 질문·답변·근거 (최근 100) |
+| POST `/api/ask` | 로그인 계정 | 통합 답변 → [`integrated-answer.md`](integrated-answer.md) |
+| POST `/api/search` | 로그인 계정 | 열람 범위가 적용된 검색 결과 |
+| GET `/api/history` | 로그인 계정(본인) | 당시 질문·답변·근거 (최근 100) |
 | GET `/api/logs` | 관리자 | 감사 로그 최근 500건 |
-| GET/POST `/api/reports` | 모두 | 보고서 목록·저장. 새 초안은 새 UUID |
+| GET/POST `/api/reports` | 조회: 로그인 계정 / 저장: 선원·관리자 | 보고서 목록·저장. 새 초안은 새 UUID |
 | GET `/api/reports/:id` | 열람 권한 | 개별 보고서 |
 | GET/POST `/api/reports/current` | 열람 권한 | 이전 공용 초안 ID 호환 경로 |
-| POST `/api/reports/generate` | 모두 | `{template:"noon"|"mrv", ship, from, to}` |
+| POST `/api/reports/generate` | 선원·관리자 | `{template:"noon"|"mrv", ship, from, to}` |
 | POST `/api/reports/submit` | 소유자·관리자 | `{id, version}` 검토 요청 |
-| POST `/api/tools/calculate_emissions` | 모두 | `{fuel, factor, dwt, distance}` |
-| POST `/api/tools/voyage_time` | 모두 | `{start, end, before, after}` UTC 시간 계산 |
+| POST `/api/tools/calculate_emissions` | 로그인 계정 | `{fuel, factor, dwt, distance}` |
+| POST `/api/tools/voyage_time` | 로그인 계정 | `{start, end, before, after}` UTC 시간 계산 |
 | GET/POST `/api/backups` | 관리자 | 백업 목록 / 생성 |
 | GET `/api/backups/:id` | 관리자 | 백업 파일 다운로드 |
 | POST `/api/backups/import` | 관리자 | 백업 JSON 형식·체크섬 검증 후 목록에 추가 |
