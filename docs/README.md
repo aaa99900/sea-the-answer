@@ -31,7 +31,7 @@
 
 | 문서 | 상태 |
 |---|---|
-| [`specs/llm-provider.md`](specs/llm-provider.md) — Chat Completions 공통 설정·공급자 키 격리·인용 검증 | 구현됨 (실제 공급자 미검증) |
+| [`specs/llm-provider.md`](specs/llm-provider.md) — Chat Completions 공통 설정·공급자 키 격리·인용 검증 | 구현됨 (공급자별 실검증은 변경 이력 참고) |
 | [`specs/api.md`](specs/api.md) — HTTP API, 인증·쓰기 보호, 문서 등록 payload | 구현됨 |
 | [`specs/integrated-answer.md`](specs/integrated-answer.md) — `/api/ask` 입력·출력, CII·기준 비교 계약 | 구현됨 |
 | [`specs/tools.md`](specs/tools.md) — 독립 PostgreSQL 조회·계산·조회 도우미 계약 | 구현됨 |

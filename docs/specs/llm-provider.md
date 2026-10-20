@@ -1,14 +1,14 @@
 # OpenAI 호환 Chat Completions 공급자 계약
 
-- 상태: 구현됨 (2026-10-14 검토 반영, 모의 HTTP·API 94개 검증; 실제 공급자 미검증)
+- 상태: 구현됨 (공급자별 실제 호출 결과는 [변경 이력](../changelog.md)에 기록)
 - 작성: 정호영 · Codex 지원 · 2026-10-13
 - 관련: [전환 계획](../plans/2026-10-13-openai-compatible-chat.md), [통합 답변 계약](integrated-answer.md), [PR #8](https://github.com/dudco/sea-the-answer/pull/8)
 
 ## 1. 목적
 
-팀장이 지정한 OpenAI 호환 Chat Completions를 하나의 호출 경계로 사용해 OpenAI·동국 AI Chat·로컬 Ollama를 설정으로 전환한다. #8 머지 후 구현·PR 작성에 대한 사용자 지시에 따라 아래 환경변수와 기본값을 구현 기준으로 확정했다. 동국의 실제 접속 정보와 실검증은 별도 미확정 항목으로 유지한다.
+팀장이 지정한 OpenAI 호환 Chat Completions를 하나의 호출 경계로 사용해 OpenAI·동국 AI Chat·로컬 Ollama를 설정으로 전환한다. #8 머지 후 구현·PR 작성에 대한 사용자 지시에 따라 아래 환경변수와 기본값을 구현 기준으로 확정했다. 동국 접속 정보와 실제 호출은 2026-10-14 확인했으며 공급자별 결과는 변경 이력에 구분한다.
 
-2026-10-13 #8은 머지 커밋 `196ad73`으로 반영되었다. 해당 머지본의 OpenAI Responses 호출을 `backend/api/llm.py`의 Chat Completions 호출로 전환했다. 공급자 간 실제 호환성과 동국의 접속 정보는 별도로 검증해야 한다.
+2026-10-13 #8은 머지 커밋 `196ad73`으로 반영되었다. 해당 머지본의 OpenAI Responses 호출을 `backend/api/llm.py`의 Chat Completions 호출로 전환했다. 검증한 공급자·모델·출력 형식 이외의 조합도 모두 호환된다고 해석하지 않는다.
 
 ## 2. 범위
 
@@ -42,18 +42,18 @@
 | 백엔드와 모델 위치 | `LLM_API_BASE_URL` 예시 | 전제 |
 |---|---|---|
 | OpenAI | `https://api.openai.com/v1` | 유효한 키·허용된 모델 필요 |
-| 동국 AI Chat | `https://factchat-cloud.mindlogic.ai/v1/gateway` | `DONGUK_AI_CHAT_API_KEY`(API Gateway 메뉴에서 발급)와 정확한 모델 ID 필요. 이 호스트는 `/chat/completions/`(끝 슬래시)로 호출([ADR 0014](../adr/0014-mindlogic-gateway-host.md)). 실제 호출은 미검증 |
+| 동국 AI Chat | `https://factchat-cloud.mindlogic.ai/v1/gateway` | `DONGUK_AI_CHAT_API_KEY`(API Gateway 메뉴에서 발급)와 정확한 모델 ID 필요. 이 호스트는 `/chat/completions/`(끝 슬래시)로 호출([ADR 0014](../adr/0014-mindlogic-gateway-host.md)). `gpt-6-luna` 실제 호출은 2026-10-14 검증 |
 | PC에서 직접 실행하는 백엔드 → 같은 PC의 Ollama | `http://127.0.0.1:11434/v1` | Ollama 실행·선택 모델 설치 필요 |
 | Docker Desktop 백엔드 → 호스트 PC의 Ollama | `http://host.docker.internal:11434/v1` | 호스트의 Ollama 수신 주소·방화벽과 컨테이너 연결 가능 여부 확인 |
 | 같은 Docker 네트워크의 Ollama 서비스 | `http://ollama:11434/v1` | `ollama`라는 서비스가 실제로 존재할 때만 사용. #8에는 이 서비스가 없음 |
 
 사용자가 제공한 동국 AI Chat 접속 링크는 [대시보드 채팅 주소](https://aichat.dongguk.edu/dashboard/chat)다. 이 주소의 경로만으로 모델 호출용 API 접두 주소를 결정할 수 없으며 `LLM_API_BASE_URL`에 그대로 넣지 않는다. 2026-10-13 웹 도구로 해당 주소와 서비스 루트에 접근을 시도했으나 페이지 본문을 읽지 못했고, 공개 검색에서도 적용할 공식 API 안내를 확보하지 못했다. 로그인 필요 여부·API 제공 여부·정확한 API 경로는 확인하지 못했으므로 추정하지 않는다. `OAOpenAI` 같은 경로 이름도 공식 엔드포인트 확인을 대신하지 않는다.
 
-후속 확인: 로그인한 서비스에서 API 연동·개발자·키 관리 안내를 제공한다면 그 공식 안내의 API 기본 주소·모델 ID·인증 방식을 확인한다. 해당 메뉴의 존재는 아직 확인하지 않았다. 안내가 없으면 팀에서 사용하는 공식 호출 예시를 확보한다. 실제 키·쿠키·로그인 토큰은 준비 문서에 넣지 않는다.
+후속 확인(2026-10-14): API Gateway 메뉴의 주소와 인증 방식을 확인하고 실제 호출에 성공했다([변경 이력](../changelog.md)). 위 2026-10-13 기록은 당시의 조사 한계다. 실제 키·쿠키·로그인 토큰은 문서에 넣지 않는다.
 
 Docker 컨테이너의 `127.0.0.1`은 컨테이너 자신이다. Linux Docker Engine에서는 호스트 연결을 위해 `extra_hosts: ["host.docker.internal:host-gateway"]` 등이 필요할 수 있다. Ollama는 기본적으로 루프백에서 수신하므로 연결 실패 시 `OLLAMA_HOST`와 방화벽을 확인한다. 호스트 바인딩을 바꾸면 접속 범위도 바뀌므로 사용 환경에 맞게 제한한다. [Docker Compose 네트워크 안내](https://docs.docker.com/compose/how-tos/networking/), [Ollama 환경설정 안내](https://docs.ollama.com/faq)
 
-기존 루트 `.env`에 아래 항목만 추가·수정하며 파일 전체를 덮어쓰지 않는다. 모델 자리표시는 `ollama list`에서 확인한 실제 설치 모델로 바꾼다. 설정 처리는 구현·모의 검증했으며 아래 실제 Ollama 접속은 아직 미검증이다.
+기존 루트 `.env`에 아래 항목만 추가·수정하며 파일 전체를 덮어쓰지 않는다. 모델 자리표시는 `ollama list`에서 확인한 실제 설치 모델로 바꾼다. [로컬 실행 절차](../user-guide.md#로컬-ollama-실행)와 변경 이력에서 검증 환경을 확인한다. 호스트 직접 실행과 Docker 컨테이너의 접속 결과는 별도로 구분한다.
 
 ```dotenv
 # Docker Desktop의 backend -> 호스트 PC의 로컬 Ollama
@@ -164,6 +164,6 @@ Chat Completions의 텍스트는 `choices[0].message.content`에서 읽는다. J
 
 ## 6. 열린 질문
 
-- 동국 AI Chat API 기본 주소는 `https://factchat-cloud.mindlogic.ai/v1/gateway`로 확인했다(2026-10-14). 모델 ID·지원 옵션과 실제 호출 성공은 아직 미확인이다. 일반적인 OpenAI 호환 계약을 준비했으며 실제 서버 동작을 확인한 것은 아니다.
+- 동국 AI Chat API 기본 주소는 `https://factchat-cloud.mindlogic.ai/v1/gateway`, 검증 모델은 `gpt-6-luna`다(2026-10-14). 다른 모델과 출력 옵션은 공급자 지원 범위를 별도로 확인한다.
 - 선택적 JSON 형식은 `LLM_RESPONSE_FORMAT=text` 기본값으로 확정했다. 출력 토큰 제한 옵션이 필요한 환경에서는 해당 공급자·모델 지원을 확인해 후속 계약을 정한다. 특정 모델의 미지원 옵션을 다른 모델로 바꿔 회피하지 않는다.
 - 로컬 모델의 최초 적재·응답 시간이 25초를 넘는다면 시간 제한 정책을 프록시 설정과 함께 정한다.

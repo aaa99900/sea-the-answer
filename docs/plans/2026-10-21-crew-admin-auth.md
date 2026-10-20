@@ -34,8 +34,8 @@
 ### 3단계 — 통합과 CI
 
 - [x] 실제 PostgreSQL backend 테스트, frontend 테스트·빌드, 로컬 전체 브라우저 검증.
-- [ ] Compose e2e 검증.
-- [ ] #14를 현재 main과 대조하고 검증 결과 확인.
+- [x] Compose e2e 검증.
+- [x] #14를 현재 main과 대조하고 검증 결과 확인.
 - [ ] 기능 검증 이후 #14 병합. 권한·체크 등 외부 제약이 있으면 결과 기록.
 
 ## 4. 영향 받는 파일·문서
@@ -59,3 +59,4 @@
 
 - 2026-10-21: 사용자가 계정 발급·로그인 전 접근 정책 모두 실제 규정을 근거로 결정하도록 요청. `feature/crew-admin-auth`에서 시작.
 - 2026-10-21: Windows·PostgreSQL 18.6에서 backend 329 통과·4 건너뜀, 인증 집중 26 통과, frontend 4 통과·빌드 성공, 실제 Chrome 전체 시나리오 1 통과(56.9초). Docker 미설치로 Compose는 원격 CI에서 별도 확인한다. 계정 `cxo-ca`의 upstream 권한은 `push=false`, `maintain=false`로 #14 병합은 저장소 관리자가 수행해야 한다.
+- 2026-10-21: [원격 검증 39482809765](https://github.com/cxo-ca/sea-the-answer/actions/runs/39482809765)의 backend·frontend·e2e 모두 성공. 인증 구현 `a1d2d93`에 #14 워크플로만 더한 `cce3c71`로 실행했다. #14의 README 날짜 한 줄을 맞춘 `cfa7fb5`를 본인 CI 브랜치에 추가했고 `git merge-tree`로 인증 브랜치와 충돌 없음을 확인했다. CI 워크플로는 인증 PR에 포함하지 않는다.

@@ -99,7 +99,31 @@ seed는 **빈 DB에서만** 적용됩니다. 이미 쓰던 DB에 새 기본 문�
 
 기존 루트 `.env`를 보존하고 [README의 모델 서버 연결](../README.md#모델-서버-연결)에 따라 `LLM_API_BASE_URL`·`OPENAI_MODEL`을 설정합니다. OpenAI 호스트에는 `OPENAI_API_KEY`, 동국 도메인에는 `DONGUK_AI_CHAT_API_KEY`가 필요하며 로컬 Ollama는 키 없이 사용할 수 있습니다. 공급자 키는 해당 호스트에만 전송하며 다른 호환 서버에 자동으로 전달하지 않습니다. `LLM_RESPONSE_FORMAT`은 기본 `text`로 두고 지원이 확인된 경우에만 변경합니다.
 
-이전 URL·출력 형식 변수 이름은 README의 전환 안내에 따라 바꾸고, Docker에서는 루트에서 `docker compose up -d --build backend frontend`로 컨테이너를 재생성합니다. 모델 설정이 유효하면 통합 질문에서 **AI 답변**을 선택할 수 있지만 실제 접속 성공을 보장하지는 않습니다. 근거가 있는 질문에서 `generation=llm`·유효 인용·모델 실패 경고 없음을 확인하세요. 키는 브라우저로 보내지 않으며 실패하면 원문 발췌로 돌아갑니다. 실제 동국·Ollama 호출은 아직 미검증입니다.
+이전 URL·출력 형식 변수 이름은 README의 전환 안내에 따라 바꾸고, Docker에서는 루트에서 `docker compose up -d --build backend frontend`로 컨테이너를 재생성합니다. 모델 설정이 유효하면 통합 질문에서 **AI 답변**을 선택할 수 있지만 실제 접속 성공을 보장하지는 않습니다. 근거가 있는 질문에서 `generation=llm`·유효 인용·모델 실패 경고 없음을 확인하세요. 키는 브라우저로 보내지 않으며 실패하면 원문 발췌로 돌아갑니다. 공급자별 실제 검증 결과는 [변경 이력](changelog.md)에 기록합니다.
+
+### 로컬 Ollama 실행
+
+[Ollama 공식 배포본](https://docs.ollama.com/windows)을 설치하거나 압축을 풀어 실행 파일을 준비합니다. 모델 다운로드에는 인터넷과 디스크 공간이 필요하며, 모델이 준비된 뒤에는 로컬에서 추론합니다. 아래 명령은 Ollama가 설치된 PC의 터미널에서 실행합니다. 이미 Ollama 앱이 서버를 실행 중이면 `serve`를 중복 실행하지 않습니다.
+
+```bash
+ollama serve
+# 다른 터미널에서 실행
+ollama pull qwen2.5:1.5b
+ollama list
+ollama run qwen2.5:1.5b "Reply OK"
+```
+
+백엔드도 같은 PC에서 직접 실행할 때는 기존 루트 `.env`의 해당 항목만 수정하고 백엔드를 재시작합니다.
+
+```dotenv
+LLM_API_BASE_URL=http://127.0.0.1:11434/v1
+OPENAI_MODEL=qwen2.5:1.5b
+LLM_RESPONSE_FORMAT=json_schema
+```
+
+로컬 주소에는 OpenAI·동국 키를 전송하지 않습니다. 다른 공급자를 위해 보관 중인 키를 지울 필요는 없습니다. 모델 최초 적재가 오래 걸리면 `ollama run`으로 먼저 적재한 뒤 질문합니다. 앱의 모델 응답 제한은 25초이며, 시간 초과·잘못된 인용은 발췌로 전환합니다. 문서 검색 결과가 없는 질문은 모델 호출 자체를 하지 않습니다.
+
+Docker Desktop 백엔드라면 주소를 `http://host.docker.internal:11434/v1`로 바꾸고 Ollama 수신 주소·방화벽을 확인해야 합니다. 컨테이너와 호스트의 `127.0.0.1`은 다릅니다. [공급자 계약](specs/llm-provider.md#접속-위치별-기본-url)의 네트워크 조건을 따르고, 호스트 직접 호출 성공을 컨테이너 연결 성공으로 간주하지 않습니다.
 
 ## 6. 백업과 복구
 
