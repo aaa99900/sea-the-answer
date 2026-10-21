@@ -28,6 +28,7 @@
 ### specs — 구현 계약
 
 - [선원·관리자 인증](specs/authentication.md) — 구현됨
+- [업무 스킬 실행 계약](specs/workflow-skills.md): 여섯 스킬, 선택 문서·매핑·권한·초안·평가 범위.
 
 | 문서 | 상태 |
 |---|---|
@@ -40,6 +41,7 @@
 ### plans — 작업 계획
 
 - [인증·Ollama·CI](plans/2026-10-21-crew-admin-auth.md) — 보류 (#14 관리자 병합 대기, 구현·검증 완료)
+- [앱 업무 스킬 구현](plans/2026-10-15-app-workflow-skills.md): 진행 상태와 실제 검증.
 
 | 문서 | 상태 |
 |---|---|
@@ -54,6 +56,7 @@
 ### adr — 설계 결정
 
 - [0016 개인 계정과 서버의 업무 접근 통제](adr/0016-crew-admin-authentication.md) — 채택
+- [0015 업무 스킬과 선택 LLM](adr/0015-optional-model-workflow-skills.md): 고정 실행기와 런타임 지침.
 
 추가 제안: [0013 - 제원 후보 별도 보존·MRV 참고 집약도 API](adr/0013-mrv-reference-intensity.md). 팀 PR #11에서 사용하는 0012와 번호를 구분합니다.
 

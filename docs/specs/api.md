@@ -1,7 +1,7 @@
 # HTTP API
 
 - 상태: 구현됨 (1.4.0)
-- 최종 확인: 2026-10-13 (`backend/api/` 대조)
+- 최종 확인: 2026-10-21 (`backend/api/` 대조)
 - 관련: [`../architecture.md`](../architecture.md), [`../data-model.md`](../data-model.md), [`integrated-answer.md`](integrated-answer.md), [ADR 0016](../adr/0016-crew-admin-authentication.md)
 
 ## 1. 목적
@@ -33,6 +33,8 @@
 | 메서드 · 경로 | 권한 | 동작 |
 |---|---|---|
 | GET `/api/health` | 모두 | 상태·사용자·CSRF 토큰 |
+| GET `/api/skills` | 로그인 계정 | 고정 업무 스킬 목록 |
+| POST `/api/skills/run` | 로그인 계정(본인 이력·문서 권한 검사) | [업무 스킬](workflow-skills.md). 입력 범위·매핑 검증 후 실행, 초안 저장은 별도 |
 | POST `/api/auth/login` · `/api/auth/logout` | 모두 | 개인 계정 로그인·로그아웃 |
 | POST `/api/auth/password` | 로그인 계정 | 본인 비밀번호 변경·세션 재발급 |
 | GET `/api/documents` | 로그인 계정 | 허용 문서 목록·메타데이터·페이지별 본문 |
