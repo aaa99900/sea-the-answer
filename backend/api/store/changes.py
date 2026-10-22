@@ -99,6 +99,10 @@ class ChangeStore:
     def review_change(self, user: dict, payload: dict) -> dict:
         self.permit(user)
         change = self.one("SELECT * FROM changes WHERE id=%s", (payload.get("id"),))
+        if change and change["kind"] == "report.approve":
+            # Same lock order as report save/submit/delete; recheck after waiting.
+            self.one("SELECT id FROM reports WHERE id=%s FOR UPDATE", (change["payload"]["id"],))
+            change = self.one("SELECT * FROM changes WHERE id=%s", (payload.get("id"),))
         require(change and change["status"] == "pending", "처리할 승인 요청이 없습니다.", "VERSION_CONFLICT", 409)
         decision = payload.get("decision")
         require(decision in ("approve", "reject"), "승인 또는 반려를 선택해 주세요.")

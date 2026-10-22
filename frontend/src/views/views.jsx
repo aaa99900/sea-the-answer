@@ -475,7 +475,7 @@ export function createMainViews(model, views) {
                   'data-id': d.id,
                 })}
                 {d.active
-                  ? btn('삭제', 'deleteDocument', 'ghost', '', {
+                  ? btn('삭제', 'deleteDocument', 'danger-outline', '', {
                       'data-id': d.id,
                     })
                   : ''}
@@ -510,7 +510,7 @@ export function createMainViews(model, views) {
                   ></iframe>
                 ) : (
                   <article className={'paper'}>
-                    <div className={'doc-kicker'}>{'HAEDAP / DOCUMENT'}</div>
+                    <div className={'doc-kicker'}>{'SEA THE ANSWER / DOCUMENT'}</div>
                     <h2>{d.title}</h2>
                     {d.sections.map((s, __index) => (
                       <React.Fragment key={__index}>
@@ -612,13 +612,13 @@ export function createMainViews(model, views) {
           aria-label={'메뉴 닫기'}
         ></button>
         <aside className={'sidebar ' + (state.menu ? 'open' : '')} aria-label={'주 메뉴'}>
-          <div className={'brand'}>
+          <button type={'button'} className={'brand'} data-action={'home'} aria-label={'SEA THE ANSWER · 통합 질문으로 이동'}>
             <div className={'brandmark'}>{I('ship')}</div>
             <div>
               <strong>{'해답'}</strong>
               <small>{'SEA THE ANSWER'}</small>
             </div>
-          </div>
+          </button>
           <div className={'navlabel'}>{'WORKSPACE'}</div>
           {[
             ['chat', 'chat', '통합 질문'],
@@ -668,7 +668,7 @@ export function createMainViews(model, views) {
             <div className={'account'}>
               <div className={'avatar'}>{state.user.name.slice(0, 1)}</div>
               <div>
-                <span className={'small'}>{state.user.name}</span>
+                <span className={'small'}>{state.user.role === 'guest' ? '일반 사용자' : state.user.name}</span>
                 <div className={'account-note'}>{roleName[state.user.role]}</div>
               </div>
             </div>

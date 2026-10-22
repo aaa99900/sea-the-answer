@@ -1,6 +1,6 @@
 # 아키텍처
 
-> 대상 버전: 1.4.0 · 최종 확인: 2026-10-15 (코드 대조)
+> 대상 버전: 1.4.0 · 최종 확인: 2026-10-22 (코드 대조)
 > 이 문서는 **현재 구현**을 설명합니다. 앞으로 바꿀 계획은 [`plans/`](plans/), 바뀌지 않을 결정의 이유는 [`adr/`](adr/)에 있습니다.
 
 ## 현재 Python 문서 경로 (2026-10-13)
@@ -8,6 +8,8 @@
 현재 실행 코드는 `backend/api/main.py`(FastAPI)와 `backend/api/store/`(PostgreSQL·업무 로직)이다. 전처리 모듈은 `api/` 패키지 안에 두어 backend 단독 실행과 Docker 운영 이미지에서 같은 경로로 사용한다.
 
 문서 등록: `frontend/src/lib/pdf.js`가 브라우저에서 페이지별 텍스트를 추출 → `controller.jsx`에서 사용자가 검토한 본문을 sections로 변환 → `POST /api/changes` (`document.save`) → `api/store/documents.py`의 `DocumentStore.save_document` → `api/rag_preprocessing.py` → 기존 `documents`, `chunks`, `chunk_pages`, `document_files` 저장. 원본 PDF는 기존과 같이 base64로 보존하며 외부 추출 서비스에 보내지 않는다.
+
+2026-10-18 문서 정보 수정 경로: `frontend/src/lib/document-save.js`가 정보 변경과 본문 개정을 구분한다. `document.save`의 `mode: "metadata"`는 같은 저장 모듈에서 현재 개정·정보 버전을 검사하고 `document_meta`만 갱신한다. 본문 개정은 새로 제공한 원문만 전송하고 기존 조회 청크를 원문으로 재사용하지 않는다. 신규 원문 전처리 결과가 0개면 저장을 거부한다. DB 스키마·검색 알고리즘·백업 구조는 유지한다.
 
 전처리는 웹·DB 의존성이 없는 함수이고 문서 ID·제목은 저장 계층에서 기존 관계로 연결한다. 청킹 규칙과 변경 적용 범위는 [API 전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정), 검증과 새 구조 통합 기록은 [작업 기록](plans/2026-10-13-rag-preprocessing.md)에 있다. 2026-10-14부터 검색은 `api/rag_retrieval.py`의 BM25Okapi를 사용한다. 저장 계층이 권한·상태·종류를 먼저 필터링하고 모듈은 허용된 청크만 토큰화·정렬한다. PostgreSQL 저장·개정·전처리는 변경하지 않는다.
 

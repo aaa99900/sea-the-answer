@@ -55,6 +55,7 @@
 | GET/POST `/api/reports/current` | 열람 권한 | 이전 공용 초안 ID 호환 경로 |
 | POST `/api/reports/generate` | 선원·관리자 | `{template:"noon"|"mrv", ship, from, to}` |
 | POST `/api/reports/submit` | 소유자·관리자 | `{id, version}` 검토 요청 |
+| POST `/api/reports/delete` | 관리자 | `{id, version}` 저장된 보고서 삭제 |
 | POST `/api/tools/calculate_emissions` | 로그인 계정 | `{fuel, factor, dwt, distance}` |
 | POST `/api/tools/voyage_time` | 로그인 계정 | `{start, end, before, after}` UTC 시간 계산 |
 | GET/POST `/api/backups` | 관리자 | 백업 목록 / 생성 |
@@ -139,6 +140,35 @@ DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 �
 
 문서 삭제는 행을 지우지 않고 `status:'deleted'`로 검색·열람에서 제외합니다. 페이지 번호 없는 기존 자료는 `페이지 미지정`으로 표시합니다.
 
+### 문서 정보만 수정 (2026-10-18 구현)
+
+같은 `POST /api/changes`, `kind: "document.save"`에서 `payload.mode: "metadata"`를 사용한다. 관리자 권한·CSRF·변경 이력·트랜잭션은 기존 경로를 그대로 적용한다. 예시 payload:
+
+```json
+{
+  "mode": "metadata",
+  "document": {"id": "manual-001"},
+  "expectedId": "manual-001-current-revision-id",
+  "expectedMetaRevision": 1792281600000,
+  "meta": {"issuer": "수정한 발행기관", "scope": "admin"}
+}
+```
+
+- `expectedId`와 `expectedMetaRevision`은 편집을 시작할 때 조회한 실제 값으로 반드시 보낸다. 현재 개정 행을 잠근 뒤 두 값을 검사하며 불일치 시 409를 반환한다.
+- `document`에는 논리 ID만 허용한다. `file`과 본문·제목·버전 등 추가 document 필드는 400으로 거부한다.
+- `meta`는 `scope`, `status`, `issuer`(≤200자), `issuedAt`, `revisedAt`(빈 문자열 또는 유효한 YYYY-MM-DD), `applicability`(≤1,000자) 중 한 개 이상이다. 생략한 기존 정보와 확장 필드는 유지한다. `revision` 등 다른 키는 거부한다.
+- `documents`의 ID·hash·확인일, `chunks`, `chunk_pages`, `document_files`는 수정하지 않는다. 전처리도 호출하지 않는다. 열람 범위는 기존처럼 이전 개정본에도 적용한다.
+- 응답은 기존 `{id, status}`를 유지한다. 변경이 없으면 `unchanged`, 있으면 `updated`와 증가한 `meta.revision`을 다음 조회에서 확인한다.
+- `mode` 생략 또는 `content`는 기존 전체 문서 등록·개정 계약을 사용한다. 제목·버전·종류·조항·URL 변경은 이 경로이며 기존 개정 해시 규칙을 유지한다.
+
+화면은 변경이 없으면 요청을 생략하고, 수정 화면에서 기본으로 정보만 수정한다. 본문·버전 개정은 새 PDF 추출 또는 원문 전체 입력이 필요하다. `GET /api/documents`의 `sections`는 검색 청크이며 편집용 원문으로 재전송하지 않는다. 별도 원문 저장소·원문 조회 API·기존 청크 재색인은 이번 변경에 포함하지 않는다.
+
+### 화면의 페이지 본문 변환 (2026-10-18 보완)
+
+- `frontend/src/lib/pdf.js`의 `textToSections`가 검토한 본문을 기존 `document.sections` 입력으로 변환한다. 첫 `--- PAGE n ---` 구분자 앞의 본문은 `page: null`로 보존하며 빈 본문은 제외한다. 표시된 페이지 번호와 입력 순서는 유지한다.
+- 페이지별 본문이 19,000 UTF-16 코드 단위를 넘으면 문단→문장→줄→공백 경계를 우선한다. 한도 40% 이후의 경계를 우선하고, 없으면 앞쪽 공백까지 찾는다. 경계가 없는 긴 문자열은 한도 안에서 나누되 서로게이트 쌍과 CRLF는 쪼개지 않는다. 본문 양끝 공백 외에 일반적인 분할 경계의 공백·줄바꿈은 원래대로 남기며, 공백만 있는 조각은 제외한다.
+- 이 분할은 기존 API 입력 길이 제한을 지키기 위한 것이다. 페이지를 서로 합치지 않으며 최종 검색 청크 생성은 아래 Python 전처리가 계속 담당한다. API 형식·백엔드·DB는 이 보완에서 변경하지 않는다. 이미 저장된 청크는 자동 변경하지 않는다.
+
 ### Python 문서 전처리 계약 (2026-10-13 확정)
 
 현재 등록은 `POST /api/changes`의 `kind: "document.save"`이다. PDF.js가 만든 페이지별 `sections`와 선택적 `file`을 받고, `backend/api/store/documents.py`의 `DocumentStore.save_document`가 저장한다. raw PDF만 보내는 새 업로드 API는 추가하지 않는다.
@@ -152,6 +182,7 @@ DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 �
 - 2026-10-22: 점선+쪽번호 형태가 3개 이상이거나 명시적 CONTENTS/목차 표제와 점선 항목이 함께 있는 입력 절은 목차로 취급한다. 이어진 제목 줄·분리된 쪽번호를 항목 단위로 묶어 가능한 한 같은 청크에 넣고 본문 heading으로 승격하지 않는다. 900자를 넘는 단일 항목은 길이 제한을 우선한다. 점선 없는 목차·본문과 혼합된 목차 판별은 제한적이다.
 - 본문에서 설명 없이 연속된 짧은 상위·하위 제목은 뒤 설명 블록에 함께 넣고 heading에 두 제목을 보존한다(누적 제목이 청크 한도의 40% 미만일 때). 페이지 끝에 제목만 있고 설명이 다음 페이지에 있거나 제목 자체가 매우 긴 경우에는 페이지·길이 제한을 우선하므로 짧은 청크가 남을 수 있다.
 - 기존 문서 hash와 `unchanged` 판정을 유지한다. 이미 등록된 동일 문서/재활성화된 이전 개정본의 청크는 다시 쓰지 않는다. 변경된 청킹은 새 문서·새 내용의 개정부터 적용된다. 기존 청크를 바꾸는 재색인은 별도 작업이다.
+- 새 개정본은 전처리를 한 번 수행하고, 결과가 0개면 400 `INVALID_INPUT`으로 거부한다. 이전 개정본의 활성 상태를 바꾸기 전에 검사한다. 기존 동일 해시·과거 개정본의 청크는 재검사·재생성하지 않는다.
 - API 응답·PostgreSQL 테이블·열람 범위·인용 검증은 그대로 유지한다. 현재 검색은 위 BM25 계약을 따른다.
 
 CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest`). 빈 DB의 첫 요청 때 `backend/knowledge/seed.json`(위 `document` 객체 배열)이 자동 등록됩니다.
@@ -172,3 +203,13 @@ CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest
 
 - 백업은 SHA-256 체크섬으로 우발적 손상만 검사하며, 서명 기반 진위 확인은 하지 않습니다. 가져오기는 형식 v2만 허용합니다.
 - 목록 API는 페이징 없이 전체를 반환합니다(캡스톤 데모 규모).
+
+### 보고서 삭제 (2026-10-18)
+
+`POST /api/reports/delete`는 관리자만 호출한다. `{id: string, version: 양의 정수}`를 받고 `{ok: true, id}`를 반환한다. 모든 POST의 기존 CSRF·사용자 식별·복구 중 요청 차단을 적용한다.
+
+- 보고서 행을 잠그고, 없으면 404 `NOT_FOUND`, 버전이 바뀌었으면 409 `VERSION_CONFLICT`로 거부한다.
+- 작성 중·검토 중·승인됨 상태 모두 관리자가 삭제할 수 있다. `report_meta`와 `reports`의 해당 행을 같은 트랜잭션에서 삭제한다. DB 스키마 변경은 없다.
+- 해당 보고서의 대기 중 검토 요청은 기존 `rejected` 상태와 ‘보고서 삭제로 검토 요청 종료’ 사유로 마감한다. 기존 승인·반려 이력과 근거 문서·운항 기록은 보존하며 감사 로그에 보고서 삭제를 남긴다.
+- 검토 승인·반려도 같은 보고서 행을 먼저 잠그고 대기 상태를 다시 확인하여 삭제와 경합할 때 이미 종료된 요청을 처리하지 않는다.
+- 화면은 삭제 성공 후 해당 보고서의 임시 초안을 비우고 목록으로 이동한다. 실패 시 편집 내용과 오류 안내를 유지한다.

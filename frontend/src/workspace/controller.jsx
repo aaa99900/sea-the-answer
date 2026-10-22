@@ -5,7 +5,8 @@ import { createModel } from '../lib/model';
 import { createApiClient } from '../lib/api';
 import { createViews } from '../views';
 import { btn, badge, notice, empty, dateText, n, download, options } from '../components/common';
-import { extractPdf, textToSections } from '../lib/pdf';
+import { extractPdf } from '../lib/pdf';
+import { documentSavePayload } from '../lib/document-save';
 import { parseCsv, toCsv } from '../lib/csv';
 import { uuid } from '../lib/id';
 export function createWorkspace() {
@@ -642,7 +643,7 @@ export function createWorkspace() {
     navigate('editor');
   }
   async function saveReport() {
-    if (state.saving) return false;
+    if (state.saving || state.deletingReport) return false;
     state.reportError = '';
     if (!state.draft.title.trim() || !state.draft.text.trim()) {
       state.reportError = '제목과 본문을 입력해 주세요.';
@@ -794,6 +795,8 @@ export function createWorkspace() {
   function editDocument(id) {
     requireAdmin();
     editing = state.docs.find((d) => d.id === id) || null;
+    if (editing && !editing.currentRevision)
+      throw Error('현재 개정본을 열어 수정해 주세요. 이전 개정본은 열람용으로 보존합니다.');
     uploadedPdf = null;
     uploadBusy = false;
     uploadError = '';
@@ -803,6 +806,8 @@ export function createWorkspace() {
     if (!file) {
       uploadedPdf = null;
       uploadError = '';
+      if ($('#f-text')) $('#f-text').value = '';
+      if ($('#pdfProgress')) $('#pdfProgress').textContent = '';
       return;
     }
     const generation = modalGeneration;
@@ -810,8 +815,15 @@ export function createWorkspace() {
     uploadError = '';
     uploadBusy = true;
     const output = $('#pdfProgress'),
-      submit = $('#documentForm button[type=submit]');
+      submit = $('#documentForm button[type=submit]'),
+      fileInput = $('#document-file'),
+      modeInput = $('#f-documentMode');
     if (submit) submit.disabled = true;
+    if (fileInput) fileInput.disabled = true;
+    if (modeInput) modeInput.disabled = true;
+    $('#f-text').value = '';
+    const checked = $('#documentForm [name=checked]');
+    if (checked) checked.checked = false;
     try {
       const data = await extractPdf(file, (text) => {
         if (generation === modalGeneration && output) output.textContent = text;
@@ -836,47 +848,61 @@ export function createWorkspace() {
       if (generation === modalGeneration) {
         uploadBusy = false;
         if (submit) submit.disabled = false;
+        if (fileInput) fileInput.disabled = false;
+        if (modeInput) modeInput.disabled = false;
       }
     }
   }
   async function saveDocument(v) {
     if (uploadBusy) throw Error('PDF 텍스트 추출이 끝난 뒤 저장해 주세요.');
-    if (uploadError)
+    if (v.documentMode !== 'metadata' && uploadError)
       throw Error('PDF를 다시 선택하거나 선택을 해제한 뒤 본문을 입력해 주세요. ' + uploadError);
-    const doc = {
+    const payload = documentSavePayload(v, {
+      existing: editing,
       id: editing?.logical_id || 'doc-' + uuid(),
-      title: v.title,
-      version: v.version,
-      kind: v.kind,
-      url: v.url || null,
-      reference: v.reference,
-      reviewedAt: new Date().toISOString().slice(0, 10),
-      language: /[가-힣]/.test(v.text) ? 'ko' : 'en',
-      sections: textToSections(v.text, v.reference),
-    };
-    await saveChange('document.save', {
-      document: doc,
-      expectedId: editing
-        ? state.docs.find((d) => d.logical_id === editing.logical_id && d.currentRevision)?.id || ''
-        : '',
-      expectedMetaRevision: editing
-        ? state.docs.find((d) => d.logical_id === editing.logical_id && d.currentRevision)?.meta
-            .revision
-        : undefined,
-      meta: {
-        issuer: v.issuer,
-        issuedAt: v.issuedAt,
-        revisedAt: v.revisedAt,
-        scope: v.scope,
-        status: v.status,
-        applicability: v.applicability,
-      },
-      ...(uploadedPdf
-        ? {
-            file: uploadedPdf,
-          }
-        : {}),
+      file: uploadedPdf,
     });
+    if (!payload) {
+      closeModal();
+      toast('변경된 내용이 없어요.');
+      return;
+    }
+    await saveChange('document.save', payload);
+  }
+  async function deleteReport() {
+    requireAdmin();
+    if (state.saving || state.deletingReport) return;
+    const { id, version, title } = state.draft;
+    const userId = state.user.id;
+    if (!id || !version) return;
+    if (!(await confirmAction('보고서를 삭제할까요?', `‘${title}’을 삭제합니다. 검토 대기 요청도 종료되며, 삭제하면 바로 반영됩니다.`, '삭제')))
+      return;
+    if (state.user?.id !== userId || state.saving || state.deletingReport) return;
+    requireAdmin();
+    state.deletingReport = true;
+    state.reportError = '';
+    render();
+    try {
+      await api.deleteReport({ id, version });
+      if (state.user?.id !== userId) return;
+      state.reports = state.reports.filter((report) => report.id !== id);
+      if (state.draft.id === id) {
+        state.draft = blankDraft();
+        state.draftRevision++;
+        state.dirty = false;
+        state.conflict = null;
+        state.localFailed = !writeLocal(draftKey(), state.draft);
+        if (state.page === 'editor') navigate('reports');
+      }
+      toast('보고서를 삭제했어요.');
+    } catch (error) {
+      if (state.user?.id === userId && state.draft.id === id)
+        state.reportError = error.message;
+      throw error;
+    } finally {
+      state.deletingReport = false;
+      render();
+    }
   }
   async function deleteDocument(id) {
     requireAdmin();
@@ -1096,7 +1122,7 @@ export function createWorkspace() {
       return (
         <>
           <div className={'source-meta'}>
-            {badge(p.document.version)}
+            {badge(p.mode === 'metadata' ? '정보 수정' : p.document.version)}
             {badge(p.meta?.status === 'retired' ? '폐기' : '사용 중')}
             {badge(
               {
@@ -1118,25 +1144,31 @@ export function createWorkspace() {
             {'적용 조건: '}
             {p.meta?.applicability || '미입력'}
           </p>
-          <details className={'mt'}>
-            <summary>{'등록할 본문과 페이지 확인'}</summary>
-            <div className={'review-payload'}>
-              {p.document.sections.map((s, __index) => (
-                <React.Fragment key={__index}>
-                  {
-                    <>
-                      <h4>
-                        {s.page ? 'p.' + s.page : '페이지 미지정'}
-                        {' · '}
-                        {s.heading}
-                      </h4>
-                      <p className={'preview-text'}>{s.text}</p>
-                    </>
-                  }
-                </React.Fragment>
-              ))}
-            </div>
-          </details>
+          {p.mode === 'metadata' ? (
+            <p className={'small muted'}>
+              {'문서 정보만 수정했으며 본문과 기존 인용은 유지했습니다.'}
+            </p>
+          ) : (
+            <details className={'mt'}>
+              <summary>{'등록할 본문과 페이지 확인'}</summary>
+              <div className={'review-payload'}>
+                {p.document.sections.map((s, __index) => (
+                  <React.Fragment key={__index}>
+                    {
+                      <>
+                        <h4>
+                          {s.page ? 'p.' + s.page : '페이지 미지정'}
+                          {' · '}
+                          {s.heading}
+                        </h4>
+                        <p className={'preview-text'}>{s.text}</p>
+                      </>
+                    }
+                  </React.Fragment>
+                ))}
+              </div>
+            </details>
+          )}
         </>
       );
     if (p.rows)
@@ -1191,7 +1223,7 @@ export function createWorkspace() {
         name: p.file.name,
         note: '원본 PDF 포함',
       };
-    if (p.document) {
+    if (p.document?.sections) {
       p.document.sections = p.document.sections.map((s) => ({
         ...s,
         text: s.text.length > 1500 ? s.text.slice(0, 1500) + '…' : s.text,
@@ -1199,7 +1231,7 @@ export function createWorkspace() {
     }
     let body = (
       <>
-        <h3>{changeLabel(c.kind)}</h3>
+        <h3>{changeLabel(c.kind, c.payload)}</h3>
         <p className={'small muted mt'}>
           {c.actor_name}
           {' · '}
@@ -1349,13 +1381,16 @@ export function createWorkspace() {
       state.authError = '';
       render();
     },
+    home: () => navigate('chat'),
     newQuestion: () => {
       state.askSequence++;
       state.busy = false;
+      state.slow = false;
       state.answer = null;
       state.askError = '';
       state.question = '';
-      render();
+      state.pendingQuestion = '';
+      navigate('chat');
     },
     retryQuestion: () => ask(state.pendingQuestion || state.question),
     history: showHistory,
@@ -1462,6 +1497,7 @@ export function createWorkspace() {
     newReport,
     editReport: () => navigate('editor'),
     reportList: () => navigate('reports'),
+    deleteReport,
     openReport,
     saveReport,
     replaceConflict,
@@ -1635,7 +1671,8 @@ export function createWorkspace() {
     const el = e.target.closest('[data-action],[data-nav],[data-question],[data-doc],[data-tab]');
     if (!el || el.disabled) return;
     if (el.dataset.nav) {
-      navigate(el.dataset.nav);
+      if (el.dataset.nav === 'chat') actions.newQuestion();
+      else navigate(el.dataset.nav);
       return;
     }
     if (el.dataset.doc) {
@@ -1806,6 +1843,13 @@ export function createWorkspace() {
   };
   const handleChange = (e) => {
     const t = e.target;
+    if (t.id === 'f-documentMode') {
+      const fields = $('#document-revision-fields');
+      fields.hidden = fields.disabled = t.value !== 'content';
+      $('#documentForm [name=checked]').checked = false;
+      $('#formError').textContent = '';
+      return;
+    }
     if (t.dataset.backupSetting) {
       run(async () => {
         await api.request('/api/backups/settings', {

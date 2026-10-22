@@ -31,6 +31,11 @@ def submit(ctx):
     return ctx.db.submit_report(ctx.user, ctx.body)
 
 
+def delete(ctx):
+    return ctx.db.delete_report(ctx.user, ctx.body)
+
+
 GET = {"reports": reports}
 GET_PREFIX = [("reports/", report)]
-POST = {"reports": save, "reports/current": save_current, "reports/generate": generate, "reports/submit": submit}
+POST = {"reports": save, "reports/current": save_current, "reports/generate": generate, "reports/submit": submit,
+        "reports/delete": delete}
