@@ -4,6 +4,10 @@
 
 ## 변경 이력
 
+- **최신 main 병합·검증 / 2026-10-22**: `origin/main`의 `ba93cf7`(PR #15, BM25·Kiwi·목차 청킹)을 개인 계정 인증 브랜치에 병합했다. 문서 4개의 충돌에서 인증·Ollama·CI 기록과 새 검색·전처리 설명을 함께 보존했다. 새 BM25 API 회귀 테스트는 기존 접근 정책에 맞춰 일반 선원 계정으로 로그인하며 관리자 문서·폐기 문서 제외 검증을 유지한다. Windows·Python 3.13.16·PostgreSQL 18.6의 새 임시 DB에서 backend 전체 **441 통과·4 건너뜀(217.54초)**. 건너뛴 4개는 별도 해사 데이터셋 설정이 필요한 기존 테스트이고 Starlette/httpx 사용 중단 경고 1건이 남아 있다. 테스트 DB와 이 작업에서 시작한 검증 서버를 정리했다. `git diff --check`와 변경 문서의 로컬 파일 링크를 확인했다. 화면 소스는 바뀌지 않아 frontend 테스트·빌드는 재실행하지 않았으며, 실제 외부 모델 호출도 수행하지 않았다. Docker 실행 파일이 없어 지정된 Compose e2e 명령은 실행하지 못했다. 새 검증 클러스터 초기화는 Windows 제한 토큰·한글 인코딩 오류로 실패해 기존 검증용 PostgreSQL에 별도 DB를 만들어 확인했으며, 실제 앱 DB·`.env`는 사용하거나 변경하지 않았다.
+
+- **목차 청킹·Kiwi BM25 / 2026-10-22** (1.4.0 유지): 목차 항목의 줄바꿈 제목·쪽번호를 묶고 목차 heading 승격을 억제한다. 연속된 짧은 상위·하위 제목은 설명과 함께 청킹한다. 한글 bigram을 Kiwi 형태소 분석으로 교체하고 `api/rag_vocabulary.py`에 해사 사용자 사전·한영 별칭·제한적 불용어를 분리했다. 질의와 corpus가 같은 토큰화를 사용하며 조사·어미를 제외하고 부정어·숫자·단위를 보존한다. 사용자 설치 Kiwi 의존성을 그대로 사용한다. 저장/hash/개정/권한/API/UI는 변경하지 않았고 기존 DB 재청킹·벡터·RRF는 수행하지 않았다. [계획](plans/2026-10-22-rag-chunking-kiwi.md).
+
 - **최신 main 병합·검증 / 2026-10-21**: `origin/main`의 `0257175`를 개인 계정 인증 브랜치에 병합했다. 문서 4개의 충돌에서 인증·Ollama 기록과 업무 스킬 설명을 함께 보존하고, 업무 스킬의 로그인 요건을 API·구조 문서에 반영했다. 스킬 통합 테스트는 로그인한 별도 계정으로 실행하며 익명 접근 차단을 확인하고, 브라우저 테스트는 계정 전환 전 사용자의 미저장 초안 상태에 의존하지 않도록 했다. Windows·Python 3.13.16·PostgreSQL 18.6의 새 임시 DB에서 backend **363 통과·4 건너뜀(162.13초)**, Node 24.21.0에서 frontend **4 통과**와 Next.js 16.3.8 production 빌드 성공. 실제 Chrome → Next standalone → FastAPI → PostgreSQL 통합 시나리오 **1 통과(57.5초)**. 임시 DB·서버는 검증 후 정리했다. 실제 외부 모델은 호출하지 않았고 Docker 미설치로 Compose e2e는 실행하지 못했다. 기존 Starlette httpx 사용 중단 경고 1건이 남아 있다.
 
 - **Ollama 실제 연동 / 2026-10-21**: Windows·CPU·16GB RAM, Ollama **0.40.6**, 공식 `qwen2.5:3b` Q4_K_M, `http://127.0.0.1:11434/v1`, `json_schema`. 실행 파일과 모델의 공식 SHA-256을 확인했다. 실제 모델을 미리 적재한 뒤 `grounded_statements` 호출은 **14.97초**, 선원 로그인한 FastAPI TestClient → 실제 PostgreSQL 검색 → 실제 Ollama HTTP 호출은 **9.91초**에 영문 `generation=llm`, 원문과 일치하는 인용, 실패 경고 없음을 확인했다. 가상 절차 문서 1건을 사용했고 외부 호출·DB를 모의 처리하지 않았다. 존재하지 않는 모델은 Ollama 오류 후 `MODEL_FAILED_EXTRACTIVE_FALLBACK`·유효 발췌로 전환됐다.
@@ -15,6 +19,12 @@
 - **개인 계정 인증 / 2026-10-21** (1.4.0 유지, [ADR 0016](adr/0016-crew-admin-authentication.md)): 일반 선원·열람·관리자 개인 계정 로그인, 관리자 계정 발급·회수, 최초·초기화 비밀번호 변경, 익명 업무 API 차단, 계정 버전 기반 세션 회수, 30분 유휴·12시간 절대 만료와 로그인 시도 제한을 구현했다. 내장 관리자 비밀번호를 제거하고 빈 DB의 명시적 초기 관리자 설정으로 전환했다. 기존 계정·보고서를 보존하며 새 마이그레이션에서 기존 계정도 비밀번호 변경을 요구한다. 권한·접속 로그, 운영 절차·인증 명세를 갱신했다. 실제 규정의 적용 범위와 프로젝트 정책을 ADR에 구분했다.
 - **인증·화면 검증 / 2026-10-21**: Windows, Python 3.13.16, PostgreSQL 18.6의 별도 DB에서 backend 전체 **329 통과·4 건너뜀**, 최종 인증 집중 **26 통과**. Node 24.21.0에서 frontend **4 통과**, Next.js 16.3.8 production 빌드 성공. 실제 Chrome → Next standalone → FastAPI → PostgreSQL 통합 시나리오 **1 통과(56.9초)**: 익명 차단, 초기 관리자·선원 비밀번호 변경, 계정 발급, 권한 제한, 문서·PDF·운항·보고서·승인, 백업 복구 후 재로그인, 모바일 탐색. 백업 생성 완료를 기다리도록 테스트를 보완했다. 이 PC에는 Docker가 없어 로컬 결과를 Compose 실행 결과로 표기하지 않는다. Starlette의 기존 httpx 사용 중단 경고 1건은 남아 있다.
 
+
+- **RAG 브랜치 최신 팀 main 통합 / 2026-10-21**: 로컬 `main`을 `upstream/main`의 `0257175`로 fast-forward하고 `feature/rag-bm25`에 병합했다. 문서 검색·변경 이력 충돌을 해결해 팀의 선택 문서 ID 검증·SQL 범위 제한과 기존 BM25·디버그 CLI를 함께 보존했다. 선택하지 않은 문서는 BM25 통계에 포함하지 않는다. 기본 용어집 확충에 영향을 받던 합성 순위 테스트는 롤백 전용 테스트 스키마 안에서 corpus를 격리했다. 사용자 Kiwi 의존성 변경은 별도 미커밋 변경으로 보존하며 실제 앱 DB·`.env`·사용자 PDF는 수정하지 않는다.
+
+- **BM25 개발자 진단 / 2026-10-15** (1.4.0 유지): `scripts/debug_bm25.py`에서 기존 PostgreSQL 청크를 읽어 질의 토큰·Top-K·전체 점수·일치 토큰·출처·미리보기를 출력한다. 문서 ID/제목·kind·활성 사용자 범위·JSON 옵션을 지원한다. 기존 토큰 함수와 후보 조회를 공유하고 DB는 READ ONLY로 연결한다. 랭킹·API 응답·저장·청킹·UI·스키마·의존성 변경 없음. 토큰별 기여도와 검색 품질 개선은 제외했다. [계획](plans/2026-10-15-bm25-debug.md), [실행](../README.md#bm25-개발자-디버그).
+
+- **BM25 문서 검색 / 2026-10-14** (1.4.0 유지): `api/rag_retrieval.py`에 한영 단어·한글 2글자 토큰·기존 동의어와 rank-bm25 BM25Okapi 검색을 분리했다. 저장 계층의 권한·현재 개정·문서 상태·종류 필터 이후 제목·출처·heading·본문으로 상위 5개를 선택한다. 내부 점수는 외부 evidence에 추가하지 않고 기존 응답·페이지·원문 인용을 유지한다. health의 retrieval은 `bm25-ko-en`. 사용자 추가 의존성을 사용하며 저장·개정·전처리·스키마·UI는 변경하지 않았다. 임베딩·ChromaDB·벡터·하이브리드·RRF는 범위 밖이다. [작업 계획](plans/2026-10-14-bm25-retrieval.md).
 - **선택 상자 값이 바뀌지 않던 문제 수정 / 2026-10-15**: 화면 공통 `onInput` 처리에서 바로 다시 그리면서, `change` 이벤트가 값을 저장하기 전에 React가 선택 상자를 이전 값으로 되돌렸다. 질문 화면의 답변 방식·언어·작업 유형·검색 범위와 운항·문서 화면의 `data-field` 선택·날짜 입력이 영향을 받았다. `data-field` 요소는 `input`에서 다시 그리지 않도록 `frontend/src/workspace/controller.jsx` 수정. 검증: 2026-10-15 브라우저에서 실제 사용자 순서(input → change)로 재현 확인, `npm test` 4 통과. 수정 후 화면 재확인은 frontend 재빌드 뒤 진행 예정.
 - **기본 문서 확충 / 2026-10-15** (버전 유지): 원본 PDF와 함께 등록되는 기본 문서 5건(해양환경관리법 법률 제21416호, 선박안전법 제19134호, 해상교통안전법 제19573호, 선박직원법 제21053호 — 2026-10-15 국가법령정보센터에서 받은 본문 PDF; USCG Navigation Rules and Regulations Handbook 2024-08-12 수정판)과 법령 정의 조항·COLREG Rule 3 기반 `해사 기본 용어집`을 `seed.json`에 추가. 법령은 조문 단위, 핸드북은 페이지 단위 절이며 원문 페이지 번호를 보존한다. `seed.json` 항목의 `file` 필드가 `knowledge/` 아래 PDF를 가리키면 `bootstrap()`이 원본을 함께 저장한다(`knowledge/` 밖 경로는 거부). 재생성 스크립트 `scripts/build_seed_documents.py` 추가. 검증: 2026-10-15 `uv run pytest` 242 통과·65 건너뜀(PostgreSQL 필요), 신규 `test_seed_documents.py` 9건 포함. 실제 PostgreSQL 적재와 화면 확인은 미수행. 알려진 한계: 키워드 검색이 조사가 붙은 단어(예: "조종불능선이")를 찾지 못하고 흔한 단어와 핵심 단어를 같은 점수로 세어, 문서가 늘면서 일부 질문의 근거 순위가 나빠진다.
 - **AI 답변 실패 배너 오표시 수정 / 2026-10-14**: 통합 질문 화면이 경고 코드가 하나라도 있으면 "AI 답변을 생성하지 못해…" 배너를 띄워, 모델 답변이 성공(`generation=llm`)해도 `OPERATIONS_CONTEXT_REQUIRED`만으로 실패처럼 보였다. `MODEL_FAILED_EXTRACTIVE_FALLBACK`·`MODEL_NOT_CONFIGURED`일 때만 표시하도록 `frontend/src/views/views.jsx`를 수정. 검증: 2026-10-14 `npm test` 4 통과. 같은 날 동국 AI Chat 게이트웨이(`gpt-6-luna`)로 backend 컨테이너에서 `grounded_statements` 실호출 성공(200, 유효 인용, 4.3초), 웹 화면에서 "연료 황 함유량 기준은?" 질문이 AI 초안으로 표시됨을 확인.
@@ -74,6 +84,41 @@
 ### 2026-10-15 — 후속 작업 메모 문서 확인
 
 사용자의 최신 우선순위를 계획에 반영하고 기존 인증 설명·API 계약과 대조했다. 변경 문서의 로컬 파일 링크와 `git diff --check`를 확인했다. 실행 코드 변경이 없어 단위·브라우저 테스트를 실행하지 않았으며, 로그인 구현·실제 Ollama 호출·CI PR 병합도 수행하지 않았다.
+### 2026-10-22 — 목차 청킹·Kiwi 검증
+
+- Windows Python 3.13, Kiwi 0.24.0, 별도 임시 PostgreSQL 17에서 `backend/` 기준 `uv run python ../.verification/bm25-db-tests.py` 실행: **415 passed / 4 skipped**, 90.10초. helper는 `.env` 없이 임시 서버/테스트 DB에서 `python -m pytest -q -rs --tb=short`를 실행하고 종료했다. skip 4개는 기존 해사 데이터셋을 요구하는 `MARITIME_DATA_TEST_DATABASE_URL` 미설정이며 이번 검색·청킹 테스트는 모두 실행했다. 기존 Starlette/httpx 경고 1개.
+- DB 없는 표적 테스트: `uv run pytest tests/test_rag_preprocessing.py tests/test_rag_retrieval.py tests/test_debug_bm25.py -q` → **95 passed**, 2.66초. 합성 목차·연속 제목·본문 문자 보존·길이/페이지·한국어 형태소·한영 용어·부정어·숫자·불용어·기존 권한/CLI 계약을 검증했다.
+- 기존 로컬 PDF.js 추출 검토 자료를 사용해 Part 5D의 1~10쪽을 HEAD의 이전 전처리와 비교했다(새 PDF 추출/실제 앱 DB 저장 아님). 공백을 제외한 본문 문자가 동일하고 900자·물리 페이지 제한을 지킨다. 3쪽 목차 25개, 8쪽 목차 34개 항목이 분리되지 않고 base heading을 유지한다. 8쪽 5→4청크, 9쪽 8→6청크이며 9쪽 제목만 있는 청크는 2→0개. 원문 파일/본문은 Git에 추가하지 않았다.
+- 목차 판별은 규칙 기반이므로 점선 없는 목차, 본문과 혼합된 목차에는 제한이 있다. 한 항목이 900자를 넘거나 제목과 설명이 서로 다른 페이지에 있으면 길이·페이지 보존을 우선한다. 표 열 구조·로마숫자 꼬리말 개선은 이번 범위 밖이다. 전체 실제 질의에 대한 Recall@5 향상을 측정한 것은 아니다.
+- Docker 운영 이미지에서 Kiwi 설치와 frontend production 빌드 성공. 첫 E2E는 문서 저장·검색 등 기능 단계를 통과했지만 최종 브라우저 경고 검사에서 운항 등록 후 `GET /api/health`의 429 한 건으로 실패했다. 기존 비차단 동시 요청 4개 제한에 해당하며 해당 경로·제한은 수정하지 않았다. 재실행 과정에서 `--force-recreate`만으로 의존 DB가 재생성되지 않는 것을 확인해 그 실행을 중단하고 테스트 프로젝트 전체를 `down`한 뒤 다시 실행했다.
+- 새 테스트 스택의 최종 E2E **1 passed (30.0초)**, 429 재현 없음. 루트에서 `docker compose -p haedap-rag-kiwi-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e` 실행 후 같은 프로젝트의 `down`으로 정리했다. 실제 앱·DB는 재시작하거나 수정하지 않았으며 커밋·푸시는 하지 않았다. `git diff --check` 통과.
+
+### 2026-10-21 — 최신 main과 BM25 통합
+
+- `backend/`에서 `uv run pytest tests/test_rag_retrieval.py tests/test_debug_bm25.py tests/test_workflow_skills.py -q`: **91 passed / 4 skipped**. 선택 ID 형식·권한 검증과 SQL 필터를 점수 계산 전에 적용하는 회귀 테스트 8개를 추가했다.
+- `uv run python ../.verification/bm25-db-tests.py`로 임시 PostgreSQL 17에서 전체 `python -m pytest -q -rs --tb=short` 검증: **399 passed / 4 skipped**, 기존 Starlette/httpx 경고 1개. 최초 실행은 새 기본 용어집의 실제 단어 일치로 합성 문서 전용 결과를 가정한 테스트 1개가 실패했다. 해당 테스트의 롤백 전용 스키마에서 기본 문서를 비활성화해 corpus를 격리한 후 전체 재실행을 통과했다. 4개는 별도 `MARITIME_DATA_TEST_DATABASE_URL`이 필요한 기존 데이터셋 테스트다. 임시 서버 종료, 보조 파일·로그 Git 제외.
+- `frontend/`에서 `npm.cmd test`: **4 passed**. Docker의 frontend `npm run build` 성공.
+- `docker compose -p haedap-rag-main-merge-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`: **Chromium E2E 1 passed**, 종료 코드 0. 기존 문서·검색·원문·운항·보고서·관리·백업 및 팀 업무 스킬 흐름 검증. 같은 프로젝트의 `--profile e2e down`으로 정리했으며 실제 앱 스택은 재시작하지 않았다.
+- 충돌 마커·미해결 파일 없음, `git diff --check` 통과. 실제 외부 LLM 호출·검색 정확도 개선·새 데이터셋의 내용 검증은 이번 병합 검증 범위 밖이다.
+
+### 2026-10-15 — BM25 개발자 진단
+
+- Windows, Python 3.13, rank-bm25 0.2.2. 신규 진단 테스트 23개. `backend/`에서 `uv run pytest tests/test_debug_bm25.py tests/test_rag_retrieval.py -q`: **53 passed**. 루트의 `uv run --project backend pytest backend/tests/test_debug_bm25.py backend/tests/test_rag_retrieval.py -q`와 CLI `--help`도 확인했다.
+- `backend/`에서 `uv run python ../.verification/bm25-db-tests.py`로 격리된 PostgreSQL 17 클러스터를 열어 `python -m pytest -q -rs --tb=short` 수행: **338 passed / 4 skipped**, 기존 Starlette/httpx 경고 1개. 4개는 `MARITIME_DATA_TEST_DATABASE_URL`이 필요한 기존 데이터셋 테스트다. 임시 서버는 종료했다. 보조 스크립트·로그는 Git 제외이며 실제 앱 DB를 테스트용으로 사용하지 않았다.
+- `docker compose build backend` 후 README의 일회성 CLI 명령(`--top-k 3 --preview-chars 0 --json`)을 실제 등록 DB에서 실행했다. 공개 검색 후보 **5,689개 청크**를 확인했고, 세 질의(한국어 선급정지 / 영어 heavy deck cargo / 혼합 Part 5D)에 대해 진단의 순위·점수가 기존 `retrieve` 및 `DocumentStore.search` 순위와 일치했다. 문서 ID+제목 필터의 corpus 1,376개, 없는 ID의 빈 결과, 기존 활성 관리자 계정 범위도 확인했다. `SHOW transaction_read_only=on` 확인. 본문·접속 문자열·비밀값은 출력/기록하지 않았으며 실 DB에는 쓰지 않았다.
+- `docker compose -p haedap-bm25-debug-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`: **Chromium E2E 1 passed**, 종료 코드 0. backend·frontend 운영 이미지 빌드 및 기존 문서/검색/운항/보고서/관리/백업 흐름 통과. 이후 같은 프로젝트의 `docker compose ... --profile e2e down`으로 테스트 컨테이너·네트워크를 정리했다. 기존 `haedap` 웹앱은 재시작하지 않았다.
+- UI 소스를 바꾸지 않아 frontend 단위 테스트는 별도로 재실행하지 않았다. 검색 정확도 개선, 토큰별 점수 기여도, 대규모 성능, 실제 외부 LLM 호출은 검증 범위 밖이다. `git diff --check` 통과.
+
+### 2026-10-14 — BM25 문서 검색
+
+- Windows, Python 3.13, rank-bm25 0.2.2. 사용자의 `.env`·실제 PDF·앱 DB는 변경하지 않았다.
+- `backend/`에서 `uv run pytest -q`: DB 설정 없는 초기 실행은 253 passed / 65 skipped. 이후 실 DB 검색 회귀 테스트 1개를 추가했다.
+- 격리된 loopback PostgreSQL 17 클러스터의 `HAEDAP_TEST_DATABASE_URL`을 설정하고 `python -m pytest -q -rs --tb=short`: **315 passed / 4 skipped**, 기존 Starlette/httpx 사용 중단 경고 1개. 4개는 적재된 해사 데이터셋용 `MARITIME_DATA_TEST_DATABASE_URL`이 없어 건너뛰었다. 임시 서버는 종료했다. 로컬 보조 실행 명령: `backend/`에서 `uv run python ../.verification/bm25-db-tests.py` (보조 파일·로그는 Git 제외).
+- 신규 검색 단위 테스트 30개: 한영 순위·길이/빈도 반영, 동의어·한글 조사 대응, Unicode 정규화, 메타데이터 보존, 빈 입력, 0/음수 점수, top-k·동점, 권한/상태/종류 필터를 점수 계산 전 적용하는지 확인.
+- 실 DB에서 합성 문서 저장 → `/api/search` 한영 순위·문서명·페이지·heading → `/api/ask` 원문 인용 → 범위/상태 변경 즉시 제외를 검증했다. 기존 개정·중복·롤백 테스트도 통과했다.
+- `frontend/`에서 `npm.cmd test`: **4 passed**.
+- 루트에서 `docker compose -p haedap-bm25-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`: **Chromium E2E 1 passed**, 종료 코드 0 (문서·검색·원문·운항·보고서·관리·백업 전체 시나리오). backend는 새 의존성으로 운영 이미지 빌드, frontend 운영 이미지는 변경 없는 기존 빌드 캐시를 사용했다. 기존 앱과 다른 Compose 프로젝트명으로 실행하고 `docker compose -p haedap-bm25-check --profile e2e down`으로 테스트 스택을 정리했다.
+- 실제 해사 질문 평가 세트의 Recall@5, 대규모 자료 성능, 실제 외부 LLM 호출은 이번 검증에 포함하지 않았다.
 
 ### 2026-10-14 — PR #11 검토 반영 (Windows)
 

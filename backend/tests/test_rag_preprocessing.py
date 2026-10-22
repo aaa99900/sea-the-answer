@@ -92,6 +92,60 @@ def test_toc_and_bullets_are_not_promoted_to_headings():
     assert preprocess_sections([section(text)])[0]["heading"] == "페이지 7"
 
 
+@pytest.mark.parametrize("detached", [False, True])
+def test_toc_entries_keep_wrapped_titles_and_page_numbers_together(detached):
+    entries = [f"{i} Fictional requirement\ncontinued title................" + ("\n" if detached else " ") + str(i + 20)
+               for i in range(1, 10)]
+    text = "CONTENTS\n" + "\n".join(entries)
+    chunks = preprocess_sections([section(text)], max_chars=150)
+    assert len(chunks) > 1
+    for entry in entries:
+        assert sum(entry in c["text"] for c in chunks) == 1
+    assert all(c["heading"] == "페이지 7" and c["page"] == 7 and len(c["text"]) <= 150 for c in chunks)
+    assert compact("".join(c["text"] for c in chunks)) == compact(text)
+
+
+def test_continued_toc_does_not_promote_wrapped_clause_heading():
+    text = "1 General........11\n3 Equipment........12\n5 Additional Requirements\nfor Special Vessels........14\n5.1 Checks........15"
+    chunks = preprocess_sections([section(text)], max_chars=100)
+    assert all(c["heading"] == "페이지 7" for c in chunks)
+    assert any("5 Additional Requirements\nfor Special Vessels........14" in c["text"] for c in chunks)
+
+
+def test_single_dot_leader_reference_does_not_disable_real_body_headings():
+    chunks = preprocess_sections([section("Reference.......12\n3 Definitions\nA fictional definition.")])
+    assert chunks[-1]["heading"] == "3 Definitions"
+
+
+def test_parent_titles_share_child_explanation_without_merging_other_clauses():
+    text = "3 Definitions\n3.1 Vessel\nA fictional vessel is defined here.\n3.3 Platform\nA platform is defined here.\n5 Classification\n5.1 Notations\nThe notation is assigned here."
+    chunks = preprocess_sections([section(text)])
+    assert len(chunks) == 3
+    assert chunks[0]["heading"] == "3 Definitions / 3.1 Vessel"
+    assert "defined here" in chunks[0]["text"]
+    assert chunks[1]["heading"] == "3.3 Platform"
+    assert chunks[2]["heading"] == "5 Classification / 5.1 Notations"
+    assert compact("".join(c["text"] for c in chunks)) == compact(text)
+
+
+def test_parent_titles_keep_size_cap_and_physical_pages():
+    source = [section("3 Definitions\n3.1 Vessel\n" + "A complete statement. " * 80),
+              section("5 Classification", 8), section("5.1 Notations\nDescription.", 9)]
+    chunks = preprocess_sections(source)
+    assert all(len(c["text"]) <= 900 for c in chunks)
+    assert "A complete statement." in chunks[0]["text"]
+    assert chunks[-2]["page"] == 8 and chunks[-2]["text"] == "5 Classification"
+    assert chunks[-1]["page"] == 9
+    assert compact("".join(c["text"] for c in chunks)) == compact("".join(s["text"] for s in source))
+
+
+def test_overlong_toc_entry_preserves_characters_and_size_limit():
+    text = "CONTENTS\n1 " + "Long wrapped title " * 30 + "......27\n2 End......28"
+    chunks = preprocess_sections([section(text)], max_chars=100)
+    assert all(len(c["text"]) <= 100 for c in chunks)
+    assert compact("".join(c["text"] for c in chunks)) == compact(text)
+
+
 def test_repeated_processing_is_deterministic_and_does_not_join_pages():
     source = [section("Continuation", 1), section("of a rule.", 2)]
     assert preprocess_sections(source) == preprocess_sections(source)

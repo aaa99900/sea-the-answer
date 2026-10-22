@@ -41,10 +41,13 @@
 ### plans — 작업 계획
 
 - [인증·Ollama·CI](plans/2026-10-21-crew-admin-auth.md) — 보류 (#14 관리자 병합 대기, 구현·검증 완료)
+- [목차 청킹과 Kiwi BM25 개선](plans/2026-10-22-rag-chunking-kiwi.md): 완료.
 - [앱 업무 스킬 구현](plans/2026-10-15-app-workflow-skills.md): 진행 상태와 실제 검증.
 
 | 문서 | 상태 |
 |---|---|
+| [`plans/2026-10-15-bm25-debug.md`](plans/2026-10-15-bm25-debug.md) — 읽기 전용 BM25 디버그 CLI | 완료 |
+| [`plans/2026-10-14-bm25-retrieval.md`](plans/2026-10-14-bm25-retrieval.md) — 권한 적용 후 한영 BM25 문서 검색 | 완료 |
 | [`plans/2026-10-13-openai-compatible-chat.md`](plans/2026-10-13-openai-compatible-chat.md) — 모델 호출 전환·인증·공급자 실검증, CI 분리 | 보류 (#14 관리자 병합 대기) |
 | [`plans/2026-10-13-rag-preprocessing.md`](plans/2026-10-13-rag-preprocessing.md) — Python 해사 문서 전처리·청킹 및 새 구조 통합 | 완료 |
 | [`plans/2026-10-08-team-module-integration.md`](plans/2026-10-08-team-module-integration.md) — RAG·LLM·Tool 팀 모듈 연결 로드맵 | 초안 |

@@ -15,6 +15,52 @@ _ABS_FOOTER = re.compile(r"^ABS\s+RULES FOR BUILDING AND CLASSING\b.+[•·]\s*\
 _CLAUSE = re.compile(r"^[1-9]\d{0,2}(?:\.\d{1,3}){0,4}\s+[A-Z가-힣]")
 _LABEL = re.compile(r"^(?:TABLE|FIGURE)\s+\d+\b", re.I)
 _SENTENCE_END = re.compile(r"[.!?。！？][\"'’”)]*(?=\s)")
+_TOC_LEADER = re.compile(r"(?:\.{3,}|…{2,})\s*(?:\d+|[ivxlcdm]+)?\s*$", re.I)
+_PAGE_NUMBER = re.compile(r"(?:\d+|[ivxlcdm]+)$", re.I)
+_TOC_TITLE = re.compile(r"(?:table of contents|contents|목\s*차)(?:\s*\(continued\))?", re.I)
+
+
+def _is_toc(lines: list[str]) -> bool:
+    populated = [_key(line) for line in lines if line.strip()]
+    leaders = sum(bool(_TOC_LEADER.search(line)) for line in populated)
+    # Continued TOC pages often have no CONTENTS label. A single cross-reference
+    # or an ellipsis in prose must not turn an ordinary page into a TOC.
+    return leaders >= 3 or (leaders >= 1 and any(_TOC_TITLE.fullmatch(s) for s in populated[:6]))
+
+
+def _toc_blocks(lines: list[str]) -> list[str]:
+    """Keep wrapped entries and detached destination numbers together."""
+    blocks, pending = [], []
+    for line in lines:
+        pending.append(line)
+        value = _key(line)
+        leader = _TOC_LEADER.search(value)
+        ends_entry = bool(leader and re.search(r"(?:\d+|[ivxlcdm]+)$", value, re.I))
+        if _PAGE_NUMBER.fullmatch(value) and len(pending) > 1:
+            ends_entry = True
+        # A leader without a page number continues onto the next line.
+        if ends_entry:
+            blocks.append("\n".join(pending).strip())
+            pending = []
+    if pending:
+        blocks.append("\n".join(pending).strip())
+    return [block for block in blocks if block]
+
+
+def _pack_toc(lines: list[str], limit: int):
+    current = ""
+    for block in _toc_blocks(lines):
+        if current and len(current) + 1 + len(block) > limit:
+            yield current
+            current = ""
+        # Pathological entries longer than the cap still obey the size limit.
+        pieces = list(_split_block(block, limit, True))
+        for piece in pieces[:-1]:
+            yield piece
+        if pieces:
+            current = current + "\n" + pieces[-1] if current else pieces[-1]
+    if current:
+        yield current
 
 
 def _key(line: str) -> str:
@@ -102,6 +148,11 @@ def preprocess_sections(sections: list[dict], max_chars: int = 900) -> list[dict
         context = [lines[i] for i in sorted(removed) if _RUNNING_HEADER.match(_key(lines[i]))]
         if context:
             base = _heading(base, context[-1])
+        kept = [line for i, line in enumerate(lines) if i not in removed]
+        if _is_toc(kept):
+            result.extend({"page": section.get("page"), "heading": base, "text": piece}
+                          for piece in _pack_toc(kept, max_chars))
+            continue
         heading = base
         block = []
 
@@ -117,9 +168,15 @@ def preprocess_sections(sections: list[dict], max_chars: int = 900) -> list[dict
             if i in removed:
                 continue
             if _is_heading(line):
-                flush()
-                block = []
-                heading = _heading(base, line)
+                only_titles = bool(block) and all(not s.strip() or _is_heading(s) for s in block)
+                if only_titles and len("\n".join(block + [line])) < max_chars * .4:
+                    # A parent title followed directly by a child title shares
+                    # the child's explanation; retain both labels as metadata.
+                    heading = _heading(heading, line)
+                else:
+                    flush()
+                    block = []
+                    heading = _heading(base, line)
             block.append(line)
         flush()
     return result

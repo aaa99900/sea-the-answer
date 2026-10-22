@@ -1,6 +1,6 @@
 # 해답 — SEA THE ANSWER
 
-현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-21**
+현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-22**
 
 선내 문서 근거와 운항 기록을 함께 보여 주는 선박 업무 지원 앱입니다. 화면은 Next.js, `/api/*`는 Python FastAPI, 저장소는 PostgreSQL이며, 저장소 최상위에서 `docker compose` 하나로 셋을 함께 실행합니다.
 
@@ -15,7 +15,7 @@
 
 업무 기능은 개인 계정으로 로그인한 뒤 사용합니다. 일반 선원은 문서·운항 조회와 자기 보고서 업무를, 관리자는 계정 발급과 원본 자료 변경·승인·백업을 수행합니다. 공용 기본 비밀번호는 없으며 최초 관리자 설정과 기존 버전 전환은 [계정 운영 안내](docs/user-guide.md#2-역할과-승인)를 따릅니다.
 
-**현재 구현 범위**: 문서 검색은 질문 단어가 청크에 포함된 개수로 순위를 매기는 단순 키워드 검색이고, 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 공통 호출은 모의 HTTP로 검증했고 동국 AI Chat 실제 호출은 2026-10-14에 검증했습니다. 로컬 Ollama 실제 검증 결과는 [변경 이력](docs/changelog.md)에 별도로 기록합니다. 벡터·하이브리드 RAG, 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
+**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크를 한영 토큰화·동의어 확장 후 BM25로 정렬하고, 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 공통 호출은 모의 HTTP로 검증했고 동국 AI Chat 실제 호출은 2026-10-14에 검증했습니다. 로컬 Ollama 실제 검증 결과는 [변경 이력](docs/changelog.md)에 별도로 기록합니다. 벡터·하이브리드 RAG, 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
 
 ## 프로젝트 구조
 
@@ -40,7 +40,7 @@ sea-the-answer/
 │  ├─ knowledge/         seed.json(기본 문서), documents/(기본 문서 원본 PDF), sample-data.json(가상 운항 예시)
 │  └─ tests/             pytest
 ├─ migrations/           DB 스키마 마이그레이션 (SQL, up/down)                        [dbmate]
-├─ scripts/ 오프라인 자료 정규화·전처리·CSV 적재·선박 매핑 (backend uv 환경)
+├─ scripts/ 오프라인 자료 준비·적재·선박 매핑, 읽기 전용 BM25 진단 (backend uv 환경)
 ├─ e2e/                  Playwright 브라우저 테스트 (화면 → API → DB)                [npm]
 ├─ docs/                 설계·명세·계획·ADR 등 모든 프로젝트 문서
 └─ AGENTS.md             사람·에이전트 공통 작업 지침
@@ -123,6 +123,10 @@ docker compose run --rm migrate rollback             # 마지막 파일 되돌�
 
 ## 테스트
 
+BM25 검색은 backend의 `rank-bm25`와 한국어 형태소 분석기 `kiwipiepy`를 사용합니다. Docker에서는 `docker compose up --build -d`로 반영하고, 직접 실행할 때는 `backend/`에서 `uv sync` 후 백엔드를 재시작하세요. Kiwi 모델은 의존성 설치에 포함되며 별도 API 키가 필요하지 않습니다. 첫 검색은 모델·별칭 초기화로 늦을 수 있습니다. 검색 개선은 기존 청크에도 적용됩니다. DB 없는 회귀 테스트는 `backend/`에서 `uv run pytest tests/test_rag_preprocessing.py tests/test_rag_retrieval.py tests/test_debug_bm25.py -q`로 실행합니다. 알고리즘·한계는 [검색 계약](docs/specs/api.md#문서-검색-bm25)에 있습니다.
+
+목차 항목 묶음과 연속 제목 청킹 개선은 새 문서·새 내용의 개정에 적용됩니다. **기존 DB 청크는 자동으로 바뀌지 않으며, 같은 입력을 다시 저장해도 `unchanged`이면 재청킹하지 않습니다.** 확인하려면 원본 PDF를 새 테스트 문서로 등록하세요. 기존 문서 수정 화면에서 가져온 sections는 저장된 청크이므로 원본 페이지 추출본으로 간주하면 안 됩니다. 기존 문서 전체의 재색인은 별도 작업입니다.
+
 | 범위 | 위치 | 명령 |
 |---|---|---|
 | backend 단위·API | `backend/` | `uv run pytest` |
@@ -136,10 +140,39 @@ docker compose --profile e2e down                                               
 
 e2e는 앱과 분리된 테스트 스택(`e2e-db`·`e2e-migrate`·`e2e-backend`·`e2e-frontend`)을 띄웁니다. DB는 메모리(tmpfs)에 있어 앱 데이터에 영향이 없고, 호스트에 포트를 열지 않으므로 앱이 실행 중이어도 됩니다. 실패 시 스크린샷·trace는 `e2e/test-results/`, HTML 보고서는 `e2e/playwright-report/`에 생깁니다.
 
-- **`--force-recreate`를 빼지 마세요.** 테스트가 끝나도 Compose는 `e2e` 컨테이너만 멈추고 의존 서비스(`e2e-db` 등)는 계속 실행합니다. 이 옵션이 있어야 다음 실행 때 컨테이너를 새로 만들어 빈 DB에서 시작합니다(없으면 이전 데이터가 남아 "예시 데이터 넣기" 단계에서 실패).
+- **종료 후 `down` 정리를 빠뜨리지 마세요.** 테스트가 끝나도 Compose는 `e2e` 컨테이너만 멈추고 의존 서비스(`e2e-db` 등)는 계속 실행합니다. `--force-recreate`만으로 의존 DB까지 재생성되지 않는 환경이 확인됐습니다. 이전 테스트 스택을 정리한 후 실행해야 빈 DB가 보장됩니다. 앱을 켜 둔 채 테스트하려면 위 `up`과 `down` 명령 모두 `docker compose -p haedap-e2e-check --profile e2e ...`처럼 별도 프로젝트 이름을 사용하세요.
 - 의존 서비스까지 자동으로 멈추는 Compose 옵션은 없어서, 끝나면 `down`으로 정리합니다. `--attach-dependencies`는 쓰지 마세요. `e2e-migrate`가 끝나는 순간 중단되어 **테스트를 돌리지 않고도 종료 코드 0**이 나옵니다(2026-10-13 확인).
 
 Docker 없이 e2e를 돌리려면 **빈 DB로 띄운 스택**에 대고 `e2e/`에서 `npm ci`, `npx playwright install chromium`, `npx playwright test`를 실행합니다(주소는 `E2E_BASE_URL`, 기본 `http://127.0.0.1:5173`). 시나리오가 예시 데이터를 넣고 건수를 확인하므로 데이터가 있는 DB에서는 실패합니다.
+
+### BM25 개발자 디버그
+
+등록된 문서를 다시 업로드하지 않고 PostgreSQL 청크의 질의 토큰·Top-K·점수·일치 토큰·문서명·페이지·본문 미리보기를 확인합니다. **검색 품질을 바꾸는 기능은 아니며 DB에 쓰지 않습니다.** LLM이나 UI도 호출하지 않습니다.
+
+Docker 앱이 실행 중이면 저장소 루트의 PowerShell에서 다음을 실행하세요. 첫 줄은 최초 적용/백엔드 코드 변경 때만 필요하고, 실행 중인 웹앱·DB를 재시작하지 않습니다. 두 번째 줄은 같은 Compose DB에 연결하는 일회성 컨테이너이며 종료 후 자동 삭제됩니다. PC에 Python·uv를 추가 설치할 필요는 없습니다.
+
+```powershell
+docker compose build backend
+docker compose run --rm --no-deps -T -v "${PWD}/scripts:/app/scripts:ro" backend python scripts/debug_bm25.py "선급이 자동으로 정지되는 경우는?" --top-k 5
+```
+
+특정 문서만 대상으로 확인하려면 끝에 `--document-title "선급 및 강선규칙"` 또는 `--document-id "출력에 나온 document_id"`를 추가합니다. ID는 논리 ID가 아닌 **현재 개정의 전체 ID**입니다. 두 옵션을 함께 쓰면 모두 만족해야 합니다. 제목은 대소문자를 무시한 부분 일치입니다.
+
+- 기본은 guest(공개 문서)입니다. 관리자로 로그인한 화면과 비교하려면 `--username admin`처럼 **기존 활성 계정**을 지정합니다. 이는 DB 접근 권한을 가진 개발자의 열람 범위 시뮬레이션이며 웹 로그인 대체 기능이 아닙니다.
+- `--kind all|imo|manual`: 기존 UI 종류 필터. 기본 `all`.
+- `--preview-chars 0`: 본문 출력 생략. 기본 240자. `--json`: 기계가 읽을 수 있는 JSON 출력.
+- 일치 토큰은 본문만이 아니라 **제목·참조명·heading·본문 전체**의 토큰 교집합입니다. Kiwi 형태소·해사 별칭 확장을 반영하며 **토큰별 점수 기여도가 아닙니다**.
+- 점수는 기존 BM25의 최종 합산값입니다. 작은 corpus에서는 0·음수도 정상이며, 문서 필터를 쓰면 corpus 통계가 달라져 전체 검색과 점수가 달라집니다. 일치 결과가 없으면 `No matching chunks`를 표시합니다.
+- 출력에 문서 내용이 포함될 수 있으므로 공유·로그 저장 전에 확인하세요. 이 도구 자체는 결과 파일을 저장하지 않습니다.
+
+Docker 없이 실행하려면 Python·uv와 호스트에서 접근 가능한 DB의 `DATABASE_URL`이 필요합니다. 환경변수가 루트 `.env`보다 우선합니다. 운영 Compose는 DB 포트를 공개하지 않으므로 위 Docker 명령이 가장 간단합니다.
+
+```powershell
+uv run --project backend python scripts/debug_bm25.py "heavy deck cargo" --top-k 5
+uv run --project backend pytest backend/tests/test_debug_bm25.py backend/tests/test_rag_retrieval.py -q
+```
+
+DB 연결 실패 시 실행 중인 Compose 프로젝트·DB 상태 및 `DATABASE_URL`을 확인하세요. `활성 사용자 계정을 찾을 수 없습니다`는 계정명/활성 상태를 확인해야 합니다. 기존 이미지에서 import 오류가 나면 첫 줄의 backend 빌드를 다시 실행합니다. 상세 [진단 계약](docs/specs/api.md#개발자-진단-cli-계약-2026-10-15-확정).
 
 ## 설정 (`.env`)
 
