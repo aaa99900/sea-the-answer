@@ -140,10 +140,44 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     const created = page.locator('.docrow').filter({ hasText: 'Next.js 검증 문서' });
     await created.waitFor();
     await created.locator('[data-action=document]').click();
+    const before = (await api('/api/documents')).data.documents.find((d) => d.title === 'Next.js 검증 문서');
+    const writes = [];
+    const recordWrite = (request) => {
+      if (request.url().endsWith('/api/changes') && request.method() === 'POST') writes.push(request.postDataJSON());
+    };
+    page.on('request', recordWrite);
+    await action('editDocument').click();
+    await expect(page.locator('#f-documentMode')).toHaveValue('metadata');
+    await expect(page.locator('#f-text')).toBeHidden();
+    await expect(page.locator('#f-text')).toHaveValue('');
+    await page.locator('[name=checked]').check();
+    await submit('#documentForm');
+    await dialogClosed();
+    expect(writes).toHaveLength(0);
+    await action('editDocument').click();
+    await page.locator('#f-issuer').fill('재청킹 방지 검증');
+    await page.locator('[name=checked]').check();
+    await submit('#documentForm');
+    await dialogClosed();
+    expect(writes).toHaveLength(1);
+    expect(writes[0].payload.mode).toBe('metadata');
+    expect(writes[0].payload.document).toEqual({ id: before.logical_id });
+    const after = (await api('/api/documents')).data.documents.find((d) => d.id === before.id);
+    expect(after.sections).toEqual(before.sections);
+    expect(after.reviewed_at).toBe(before.reviewed_at);
+    expect(after.meta.issuer).toBe('재청킹 방지 검증');
+    page.off('request', recordWrite);
     await action('editDocument').click();
     await expect(page.locator('#documentForm button[type=submit]')).toHaveText('저장');
+    await page.locator('#f-documentMode').selectOption('content');
     await page.locator('#f-title').fill('Next.js 수정 문서');
     await page.locator('#f-version').fill('2');
+    await expect(page.locator('#f-text')).toHaveValue('');
+    await page.locator('[name=checked]').check();
+    await submit('#documentForm');
+    expect(await page.locator('dialog').evaluate((d) => d.open)).toBe(true);
+    expect(await page.locator('#f-text').evaluate((el) => el.validity.valueMissing)).toBe(true);
+    await page.locator('#f-text').fill('--- PAGE 7 ---\n개정된 원문 전체를 다시 검토합니다.');
     await page.locator('[name=checked]').check();
     await submit('#documentForm');
     await dialogClosed();
@@ -261,6 +295,9 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     await action('submitReport').click();
     await confirm();
     await page.waitForFunction(() => document.querySelector('#report-text')?.readOnly);
+    await expect(action('deleteReport')).toHaveCount(0);
+    const guestReportId = decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1));
+    expect((await api('/api/reports/delete', { id: guestReportId, version: 1 })).status).toBe(403);
   });
 
   await test.step('Report approval workflow', async () => {
@@ -278,6 +315,26 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     await dialogClosed();
     const report = (await api('/api/reports')).data.reports.find((r) => r.title === '게스트 Next 보고서');
     expect(report.status).toBe('approved');
+  });
+
+  await test.step('Admin report deletion and pending review cleanup', async () => {
+    await go('reports');
+    await page.locator('.docrow').filter({ hasText: '게스트 Next 보고서' }).locator('[data-action=openReport]').click();
+    const id = decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1));
+    await action('deleteReport').click();
+    await confirm();
+    await page.waitForURL('**/reports');
+    expect((await api('/api/reports/' + id)).status).toBe(404);
+    const created = await api('/api/reports', { title: '삭제 대기 보고서', type: '규정 검토',
+      text: '검토 대기 삭제 검증', sources: [], version: 0, body: {} });
+    const report = created.data.report;
+    const submitted = await api('/api/reports/submit', { id: report.id, version: report.version });
+    expect((await api('/api/reports/delete', { id: report.id, version: report.version + 1 })).status).toBe(409);
+    expect((await api('/api/reports/delete', { id: report.id, version: report.version })).status).toBe(200);
+    const changes = (await api('/api/changes')).data.changes;
+    expect(changes.find(change => change.id === submitted.data.id).status).toBe('rejected');
+    expect((await api('/api/changes/review', { id: submitted.data.id, decision: 'approve' })).status).toBe(409);
+    await go('admin');
   });
 
   await test.step('Backup creation, restoration and login invalidation', async () => {
@@ -434,7 +491,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
   await test.step('No browser exceptions or React warnings', async () => {
     expect(errors, 'Browser runtime errors').toEqual([]);
     const significant = warnings.filter(
-      (t) => !['favicon', '403', '401', '[HMR]', 'React DevTools'].some((s) => t.includes(s)),
+      (t) => !['favicon', '403', '401', '404', '409', '[HMR]', 'React DevTools'].some((s) => t.includes(s)),
     );
     expect(significant, 'React/browser warnings').toEqual([]);
   });

@@ -99,6 +99,47 @@ def test_legacy_same_hash_keeps_existing_chunks(database):
     assert database.all("SELECT * FROM chunks WHERE document_id=%s ORDER BY position", (old_id,)) == before
 
 
+def test_metadata_api_preserves_document_chunks_pdf_and_rejects_stale_writes(database):
+    client = TestClient(main.app, base_url="http://localhost:5173")
+    guest = TestClient(main.app, base_url="http://localhost:5173")
+    guest_headers = {"X-Haedap-Token": guest.get("/api/health").json()["csrfToken"]}
+    headers = login(client)
+    data = payload()
+    first_id = database.save_document(data)["id"]
+    data["document"]["version"] = "2"
+    current_id = database.save_document(data)["id"]
+    database.run("INSERT INTO document_files VALUES(%s,%s,%s)", (current_id, "kept.pdf", "JVBERi0="))
+    before_doc = database.one("SELECT * FROM documents WHERE id=%s", (current_id,))
+    before_chunks = database.all("SELECT * FROM chunks WHERE document_id=%s ORDER BY position", (current_id,))
+    before_file = database.one("SELECT * FROM document_files WHERE id=%s", (current_id,))
+    update = {"mode": "metadata", "document": {"id": data["document"]["id"]}, "expectedId": current_id,
+              "expectedMetaRevision": database.document_meta(current_id)["revision"],
+              "meta": {"issuer": "Metadata update", "scope": "admin"}}
+    assert post(guest, guest_headers, update).status_code == 403
+    assert post(client, headers, update).status_code == 200
+    assert database.one("SELECT * FROM documents WHERE id=%s", (current_id,)) == before_doc
+    assert database.all("SELECT * FROM chunks WHERE document_id=%s ORDER BY position", (current_id,)) == before_chunks
+    assert database.one("SELECT * FROM document_files WHERE id=%s", (current_id,)) == before_file
+    assert database.document_meta(first_id)["scope"] == "admin"
+    assert database.document_meta(current_id)["issuer"] == "Metadata update"
+    assert post(client, headers, update).status_code == 409
+    assert guest.post("/api/search", headers=guest_headers, json={"question": "Syntheticamber"}).json()["evidence"] == []
+    change = database.one("SELECT payload FROM changes WHERE kind='document.save' ORDER BY at DESC LIMIT 1")
+    assert change["payload"]["mode"] == "metadata"
+
+
+def test_zero_chunks_leaves_previous_active_document_unchanged(database):
+    client = TestClient(main.app, base_url="http://localhost:5173")
+    headers = login(client)
+    data = payload()
+    current_id = database.save_document(data)["id"]
+    before = database.all("SELECT * FROM chunks WHERE document_id=%s ORDER BY position", (current_id,))
+    data["expectedId"] = current_id
+    data["document"]["sections"] = [
+        {"page": page, "heading": "Page", "text": "Part 6 Synthetic Manual"} for page in (1, 2, 3)]
+    assert post(client, headers, data).status_code == 400
+    assert database.one("SELECT id FROM documents WHERE logical_id='rag-synthetic' AND active")["id"] == current_id
+    assert database.all("SELECT * FROM chunks WHERE document_id=%s ORDER BY position", (current_id,)) == before
 def test_bm25_api_ranking_filters_and_original_citations(database):
     # This rollback-only schema's ranking fixture owns its corpus. Bundled
     # knowledge can legitimately contain "ballast" and grow between releases.

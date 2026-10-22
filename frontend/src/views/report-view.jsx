@@ -108,13 +108,20 @@ export function createReportViews(model, views) {
   function editorPage() {
     const d = state.draft,
       editable =
-        canWrite() && d.status === 'draft' && (!d.owner || d.owner === state.user.id || isAdmin());
+        !state.deletingReport && canWrite() && d.status === 'draft' && (!d.owner || d.owner === state.user.id || isAdmin());
     return (
       <>
         {head(
           '보고서 작성',
           '내용과 출처를 확인한 뒤 저장·검토를 진행하세요.',
-          btn('목록으로', 'reportList', '', 'arrowback'),
+          <>
+            {btn('목록으로', 'reportList', '', 'arrowback')}
+            {isAdmin() && d.id && d.version > 0
+              ? btn(state.deletingReport ? '삭제 중…' : '삭제', 'deleteReport', 'danger-outline', '', {
+                  disabled: state.saving || state.deletingReport,
+                })
+              : ''}
+          </>,
         )}
         {
           <>

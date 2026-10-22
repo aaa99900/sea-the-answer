@@ -123,6 +123,7 @@ export function createModel() {
     dirty: false,
     localFailed: false,
     saving: false,
+    deletingReport: false,
     reportError: '',
     conflict: null,
     reportQuery: '',

@@ -70,6 +70,24 @@ class ReportStore:
         self.audit(user, "report", "초안 저장", report_id, {"title": title, "version": version})
         return self.report(report_id)
 
+    def delete_report(self, user: dict, payload: dict) -> dict:
+        self.permit(user)
+        require(isinstance(payload, dict), "삭제할 보고서가 필요합니다.")
+        report_id = text(payload.get("id"), "보고서 ID", 200)
+        version = payload.get("version")
+        require(type(version) is int and version > 0, "보고서 버전을 확인해 주세요.")
+        old = self.one("SELECT title,version FROM reports WHERE id=%s FOR UPDATE", (report_id,))
+        require(old, "보고서를 찾을 수 없습니다.", "NOT_FOUND", 404)
+        require(old["version"] == version, "보고서가 변경되었습니다. 다시 열어 확인해 주세요.", "VERSION_CONFLICT", 409)
+        # Keep the review history, but do not leave a pending request for a deleted report.
+        self.run("""UPDATE changes SET status='rejected',reviewer=%s,reviewed_at=%s,note=%s
+            WHERE kind='report.approve' AND status='pending' AND payload->>'id'=%s""",
+            (user["id"], utc_now(), "보고서 삭제로 검토 요청 종료", report_id))
+        self.run("DELETE FROM report_meta WHERE id=%s", (report_id,))
+        self.run("DELETE FROM reports WHERE id=%s", (report_id,))
+        self.audit(user, "report", "보고서 삭제", report_id, {"title": old["title"], "version": version})
+        return {"ok": True, "id": report_id}
+
     def submit_report(self, user: dict, payload: dict) -> dict:
         self.permit(user, ("admin", "operator", "guest"))
         self.one("SELECT version FROM reports WHERE id=%s FOR UPDATE", (payload.get("id", ""),))

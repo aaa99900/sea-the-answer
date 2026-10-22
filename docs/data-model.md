@@ -114,6 +114,7 @@ erDiagram
 - `body`(≤50,000자 JSON): 생성 초안은 `{template:'noon'|'mrv', ship, from, to, recordIds:[{id,version}], sample}`, 승인 시 `approvedBy`, `approvedAt` 추가.
 - 업무 스킬 초안도 위 공통 필드를 유지하며 `skill`과 요청 당시 `scope:{ship,from,to}`를 추가한다. Noon의 `from/to`는 실제 마지막 기록일이고 `scope`는 사용자가 요청한 전체 기간이다.
 - 열람: 관리자, 소유자, 또는 `approved` — 단, `sources`의 모든 문서를 열람할 수 있어야 함.
+- 관리자 삭제: 버전을 검사한 뒤 `report_meta`·`reports` 행을 같은 트랜잭션에서 삭제한다. 대기 검토 요청은 삭제 사유를 기록해 `rejected`로 종료하고 감사·검토 이력은 보존한다. 검토 처리와 삭제는 동일한 보고서 행 잠금을 사용한다.
 
 ## 5. 사용자·이력·운영
 
@@ -136,6 +137,7 @@ erDiagram
 
 - 대부분의 ID는 `randomUUID()`. 문서는 내용 해시 기반 개정 ID.
 - **낙관적 잠금**: `ships`, `operations`, `reports`, `users`는 `version` 정수를 갖고, 요청의 `version`이 DB와 다르면 `409 VERSION_CONFLICT`. 저장 시 +1. 문서는 `expectedId`(현재 개정 ID)와 `expectedMetaRevision`으로 같은 검사를 합니다.
+- 문서의 `document.save` / `mode: "metadata"`는 두 버전 값을 필수로 검사하고 기존 `document_meta.body`만 갱신합니다. 현재 개정 행 잠금 안에서 검사·저장을 수행하며, `body.revision`은 이전 값보다 증가합니다. 문서 개정 ID·확인일·청크·PDF는 유지하고 열람 범위는 이전 개정본에도 반영합니다. 테이블 추가나 백업 형식 변경은 없습니다.
 - 변경은 PostgreSQL 트랜잭션 하나로 처리하며 충돌 제어가 필요한 기존 행은 `FOR UPDATE`로 잠급니다.
 - 일반 사용자 소유자 ID: `guest_` + `haedap_guest` 쿠키 값의 SHA-256.
 
