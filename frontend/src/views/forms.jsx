@@ -157,8 +157,8 @@ export function createForms(model, views) {
             'scope',
             '열람 범위',
             [
-              ['all', '누구나 열람'],
-              ...(state.user?.role !== 'guest' ? [['operator', '담당자·관리자']] : []),
+              ['all', '로그인 사용자'],
+              ['operator', '선원·관리자'],
               ...(isAdmin() ? [['admin', '관리자만']] : []),
             ],
             m.scope || 'all',
@@ -303,7 +303,7 @@ export function createForms(model, views) {
             minLength: '3',
             maxLength: '40',
           })}
-          {select('role', '권한', [['admin', '관리자']], u.role || 'admin')}
+          {select('role', '권한', [['operator', '일반 선원'], ['viewer', '열람 전용'], ['admin', '관리자']], u.role || 'operator')}
           {select(
             'active',
             '계정 상태',
@@ -311,7 +311,7 @@ export function createForms(model, views) {
               ['true', '활성'],
               ['false', '비활성'],
             ],
-            u.active === 0 ? 'false' : 'true',
+            u.active === false ? 'false' : 'true',
           )}
         </div>
         {field('password', u.id ? '새 비밀번호 (변경 시 입력)' : '비밀번호', '', 'password', {
@@ -320,12 +320,12 @@ export function createForms(model, views) {
             : {
                 required: true,
               }),
-          minLength: '10',
+          minLength: '12',
           maxLength: '128',
           autoComplete: 'new-password',
         })}
         <p className={'small muted mt'}>
-          {'추가 로그인 계정은 관리자용입니다. 일반 사용자는 계정이 필요하지 않습니다.'}
+          {'업무에 필요한 최소 권한으로 개인 계정을 발급하세요. 초기 비밀번호는 본인이 로그인한 뒤 변경해야 합니다.'}
         </p>
       </>,
       '계정 저장',

@@ -2,13 +2,12 @@
 from unittest.mock import Mock
 
 import pytest
-from fastapi.testclient import TestClient
 
-from api import deps, main
+from api import deps
 from api.errors import ApiError
 from api.store import Workspace
-from api.web import security
-from test_fastapi_api import ADMIN, FakeWorkspace
+from test_authentication import auth
+from test_fastapi_api import ADMIN
 
 
 def store_with_report(version=3):
@@ -79,10 +78,11 @@ def test_review_rechecks_after_waiting_for_concurrent_delete(decision):
     store.run.assert_not_called()
 
 
-def test_delete_api_requires_csrf_admin_and_routes_to_store(monkeypatch):
+def test_delete_api_requires_csrf_admin_and_routes_to_store(monkeypatch, auth):
+    client, headers, _accounts = auth
     writes = []
 
-    class ReportWorkspace(FakeWorkspace):
+    class ReportWorkspace(deps.Workspace):
         delete_report = Workspace.delete_report
         permit = Workspace.permit
 
@@ -95,17 +95,19 @@ def test_delete_api_requires_csrf_admin_and_routes_to_store(monkeypatch):
             writes.append((query, params))
 
     monkeypatch.setattr(deps, "Workspace", ReportWorkspace)
-    monkeypatch.setattr(deps, "initialized", False)
-    security.sessions.clear()
-    client = TestClient(main.app, base_url="http://localhost:5173")
-    headers = {"X-Haedap-Token": client.get("/api/health").json()["csrfToken"]}
     payload = {"id": "report-1", "version": 3}
     assert client.post("/api/reports/delete", json=payload).status_code == 403
     denied = client.post("/api/reports/delete", headers=headers, json=payload)
-    assert denied.status_code == 403 and denied.json()["error"]["code"] == "FORBIDDEN"
+    assert denied.status_code == 401 and denied.json()["error"]["code"] == "AUTH_REQUIRED"
     assert not writes
+    for role in ("operator", "viewer"):
+        assert client.post("/api/auth/login", headers=headers,
+                           json={"username": role, "password": "Test-only-password"}).status_code == 200
+        denied = client.post("/api/reports/delete", headers=headers, json=payload)
+        assert denied.status_code == 403 and denied.json()["error"]["code"] == "FORBIDDEN"
+        assert not writes
     assert client.post("/api/auth/login", headers=headers,
-                       json={"username": "admin", "password": "1234"}).status_code == 200
+                       json={"username": "admin", "password": "Test-only-password"}).status_code == 200
     deleted = client.post("/api/reports/delete", headers=headers, json=payload)
     assert deleted.status_code == 200 and deleted.json() == {"ok": True, "id": "report-1"}
     assert len(writes) == 3

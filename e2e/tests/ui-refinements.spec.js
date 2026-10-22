@@ -3,9 +3,9 @@ import { test, expect } from '@playwright/test';
 
 async function mockWorkspace(page, admin = false) {
   const state = {
-    admin, deleteError: false, deleteCalls: [], history: [], waitForAnswer: null,
+    admin, loggedIn: true, deleteError: false, deleteCalls: [], history: [], waitForAnswer: null,
     reports: [{ id: 'report-1', title: '삭제 검증 보고서', type: '규정 검토', text: '보존할 보고서 본문',
-      sources: [], version: 3, status: 'draft', owner: 'guest_test', body: {}, updatedAt: '2026-10-18' }],
+      sources: [], version: 3, status: 'draft', owner: 'crew_3edf36ec', body: {}, updatedAt: '2026-10-18' }],
   };
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -13,11 +13,16 @@ async function mockWorkspace(page, admin = false) {
   await page.route('**/api/**', async route => {
     const request = route.request(), path = new URL(request.url()).pathname;
     const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
-    const user = state.admin ? { id: 'admin', name: '관리자', role: 'admin' }
-      : { id: 'guest_test', name: '일반 사용자 3edf36ec', role: 'guest' };
-    if (path === '/api/health') return json({ csrfToken: 'test', user, authenticated: state.admin, llmConfigured: false });
-    if (path === '/api/auth/login') { state.admin = true; return json({ user: { id: 'admin', name: '관리자', role: 'admin' } }); }
-    if (path === '/api/auth/logout') { state.admin = false; return json({ ok: true }); }
+    const user = !state.loggedIn ? { id: 'guest_test', name: '일반 사용자', role: 'guest' }
+      : state.admin ? { id: 'admin', name: '관리자', role: 'admin' }
+        : { id: 'crew_3edf36ec', name: '일반 사용자', role: 'operator' };
+    if (path === '/api/health') return json({ csrfToken: 'test', user, authenticated: state.loggedIn,
+      publicAccess: false, llmConfigured: false });
+    if (path === '/api/auth/login') {
+      state.admin = true; state.loggedIn = true;
+      return json({ user: { id: 'admin', name: '관리자', role: 'admin' } });
+    }
+    if (path === '/api/auth/logout') { state.admin = false; state.loggedIn = false; return json({ ok: true }); }
     if (path === '/api/documents') return json({ documents: [{ id: 'manual-1', logical_id: 'manual',
       title: '검증 문서', reference: 'Part 1', kind: 'onboard', version: '1', active: true, currentRevision: true,
       reviewed_at: '2026-10-18', meta: { scope: 'all', status: 'active' },
@@ -54,7 +59,7 @@ const ask = async (page, text) => {
   await page.locator('#askForm').evaluate(form => form.requestSubmit());
 };
 
-test('guest label, branding, brand navigation and admin-only controls', async ({ page }) => {
+test('crew label, branding, brand navigation and admin-only controls', async ({ page }) => {
   const state = await mockWorkspace(page);
   await page.goto('/documents/manual-1');
   await expect(page.locator('.account .small')).toHaveText('일반 사용자');
@@ -68,7 +73,7 @@ test('guest label, branding, brand navigation and admin-only controls', async ({
   await go(page, 'reports');
   await action(page, 'openReport').click();
   await expect(action(page, 'deleteReport')).toHaveCount(0);
-  await action(page, 'openLogin').click();
+  await action(page, 'logout').click();
   await expect(page.locator('.eyebrow')).toHaveText('SEA THE ANSWER WORKSPACE');
   expect(state.errors).toEqual([]);
 });

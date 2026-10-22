@@ -1,6 +1,6 @@
 # 해답 — SEA THE ANSWER
 
-현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-15**
+현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-22**
 
 선내 문서 근거와 운항 기록을 함께 보여 주는 선박 업무 지원 앱입니다. 화면은 Next.js, `/api/*`는 Python FastAPI, 저장소는 PostgreSQL이며, 저장소 최상위에서 `docker compose` 하나로 셋을 함께 실행합니다.
 
@@ -13,9 +13,9 @@
 | 보고서 | Noon / MRV 검토 초안 자동 생성, 편집·저장, 검토 요청 → 관리자 승인 |
 | 관리 | 계정·역할, 승인, 질의·변경·오류 로그, 백업·복구 |
 
-일반 기능은 로그인 없이 쓰고, 등록·수정·삭제·승인·백업은 관리자(기본 **`admin / 1234`**, 실제 사용 전에 변경)만 할 수 있습니다.
+업무 기능은 개인 계정으로 로그인한 뒤 사용합니다. 일반 선원은 문서·운항 조회와 자기 보고서 업무를, 관리자는 계정 발급과 원본 자료 변경·승인·백업을 수행합니다. 공용 기본 비밀번호는 없으며 최초 관리자 설정과 기존 버전 전환은 [계정 운영 안내](docs/user-guide.md#2-역할과-승인)를 따릅니다.
 
-**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크를 한영 토큰화·동의어 확장 후 BM25로 정렬하고, 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 공통 호출은 모의 HTTP로 검증했고, 동국의 실제 API 정보와 실제 Ollama 연결은 아직 미검증입니다. 벡터·하이브리드 RAG, 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
+**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크를 한영 토큰화·동의어 확장 후 BM25로 정렬하고, 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 공통 호출은 모의 HTTP로 검증했고 동국 AI Chat 실제 호출은 2026-10-14에 검증했습니다. 로컬 Ollama 실제 검증 결과는 [변경 이력](docs/changelog.md)에 별도로 기록합니다. 벡터·하이브리드 RAG, 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
 
 ## 프로젝트 구조
 
@@ -52,19 +52,19 @@ sea-the-answer/
 
 준비물: **Docker Desktop**(Windows·macOS) 또는 **Docker Engine + Compose 플러그인**(Ubuntu). 첫 빌드에는 인터넷이 필요합니다. 모든 명령은 **저장소 최상위**에서 실행합니다.
 
-1. 설정 파일을 만듭니다. 기본값으로도 이 PC에서는 바로 동작합니다. 공유 서버라면 `POSTGRES_PASSWORD`를 **처음 시작하기 전에** 바꾸세요.
+1. 설정 파일을 만듭니다. `HAEDAP_BOOTSTRAP_USERNAME`에 개인 관리자 아이디, `HAEDAP_BOOTSTRAP_NAME`에 표시 이름, `HAEDAP_BOOTSTRAP_PASSWORD`에 본인이 정한 12~128자 초기 비밀번호를 입력하세요. 공유 서버라면 `POSTGRES_PASSWORD`도 **처음 시작하기 전에** 바꾸세요. 초기 관리자 설정은 빈 사용자 테이블에서만 적용됩니다.
 
    ```bash
    cp .env.example .env            # Windows PowerShell: Copy-Item .env.example .env
    ```
 
-2. 실행합니다. 처음에는 이미지 빌드로 몇 분 걸립니다. `migrate` 서비스가 DB 마이그레이션을 적용한 뒤 backend가 시작하고, DB가 비어 있으면 기본 문서와 관리자 계정이 만들어집니다.
+2. 실행합니다. 처음에는 이미지 빌드로 몇 분 걸립니다. `migrate` 서비스가 DB 마이그레이션을 적용한 뒤 backend가 시작하고, DB가 비어 있으면 기본 문서와 명시적으로 설정한 관리자 계정이 만들어집니다.
 
    ```bash
    docker compose up --build -d
    ```
 
-3. 브라우저에서 <http://localhost:5173>을 엽니다.
+3. 브라우저에서 <http://localhost:5173>을 열어 설정한 개인 계정으로 로그인하고 비밀번호를 변경합니다. 관리 화면에서 선원 계정을 발급하세요. 최초 설정 후 `.env`의 `HAEDAP_BOOTSTRAP_PASSWORD`를 비우고 backend를 재생성합니다. 이미 저장된 비밀번호는 바뀌지 않습니다.
 
 | 하려는 일 | 명령 |
 |---|---|

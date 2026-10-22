@@ -1,6 +1,6 @@
 # 아키텍처
 
-> 대상 버전: 1.4.0 · 최종 확인: 2026-10-15 (코드 대조)
+> 대상 버전: 1.4.0 · 최종 확인: 2026-10-22 (코드 대조)
 > 이 문서는 **현재 구현**을 설명합니다. 앞으로 바꿀 계획은 [`plans/`](plans/), 바뀌지 않을 결정의 이유는 [`adr/`](adr/)에 있습니다.
 
 ## 현재 Python 문서 경로 (2026-10-13)
@@ -11,7 +11,6 @@
 
 2026-10-18 문서 정보 수정 경로: `frontend/src/lib/document-save.js`가 정보 변경과 본문 개정을 구분한다. `document.save`의 `mode: "metadata"`는 같은 저장 모듈에서 현재 개정·정보 버전을 검사하고 `document_meta`만 갱신한다. 본문 개정은 새로 제공한 원문만 전송하고 기존 조회 청크를 원문으로 재사용하지 않는다. 신규 원문 전처리 결과가 0개면 저장을 거부한다. DB 스키마·검색 알고리즘·백업 구조는 유지한다.
 
-전처리는 웹·DB 의존성이 없는 함수이고 문서 ID·제목은 저장 계층에서 기존 관계로 연결한다. 청킹 규칙과 변경 적용 범위는 [API 전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정), 검증과 새 구조 통합 기록은 [작업 기록](plans/2026-10-13-rag-preprocessing.md)에 있다. 검색은 Python의 단어 포함 점수이며 FTS5/BM25나 벡터 검색을 이번 작업에서 추가하지 않는다.
 전처리는 웹·DB 의존성이 없는 함수이고 문서 ID·제목은 저장 계층에서 기존 관계로 연결한다. 청킹 규칙과 변경 적용 범위는 [API 전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정), 검증과 새 구조 통합 기록은 [작업 기록](plans/2026-10-13-rag-preprocessing.md)에 있다. 2026-10-14부터 검색은 `api/rag_retrieval.py`의 BM25Okapi를 사용한다. 저장 계층이 권한·상태·종류를 먼저 필터링하고 모듈은 허용된 청크만 토큰화·정렬한다. PostgreSQL 저장·개정·전처리는 변경하지 않는다.
 
 ## 1. 한눈에 보기
@@ -65,7 +64,7 @@ flowchart LR
 1. 브라우저 요청은 모두 Next.js가 받습니다. 화면·`/_next/*`·`frontend/public` 리소스는 Next.js가 직접 응답합니다.
 2. `/api/:path*`는 `proxy.js`(Next.js 16의 `middleware` 후속, Node.js 런타임)가 `NextResponse.rewrite`로 `HAEDAP_API_ORIGIN/api/:path*`에 프록시합니다. 원래 `Host`는 `X-Forwarded-Host`에 들어갑니다. 쿠키·`Set-Cookie`는 그대로 오갑니다.
 3. 프록시 설정(`experimental`): 요청 본문 최대 **101MB**(PDF 포함 문서 등록 38MB, 백업 가져오기 100MB), 응답 대기 **60초**.
-4. FastAPI의 `/api/{path}` 하나가 모든 앱 API를 받습니다. 요청마다 PostgreSQL 연결을 열고(`Workspace`), 첫 요청에서 `bootstrap()`(관리자 계정·기본 설정·`knowledge/seed.json` 문서 등록)을 한 번 실행합니다.
+4. FastAPI의 `/api/{path}` 하나가 모든 앱 API를 받습니다. 요청마다 PostgreSQL 연결을 열고(`Workspace`), 첫 요청에서 `bootstrap()`(명시적 초기 관리자 설정·기본 설정·`knowledge/seed.json` 문서 등록)을 한 번 실행합니다.
 5. **Host·Origin 검사**(`validate_origin`): `X-Forwarded-Host`(없으면 `Host`)의 호스트 이름이 `localhost`, `127.0.0.1`, `HAEDAP_ALLOWED_HOSTS`에 있어야 하고, `Origin`이 있으면 같은 주소여야 합니다. 아니면 403.
 6. 동시 요청 4개 제한, 백업 복구 중 다른 요청 차단(PostgreSQL advisory lock), 1분마다 자동 백업 여부 확인.
 7. `MARITIME_DATA_API_TOKEN`이 설정되어 있으면 `/api/maritime-data/*` 라우터가 `/api/{path}`보다 먼저 등록됩니다(8절).
@@ -110,7 +109,7 @@ sequenceDiagram
 |---|---|
 | `api/main.py` | FastAPI 앱 생성, lifespan(자동 백업 루프), 해사 데이터 라우터 마운트, 오류 응답 형식 |
 | `api/web/handler.py` | `/api/{path}` 진입점: 요청 슬롯, Content-Type·본문 크기, DB 세션, 인증·CSRF 후 `routes.dispatch` |
-| `api/web/security.py` | Host·Origin 검사, 게스트 쿠키, 관리자 세션(메모리), CSRF 토큰, 로그인 시도 기록 |
+| `api/web/security.py` | Host·Origin 검사, 기존 게스트 식별자, 개인 계정 세션(메모리), CSRF 토큰, 로그인 시도 기록 |
 | `api/web/concurrency.py` | 동시 요청 4개 제한, 복구 단독 실행(프로세스 카운터 + PostgreSQL advisory lock) |
 | `api/web/backup_job.py` | 1분마다 확인하는 하루 1회 자동 백업 |
 | `api/routes/` | 경로 표와 도메인별 핸들러: `system`(health·tools), `auth`, `documents`(문서·PDF·ask·search·history), `operations`, `changes`, `reports`, `admin`(users·logs·backups) |
@@ -137,11 +136,11 @@ DB 스키마는 backend가 아니라 최상위 `migrations/`(dbmate)가 소유�
 
 모듈을 교체하더라도 아래 경계는 유지해야 합니다.
 
-- **접속 범위**: 공개되는 포트는 frontend 하나입니다. 기본 바인딩은 `127.0.0.1`(이 PC만). `HAEDAP_BIND=0.0.0.0`으로 LAN·서버 접속을 열고, 접속에 쓰는 호스트 이름·IP를 `HAEDAP_ALLOWED_HOSTS`에 넣습니다. TLS는 포함하지 않으므로 인터넷 공개 시 앞단에 리버스 프록시(TLS)가 필요합니다.
+- **접속 범위**: 공개되는 포트는 frontend 하나입니다. 기본 바인딩은 `127.0.0.1`(이 PC만). `HAEDAP_BIND=0.0.0.0`으로 LAN·서버 접속을 열고, 접속에 쓰는 호스트 이름·IP를 `HAEDAP_ALLOWED_HOSTS`에 넣습니다. TLS는 포함하지 않으므로 운영에는 앞단 HTTPS 리버스 프록시와 `HAEDAP_HTTPS=true`가 필요합니다. 외부 업무 접속은 조직의 VPN·추가 인증 정책을 함께 적용합니다.
 - **내부 API·DB**: backend와 db는 compose 내부 네트워크에만 있고 운영 구성에서는 호스트에 공개하지 않습니다(개발 오버레이만 `127.0.0.1`로 공개). backend는 compose 네트워크 안에서만 접근되므로 로그인 시도 제한을 위해 `X-Forwarded-For`를 신뢰합니다(`--forwarded-allow-ips *`).
 - **접속자 IP 범위**: 백엔드는 접속자 IP·서브넷을 검사하지 않습니다. 같은 서브넷으로 제한하려면 OS 방화벽을 씁니다(Ubuntu: `ufw allow from 192.168.0.0/24 to any port 5173`).
 - **단일 출처**: 브라우저는 Next.js 주소 하나만 사용. Origin 검사는 실제 호스트(`X-Forwarded-Host`) 기준.
-- **인증**: 관리자만 로그인(salt + scrypt, HttpOnly·SameSite=Strict 세션 쿠키, 12시간, 서버 메모리 보관 — backend 재시작 시 로그아웃). 일반 사용자는 무작위 `haedap_guest` 쿠키로 작업공간만 구분(인증 수단 아님).
+- **인증**: 선원·관리자·열람 계정의 서버 세션. 익명 업무 API 차단, 초기 비밀번호 교체, 30분 유휴·12시간 절대 만료, 계정 버전·활성 상태 재확인. HttpOnly·SameSite=Strict 및 HTTPS 운영 시 Secure 쿠키. 상세 계약은 [authentication.md](specs/authentication.md), 운영 조건은 [사용 안내 2절](user-guide.md#2-역할과-승인)을 따릅니다. backend 재시작 시 세션과 로그인 제한 기록이 초기화되는 단일 worker 구조입니다.
 - **쓰기 보호**: 모든 POST는 JSON + `X-Haedap-Token` 필요. 원본 자료(문서·선박·운항) 변경은 서버에서 관리자 여부를 검사.
 - **열람 범위**: 문서 `scope`(all/operator/admin)를 **검색 단계부터** 적용하고, 원본 PDF·보고서 근거·질문 이력 재열람에도 다시 검사.
 - **LLM 인증키 격리**: `LLM_API_BASE_URL`을 파싱한 호스트가 `api.openai.com`이면 `OPENAI_API_KEY`, `dongguk.edu` 또는 하위 도메인이면 `DONGUK_AI_CHAT_API_KEY`만 선택. 해당 키가 없으면 모델 비활성. 로컬 Ollama·기타 호환 서버에는 두 키가 설정되어 있어도 인증 헤더를 보내지 않음. URL 경로·유사 도메인으로 키를 선택하지 않음([ADR 0013](adr/0013-provider-credential-isolation.md)).
@@ -204,6 +203,6 @@ flowchart LR
 
 `vessels.ship_id`의 선택적 외래키로 기존 앱 `ships`를 재사용합니다. 연결은 준비 CLI의 명시적 매핑으로만 수행하고 외부 선박 전체를 자동 등록하지 않습니다. MRV는 보고기간 단위이므로 기존 일별 `operations`로 분해하지 않습니다. 원본 식별자와 REAL/SYN 구분, 출처·품질 정보를 그대로 유지합니다.
 
-독립 Tool 라우트는 서버 전용 Bearer 토큰을 요구합니다. 기존 화면의 실행 패널은 이 토큰을 받지 않고 일반 앱의 `/api/skills/run`을 호출합니다. 서버가 앱 ID의 명시 매핑과 IMO 정체성을 확인한 뒤 계산 함수를 직접 실행하고 queries/query_owner/audit에 기록합니다. 접근 범위는 기존 앱의 공개 운항 조회 정책을 따르며 사용자별 선박 ACL은 추가하지 않았습니다. 공식 CII 등급은 생성하지 않으며, 독립 Tool `/ask`의 실제 LLM 호출은 계속 비활성입니다.
+독립 Tool 라우트는 서버 전용 Bearer 토큰을 요구합니다. 기존 화면의 실행 패널은 이 토큰을 받지 않고 일반 앱의 `/api/skills/run`을 호출합니다. 서버가 앱 ID의 명시 매핑과 IMO 정체성을 확인한 뒤 계산 함수를 직접 실행하고 queries/query_owner/audit에 기록합니다. 접근 범위는 기존 앱의 로그인·역할 기반 운항 조회 정책을 따르며 사용자별 선박 ACL은 추가하지 않았습니다. 공식 CII 등급은 생성하지 않으며, 독립 Tool `/ask`의 실제 LLM 호출은 계속 비활성입니다.
 
 `tools.api.create_app()`은 테스트·역할4 도구용 독립 앱으로 남아 있습니다. 마이그레이션은 앱과 해사 DDL을 소유하고 loader는 DDL을 실행하지 않습니다. 기존 단일 스키마 채택·rollback 제한과 앱 복구 시 선박 연결 정책은 [데이터 모델](data-model.md#9-postgresql-해사-데이터-tool-선택)에 정의합니다. 입출력은 [API 명세](specs/tools.md), 데이터 확보는 [운영 안내](user-guide.md#10-해사-데이터-tool-선택)를 참고하세요.

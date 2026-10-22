@@ -6,9 +6,9 @@ export function createExtendedViews(model, views) {
   const { esc, I, btn, badge, head, empty, dateText, n, options, notice, stat } = helpers;
   const { chartSVG } = views;
   const roleName = {
-    guest: '로그인 없이 사용 중',
+    guest: '로그인 필요',
     admin: '관리자 · 승인',
-    operator: '업무 담당자',
+    operator: '일반 선원',
     viewer: '열람 전용',
   };
   const statusName = {
@@ -19,6 +19,7 @@ export function createExtendedViews(model, views) {
     rejected: '반려',
   };
   function authPage() {
+    const changing = state.user?.must_change_password || state.passwordOpen;
     return (
       <main className={'login-layout'}>
         <section className={'login-brand'}>
@@ -33,14 +34,14 @@ export function createExtendedViews(model, views) {
         </section>
         <section className={'login-card'}>
           <span className={'eyebrow'}>{'SEA THE ANSWER WORKSPACE'}</span>
-          <h2>{'관리자 로그인'}</h2>
+          <h2>{changing ? '비밀번호 변경' : '선원·관리자 로그인'}</h2>
           <p className={'muted mb'}>
-            {'관리 기능을 사용하려면 로그인해 주세요.'}
-            <br />
-            {'기본 기능은 로그인 없이 사용할 수 있습니다.'}
+            {changing
+              ? '본인만 아는 12~128자의 비밀번호를 설정해 주세요. 변경 후 다른 기기의 세션은 종료됩니다.'
+              : '관리자가 발급한 개인 계정으로 로그인해 주세요. 계정 발급·초기화는 관리자에게 요청하세요.'}
           </p>
-          <form id={'authForm'}>
-            <div className={'field'}>
+          <form id={changing ? 'passwordForm' : 'authForm'}>
+            {!changing ? <div className={'field'}>
               <label htmlFor={'auth-username'}>{'아이디'}</label>
               <input
                 id={'auth-username'}
@@ -50,12 +51,12 @@ export function createExtendedViews(model, views) {
                 autoComplete={'username'}
                 onChange={noop}
               />
-            </div>
+            </div> : <p className={'mb'}>{state.user.name} · {state.user.username}</p>}
             <div className={'field'}>
-              <label htmlFor={'auth-password'}>{'비밀번호'}</label>
+              <label htmlFor={'auth-password'}>{changing ? '현재 비밀번호' : '비밀번호'}</label>
               <input
                 id={'auth-password'}
-                name={'password'}
+                name={changing ? 'currentPassword' : 'password'}
                 type={'password'}
                 required
                 maxLength={'128'}
@@ -63,22 +64,35 @@ export function createExtendedViews(model, views) {
                 onChange={noop}
               />
             </div>
+            {changing ? <>
+              <div className={'field'}>
+                <label htmlFor={'auth-new-password'}>새 비밀번호</label>
+                <input id={'auth-new-password'} name={'newPassword'} type={'password'} required
+                  minLength={12} maxLength={128} autoComplete={'new-password'} />
+              </div>
+              <div className={'field'}>
+                <label htmlFor={'auth-confirm-password'}>새 비밀번호 확인</label>
+                <input id={'auth-confirm-password'} name={'confirmPassword'} type={'password'} required
+                  minLength={12} maxLength={128} autoComplete={'new-password'} />
+              </div>
+            </> : null}
             <p className={'inline-error mt'} id={'authError'} role={'alert'}>
               {state.authError || state.connectionError}
             </p>
             <button
               type={'submit'}
               className={'btn primary login-submit'}
-              {...(state.connecting
+              {...(state.connecting || state.authBusy
                 ? {
                     disabled: true,
                   }
                 : {})}
             >
-              {state.connecting ? '연결 중…' : '로그인'}
+              {state.connecting || state.authBusy ? '처리 중…' : changing ? '비밀번호 변경' : '로그인'}
             </button>
           </form>
-          {btn('로그인 없이 돌아가기', 'cancelLogin', 'mt')}
+          {changing ? btn('로그아웃', 'logout', 'mt') : null}
+          {changing && !state.user?.must_change_password ? btn('돌아가기', 'cancelPassword', 'mt') : null}
           {state.connectionError ? btn('서버 다시 연결', 'reconnect', 'mt') : ''}
         </section>
       </main>
@@ -239,7 +253,7 @@ export function createExtendedViews(model, views) {
             <h2>{'운영 안내'}</h2>
             <p className={'muted mt'}>
               {
-                '문서와 운항 정보는 관리자만 등록·수정·삭제하며 저장 즉시 반영됩니다. 보고서는 승인 탭에서 검토합니다. 조회·질문·분석은 로그인 없이 사용할 수 있습니다.'
+                '문서와 운항 정보는 관리자만 등록·수정·삭제하며 저장 즉시 반영됩니다. 보고서는 승인 탭에서 검토합니다. 모든 업무 기능은 개인 계정으로 로그인한 뒤 사용합니다.'
               }
             </p>
             {notice(
@@ -283,13 +297,9 @@ export function createExtendedViews(model, views) {
                         <td>{roleName[u.role]}</td>
                         <td>{badge(u.active ? '활성' : '비활성', u.active ? 'good' : '')}</td>
                         <td>
-                          {u.username === 'admin' ? (
-                            <span className={'small muted'}>{'기본 관리자 · 고정'}</span>
-                          ) : (
-                            btn('수정', 'editUser', 'sm', '', {
+                          {btn('수정', 'editUser', 'sm', '', {
                               'data-id': u.id,
-                            })
-                          )}
+                            })}
                         </td>
                       </tr>
                     }

@@ -36,6 +36,8 @@ def test_real_document_upload_search_revision_access_and_rollback(database):
     client = TestClient(main.app, base_url="http://localhost:5173")
     guest = TestClient(main.app, base_url="http://localhost:5173")
     guest_headers = {"X-Haedap-Token": guest.get("/api/health").json()["csrfToken"]}
+    assert post(guest, guest_headers, payload()).status_code == 401
+    guest_headers = login(guest, "crew")
     assert post(guest, guest_headers, payload()).status_code == 403
     headers = login(client)
     data = payload()
@@ -107,6 +109,7 @@ def test_metadata_api_preserves_document_chunks_pdf_and_rejects_stale_writes(dat
     data = payload()
     first_id = database.save_document(data)["id"]
     data["document"]["version"] = "2"
+    data["expectedId"] = first_id
     current_id = database.save_document(data)["id"]
     database.run("INSERT INTO document_files VALUES(%s,%s,%s)", (current_id, "kept.pdf", "JVBERi0="))
     before_doc = database.one("SELECT * FROM documents WHERE id=%s", (current_id,))
@@ -115,6 +118,8 @@ def test_metadata_api_preserves_document_chunks_pdf_and_rejects_stale_writes(dat
     update = {"mode": "metadata", "document": {"id": data["document"]["id"]}, "expectedId": current_id,
               "expectedMetaRevision": database.document_meta(current_id)["revision"],
               "meta": {"issuer": "Metadata update", "scope": "admin"}}
+    assert post(guest, guest_headers, update).status_code == 401
+    guest_headers = login(guest, "crew")
     assert post(guest, guest_headers, update).status_code == 403
     assert post(client, headers, update).status_code == 200
     assert database.one("SELECT * FROM documents WHERE id=%s", (current_id,)) == before_doc
@@ -140,6 +145,8 @@ def test_zero_chunks_leaves_previous_active_document_unchanged(database):
     assert post(client, headers, data).status_code == 400
     assert database.one("SELECT id FROM documents WHERE logical_id='rag-synthetic' AND active")["id"] == current_id
     assert database.all("SELECT * FROM chunks WHERE document_id=%s ORDER BY position", (current_id,)) == before
+
+
 def test_bm25_api_ranking_filters_and_original_citations(database):
     # This rollback-only schema's ranking fixture owns its corpus. Bundled
     # knowledge can legitimately contain "ballast" and grow between releases.
@@ -156,7 +163,7 @@ def test_bm25_api_ranking_filters_and_original_citations(database):
         identifier = database.save_document(data)["id"]
         documents.append((data, identifier))
     guest = TestClient(main.app, base_url="http://localhost:5173")
-    headers = {"X-Haedap-Token": guest.get("/api/health").json()["csrfToken"]}
+    headers = login(guest, "crew")
     for question in ("ballast inspection", "평형수 검사"):
         response = guest.post("/api/search", headers=headers, json={"question": question})
         assert response.status_code == 200

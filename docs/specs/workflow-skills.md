@@ -6,7 +6,7 @@
 
 ## API
 
-일반 앱의 쿠키·Host/Origin·POST CSRF·사용자 식별·요청 트랜잭션을 그대로 사용한다.
+일반 앱의 개인 계정 로그인·비밀번호 변경 확인·쿠키·Host/Origin·POST CSRF·사용자 식별·요청 트랜잭션을 그대로 사용한다. 두 경로 모두 익명 접근은 401로 차단한다.
 
 - GET `/api/skills`: 여섯 스킬의 ID·이름·설명·버전·선택 LLM 지원 여부.
 - POST `/api/skills/run`: `{skill, question, document_ids?, context?, year?, use_model?, answer_id?, template?}`.
