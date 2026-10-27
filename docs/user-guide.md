@@ -293,3 +293,30 @@ uv run --locked --project backend python -m scripts.load_capacity_candidates --c
 #### 기존 데이터 버전
 
 2026-09-30 로컬 적재 기록: MRV 80,552행 중 조회 대상 79,032행, Partial 1,520행은 보존하되 기본 조회에서 제외. 합성 Noon 4,380행·238항차이며 거리 0인 기록 557행은 연료량을 보존합니다. 이 수치는 저장소에 데이터가 포함되거나 이번 작업에서 DB를 재검증했다는 의미가 아닙니다. 다른 데이터 버전에서는 `scripts/verify_load.sql`의 기대값을 검토하세요.
+## 로컬 벡터 색인 운영
+
+준비·실행 명령은 [README](../README.md#로컬-벡터하이브리드-검색-선택)에 모았습니다.
+기본 BM25를 사용하는 데 모델 준비나 Chroma 시작은 필요 없습니다.
+
+- 모델은 Docker `rag-models` 볼륨 `/data/models/e5-small`, 벡터는 `rag-vectors` 볼륨 `/data/chroma`에 남습니다.
+  UID 10001의 app 사용자가 기록합니다. 서버와 클라이언트가 같은 Chroma 파일을 직접 열지 않고 내부 HTTP로 통신합니다.
+  재시작 시 모델을 RAM에 다시 로드하지만 다운로드·전체 색인은 하지 않습니다. `down -v`는 볼륨을 삭제하므로 사용하지 마세요.
+- 호스트 개발 기본 경로는 실행 디렉터리의 `.rag-models/e5-small`, `.rag-vectors`입니다. Git에서 제외됩니다.
+  호스트 PersistentClient는 단일 프로세스 개발/검증용입니다. Docker 서버와 파일을 공유하지 마세요.
+- 문서 등록·본문/메타데이터 개정 후 `index --apply`를 다시 실행합니다. 내용이 같은 벡터는 건너뛰고 새 내용만 처리합니다.
+  `--limit`은 소량 검증용이지 전체 준비 완료를 뜻하지 않습니다. 제한 corpus의 정상 결과를 전체 corpus의 준비 상태로 오해하지 마세요.
+- 삭제·활성 개정 변경·권한 변경은 매 검색의 PostgreSQL 필터가 즉시 반영합니다. 오래된 벡터가 남아도 허용 ID 밖에서는 검색하지 않습니다.
+  DB와 Chroma는 동시 트랜잭션이 아닙니다. 색인 중 실패하면 완료한 배치는 남으며 같은 명령을 재실행합니다.
+- 모델·입력 형식·주요 라이브러리 버전이 바뀌면 별도 collection을 사용합니다. 새 버전의 모델 준비/색인이 완료되기 전에는 BM25 fallback합니다.
+  오래된 collection은 자동 삭제하지 않습니다. 저장 공간 정리가 필요하면 별도 새 Chroma 볼륨에 전체 재색인 후 설정을 전환하고,
+  검증·롤백 기간 이후 예전 볼륨을 정리하세요. 앱 PostgreSQL 볼륨과 혼동하지 마세요.
+- 모델 다운로드가 연결 재설정으로 실패하면 재실행하거나 prepare 실행에만 `-e HF_HUB_DISABLE_XET=1`을 추가해 일반 HTTP 다운로드를 사용하세요.
+  모델은 공개 모델이므로 기본 사용에 HF 토큰은 필수가 아닙니다. 비밀 토큰을 명령/문서에 붙이지 마세요.
+- vector/hybrid인데 CLI에 `effective_mode=bm25`라면 `fallback_reason`을 확인하세요.
+  `model_not_prepared`: prepare 필요, `index_not_ready`: 해당 모델 collection 없음,
+  `index_incomplete_or_stale`: 현재 허용 청크 재색인 필요, `vector_backend_failure`: Chroma/모델/설정 점검.
+  모델·벡터 없이 첫 검색을 시도해도 자동 다운로드나 색인은 하지 않습니다.
+
+검색 결과 점수는 답변의 신뢰도가 아닙니다. 벡터는 관련 없는 질문에도 결과를 반환할 수 있고,
+긴 청크의 구간 평균은 세부 조항 의미를 희석할 수 있습니다. 문서명·페이지를 정답과 비교해 평가하세요.
+실제 검증 범위와 수치는 [변경 이력](changelog.md)을 참고하세요.

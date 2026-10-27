@@ -11,7 +11,8 @@ from psycopg.types.json import Jsonb
 
 from ..errors import ApiError, require
 from ..rag_preprocessing import preprocess_sections
-from ..rag_retrieval import retrieve
+from ..rag_search import configured_mode, retrieve
+from ..rag_embeddings import content_hash
 from ..validation import iso_date, sha256, stamp, text
 
 
@@ -137,10 +138,16 @@ class DocumentStore:
     def search(self, user: dict, question: str, kind: str = "all", document_ids: list[str] | None = None) -> list[dict]:
         text(question, "질문", 2000)
         candidates = self.search_candidates(user, kind, document_ids)
-        # Filter before BM25 so inaccessible chunks cannot affect IDF/ranking.
+        # Filter before either retriever so inaccessible chunks cannot affect ranking.
         # Keep scores internal; /search and /ask retain their evidence contract.
+        results = retrieve(question, candidates, top_k=5)
+        if configured_mode() != "bm25":
+            # Re-read current PG state after potentially slow embedding/remote IO.
+            current = {row["id"]: row for row in self.search_candidates(user, kind, document_ids)}
+            results = [current[row["id"]] for row in results if row["id"] in current
+                       and content_hash(row) == content_hash(current[row["id"]])]
         return [{key: value for key, value in row.items() if key != "score"}
-                for row in retrieve(question, candidates, top_k=5)]
+                for row in results]
 
     def search_candidates(self, user: dict, kind: str = "all", document_ids: list[str] | None = None) -> list[dict]:
         """Shared read-only candidate selection for API search and diagnostics."""

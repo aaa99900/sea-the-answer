@@ -14,6 +14,8 @@
 
 ## 목록
 
+- [2026-10-27 벡터·RRF](2026-10-27-vector-hybrid.md): 완료.
+
 | 문서 | 내용 | 상태 |
 |---|---|---|
 | [`2026-10-22-rag-chunking-kiwi.md`](2026-10-22-rag-chunking-kiwi.md) | 목차·제목 청킹 및 Kiwi BM25 | 완료 |

@@ -17,6 +17,8 @@
 
 ## 목록
 
+- [벡터·RRF 검색](rag-vector.md): 구현됨.
+
 | 문서 | 내용 | 상태 |
 |---|---|---|
 | [`llm-provider.md`](llm-provider.md) | Chat Completions 공통 설정·공급자 키 격리·출력 검증 | 구현됨 (실제 공급자 미검증) |

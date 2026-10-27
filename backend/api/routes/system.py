@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from .. import config
+from ..rag_search import configured_mode
 from ..store import TOOL_DEFINITIONS
 from ..web import security
 
 
 def health(ctx):
     user = ctx.user
-    return {"ok": True, "storage": "postgresql", "retrieval": "bm25-ko-en", "llmConfigured": config.llm_configured(),
+    mode = configured_mode()
+    retrieval = {"vector": "vector-e5", "hybrid": "hybrid-rrf"}.get(mode, "bm25-ko-en")
+    return {"ok": True, "storage": "postgresql", "retrieval": retrieval, "llmConfigured": config.llm_configured(),
             "csrfToken": security.csrf_token, "user": user, "setupRequired": False,
             "documents": len(ctx.db.allowed_document_ids(user)), "version": config.VERSION,
             "authenticated": user["role"] == "admin", "publicAccess": True}

@@ -4,6 +4,57 @@
 
 ## 변경 이력
 
+### 2026-10-27 — 선택적 로컬 벡터 검색과 RRF (1.4.0 유지)
+
+- `feature/rag-vector`의 dfb262f 기준. 사용자의 후속 지시에 따라 BM25 토큰 캐시 커밋 9a14ff1은 병합하지 않았다.
+  기존 BM25/청킹/저장/개정/프론트엔드는 유지하고 독립 임베딩·Chroma·RRF·모드 모듈을 추가했다.
+  사용자 설치 chromadb 1.5.9/sentence-transformers 6.2.0을 보존하고 Docker용 CPU PyTorch 2.14.1을 지정했다.
+  기본 모드는 bm25, 허용 후보의 전체 색인 검증 실패 시 경고와 함께 BM25 fallback한다.
+- 실제 모델: 공식 multilingual-e5-small revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, CPU, 384차원.
+  로컬 파일 약 492.8MB, `query:`/`passage:` 입력과 정규화, 512토큰 초과 문서의 무손실 문자 분할→평균/재정규화.
+  모델 다운로드 첫 시도는 네트워크 연결 재설정으로 실패했고, 단일 다운로드 worker 및 `HF_HUB_DISABLE_XET=1` 재시도로 성공했다.
+  실제 추론은 HF/Transformers offline 설정에서도 성공했다. 외부 임베딩 API 호출은 없다.
+- 새 CLI: 명시적 prepare, 기본 dry-run/제한/배치/재실행 index, 동일 corpus의 세 검색 방식 비교.
+  PostgreSQL 읽기 전용, Chroma만 쓰기. 기존 앱의 문서·청크·질의 이력, PDF와 `.env`는 변경하지 않았다.
+
+검증(2026-10-27, Windows Python 3.13 / Docker Linux CPU):
+
+- `uv run --locked --project backend pytest backend/tests/test_rag_vector.py backend/tests/test_rag_retrieval.py backend/tests/test_debug_bm25.py -q --tb=short`: 최종 91 passed (5.56초).
+- 전체 backend는 `.verification/bm25-db-tests.py`가 만든 임시 PostgreSQL cluster에서 `python -m pytest -q -rs --tb=short` 실행.
+  이 helper는 `.env`를 읽지 않고 테스트 연결만 주입하며 종료 시 PostgreSQL을 중단한다.
+  최종 **438 passed, 4 skipped (97.74초)**. 4개는 `MARITIME_DATA_TEST_DATABASE_URL`로 별도 실제 해사 데이터셋을 제공해야 하는
+  기존 `test_tools_calculations.py` 2개/`test_tools_query.py` 2개다. 앱 DB 기반 RAG 테스트는 건너뛰지 않았다.
+  추가 API 테스트 작성 중 삭제 함수에 dict를 전달한 fixture 오류 2건은 문서 ID 인자로 수정 후 전체 재검증했다.
+  신규 API 테스트는 실제 PostgreSQL/Chroma와 **모의 임베딩**을 사용하며 `/search`, `/ask` 인용, 권한·종류·선택·개정·삭제를 검증한다.
+- `docker compose -p haedap-rag-vector-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`:
+  **1 passed**, 전체 시나리오 36.6초(Playwright 전체 47.3초). 실제 앱과 별도 DB/네트워크 사용.
+- 같은 격리 프로젝트의 Chroma HTTP 서버에 **실제 로컬 모델**로 공개 합성 청크 3개를 색인했다.
+  vector/hybrid 검색, 512토큰 초과 입력 처리·384차원 단위 벡터, 긴 query 거부를 확인했다.
+  Chroma 재시작 후 새 클라이언트에서도 3개 모두 재사용(indexed=0)·검색 성공. app UID로 모델 읽기·Chroma volume 쓰기 확인.
+  검증 종료 후 `docker compose -p haedap-rag-vector-check --profile vector --profile e2e down`으로 테스트 서비스만 정리했다.
+
+실제 등록 DB 소량 검증:
+
+- 공개 허용 후보 5,485개 중 **36개만**, Part 5D 물리 페이지 17–19·KR 2025 물리 페이지 20–22·IMO 요약 2종(총 문서 4개).
+  DB READ ONLY 조회 후 호스트 메모리에서 처리하고 `.verification/`의 격리 Chroma에만 색인했다. 본문은 출력하지 않았다.
+  총 36개 생성 후 같은 입력 재실행은 새 생성 0개/재사용 36개.
+- 동일 질문과 후보로 비교한 결과(작은 부분 corpus이며 전체 검색 정확도 아님):
+
+| 질문 | BM25 1위 | 벡터 1위 | RRF 결과 |
+|---|---|---|---|
+| 선급이 자동으로 정지되는 경우는? | KR p.21 | KR p.21 (다른 청크) | KR p.21 1위 |
+| Part 5D heavy deck cargo 강화 적용 기준 | p.17 용어 정의 | p.18 §3 강화 조항 | p.17 적용 범위 1위, p.18 §3 2위 |
+| 연료 황 함유량 기준 | IMO 황 함유량 요약 | 같은 요약 | 같은 요약 1위 (원래 page=null) |
+
+- 두 실행에서 읽기 전용 DB+컨테이너 전달 약 2.05–2.10초, 모델 첫 import/로드 16.42–22.54초,
+  36개 색인 2.87–6.11초. 로드 이후 벡터 질의 0.017–0.070초, hybrid 0.10–0.20초.
+  첫 BM25/Kiwi 초기화 포함 3.16–4.38초, 이후 소량 corpus BM25 약 0.10–0.14초.
+  별도 테스트 병행 중의 소규모 측정이며 API 전체 응답 시간/전체 5,485개 검색 시간/최대 RAM 측정은 아니다.
+- 남은 한계: 전체 corpus 색인·성능·정답률 평가 미수행, 실제 웹앱 모드 전환 미수행(임의 재시작 금지).
+  하이브리드가 항상 벡터보다 정확한 것은 아니며, BM25 캐시 미포함으로 큰 corpus의 BM25 비용은 남는다.
+  권한 후보 전수 metadata 확인·최종 DB 재조회 비용, 긴 청크 평균의 의미 희석, 수동 재색인/오래된 벡터 정리도 남는다.
+  라이브러리/모델이 바뀌면 새 fingerprint collection으로 전체 재색인이 필요하다.
+
 - **목차 청킹·Kiwi BM25 / 2026-10-22** (1.4.0 유지): 목차 항목의 줄바꿈 제목·쪽번호를 묶고 목차 heading 승격을 억제한다. 연속된 짧은 상위·하위 제목은 설명과 함께 청킹한다. 한글 bigram을 Kiwi 형태소 분석으로 교체하고 `api/rag_vocabulary.py`에 해사 사용자 사전·한영 별칭·제한적 불용어를 분리했다. 질의와 corpus가 같은 토큰화를 사용하며 조사·어미를 제외하고 부정어·숫자·단위를 보존한다. 사용자 설치 Kiwi 의존성을 그대로 사용한다. 저장/hash/개정/권한/API/UI는 변경하지 않았고 기존 DB 재청킹·벡터·RRF는 수행하지 않았다. [계획](plans/2026-10-22-rag-chunking-kiwi.md).
 
 - **RAG 브랜치 최신 팀 main 통합 / 2026-10-21**: 로컬 `main`을 `upstream/main`의 `0257175`로 fast-forward하고 `feature/rag-bm25`에 병합했다. 문서 검색·변경 이력 충돌을 해결해 팀의 선택 문서 ID 검증·SQL 범위 제한과 기존 BM25·디버그 CLI를 함께 보존했다. 선택하지 않은 문서는 BM25 통계에 포함하지 않는다. 기본 용어집 확충에 영향을 받던 합성 순위 테스트는 롤백 전용 테스트 스키마 안에서 corpus를 격리했다. 사용자 Kiwi 의존성 변경은 별도 미커밋 변경으로 보존하며 실제 앱 DB·`.env`·사용자 PDF는 수정하지 않는다.

@@ -15,7 +15,7 @@
 
 일반 기능은 로그인 없이 쓰고, 등록·수정·삭제·승인·백업은 관리자(기본 **`admin / 1234`**, 실제 사용 전에 변경)만 할 수 있습니다.
 
-**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크를 한영 토큰화·동의어 확장 후 BM25로 정렬하고, 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 공통 호출은 모의 HTTP로 검증했고, 동국의 실제 API 정보와 실제 Ollama 연결은 아직 미검증입니다. 벡터·하이브리드 RAG, 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
+**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크를 기본 BM25로 정렬하며, 명시적 모델·색인 준비 후 로컬 E5 벡터/RRF 하이브리드를 선택할 수 있습니다. 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 공통 호출은 모의 HTTP로 검증했고, 동국의 실제 API 정보와 실제 Ollama 연결은 아직 미검증입니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
 
 ## 프로젝트 구조
 
@@ -245,6 +245,45 @@ uv run --locked --project backend python -m scripts.load_data --data-dir data/ma
 ```
 
 적재기는 기본 미리보기에서는 DB에 연결하지 않으며 `--apply`에서만 migration 이력을 확인하고 이미 생성된 빈 해사 테이블에 CSV를 넣습니다. DDL은 실행하지 않습니다. `MARITIME_DATA_API_TOKEN`을 설정하면 같은 backend에 `/api/maritime-data/*`가 마운트됩니다(서버 전용 Bearer 토큰 필요, 화면 어댑터는 아직 없음). 별도 해사 DB를 선택한 경우에는 해당 DB에도 기본 init과 해사 마이그레이션이 필요합니다. 자세한 설정·검증·기존 스키마 채택 및 선박 연결은 [사용 안내 10절](docs/user-guide.md#10-해사-데이터-tool-선택), 호출 형식은 [API 명세](docs/specs/tools.md), 이번 변경 범위는 [ADR 0011 제안](docs/adr/0011-tools-runtime-and-data-preparation.md)을 보세요.
+
+## 로컬 벡터·하이브리드 검색 (선택)
+
+기본 검색은 여전히 BM25입니다. `intfloat/multilingual-e5-small`(고정 revision, 384차원,
+CPU, 약 1.18억 파라미터)을 명시적으로 준비하면 벡터/RRF 검색을 선택할 수 있습니다.
+모델 파일 약 0.5GB 외에 PyTorch 등 설치 공간과 실행 RAM이 필요합니다. 개발 PC는 여유 RAM
+2~4GB 이상부터 검증하세요(동시 요청·청크 길이·프로세스 수에 따라 증가, 보장 최소값 아님).
+문서 본문은 외부 임베딩 API로 보내지 않습니다. 모델 다운로드만 인터넷을 사용합니다.
+
+프로젝트 루트 PowerShell에서 순서대로 실행합니다. 기존 웹앱은 마지막 단계 전까지 재시작하지 않습니다.
+
+```powershell
+# 새 backend 이미지 빌드 + 내부 Chroma만 시작 (웹앱은 그대로)
+docker compose build backend
+docker compose --profile vector up -d --build chroma
+# 모델 다운로드·검증: 최초 1회. scripts는 읽기 전용 마운트.
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py prepare
+# DB 읽기 전용 미리보기 (guest 공개 문서 범위)
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --dry-run
+# 먼저 제한된 문서로 검증. 전체 준비 시 필터/limit를 빼고 실행.
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --document-title "Part-5D" --limit 20 --apply
+# 같은 제한 corpus에서 각 방식 비교 (본문은 출력 안 함)
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/debug_retrieval.py "heavy deck cargo" --document-title "Part-5D" --limit 20 --top-k 5
+# 모든 사용자 범위를 준비하려면 실제 활성 관리자 계정 지정. PostgreSQL에는 쓰지 않음.
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --username "관리자아이디" --apply --batch-size 16
+```
+
+전체 색인 확인 후 `.env`의 `HAEDAP_RETRIEVAL_MODE=hybrid`(또는 `vector`)를 설정하고,
+사용자가 적용할 시점에 `docker compose --profile vector up -d --no-deps backend`를 실행합니다.
+BM25로 돌아갈 때는 `bm25`로 바꾸고 같은 명령으로 backend를 재생성합니다.
+`docker compose restart`만으로는 바뀐 환경변수가 적용되지 않습니다.
+현재 요청에 허용된 청크 중 하나라도 미색인/오래됨이면 BM25로 돌아갑니다.
+`docker compose logs backend`의 `rag_fallback` 또는 비교 CLI의 `effective_mode`/`fallback_reason`으로 확인합니다.
+
+호스트에서 작업할 때는 `uv sync --locked --project backend` 후
+`uv run --locked --project backend python scripts/rag_index.py ...`로 실행합니다.
+호스트의 `DATABASE_URL`이 실제 읽을 DB를 가리켜야 합니다. 기본 Docker DB는 외부 포트를 공개하지 않으므로
+위의 일회성 컨테이너 명령을 권장합니다. 모델/Chroma 경로 및 동기화·복구 정책은
+[운영 안내](docs/user-guide.md#로컬-벡터-색인-운영), [검색 계약](docs/specs/rag-vector.md)을 보세요.
 
 ## 문서
 
