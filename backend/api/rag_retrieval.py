@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import OrderedDict
 from functools import lru_cache
+from hashlib import sha256
+from sys import getsizeof
 from threading import Lock
 
 from kiwipiepy import Kiwi
@@ -15,6 +18,48 @@ from .rag_vocabulary import KOREAN_TERMS, SEARCH_SYNONYMS, STOPWORDS
 _PARTS = re.compile(r"[가-힣]+(?:\s+[가-힣]+)*|[a-z]+[a-z0-9]*|\d+(?:\.\d+)*[a-z]?")
 _SEARCH_FIELDS = ("title", "reference", "heading", "text")
 _KIWI_LOCK = Lock()
+
+
+class _TokenCache:
+    """Bounded process-local LRU of digest -> immutable analysis tokens only."""
+
+    def __init__(self, max_entries=2048, max_bytes=16 * 1024 * 1024):
+        self.max_entries, self.max_bytes = max_entries, max_bytes
+        self.entries = OrderedDict()
+        self.size_bytes = 0
+        self.lock = Lock()
+
+    def get(self, key):
+        with self.lock:
+            entry = self.entries.get(key)
+            if entry is None:
+                return None
+            self.entries.move_to_end(key)
+            return entry[0]
+
+    def put(self, key, tokens):
+        tokens = tuple(tokens)
+        size = (getsizeof(key) + getsizeof(tokens) + sum(getsizeof(t) for t in tokens)
+                + getsizeof((tokens, 0)) + getsizeof(0))
+        if self.max_entries < 1 or size > self.max_bytes:
+            return
+        with self.lock:
+            old = self.entries.pop(key, None)
+            if old is not None:
+                self.size_bytes -= old[1]
+            self.entries[key] = (tokens, size)
+            self.size_bytes += size
+            while len(self.entries) > self.max_entries or self.size_bytes > self.max_bytes:
+                _, (_, removed_size) = self.entries.popitem(last=False)
+                self.size_bytes -= removed_size
+
+    def clear(self):
+        with self.lock:
+            self.entries.clear()
+            self.size_bytes = 0
+
+
+_CHUNK_TOKENS = _TokenCache()
 
 
 @lru_cache(maxsize=1)
@@ -36,8 +81,8 @@ def tokenize(value: str) -> list[str]:
         if not ("가" <= part[0] <= "힣"):
             tokens.append(part)
             continue
-        # Only the analyzer/dictionary is shared; no document text or index is
-        # cached. Lock also prevents duplicate lazy initialization on requests.
+        # Analyzer access is serialized. Query analysis itself is not cached.
+        # Cache locks are never held here, including on concurrent misses.
         with _KIWI_LOCK:
             morphemes = _kiwi().tokenize(part)
         for token in morphemes:
@@ -70,8 +115,14 @@ def query_tokens(query: str) -> list[str]:
 
 
 def chunk_tokens(chunk: dict) -> list[str]:
-    """Tokenize exactly the fields used by BM25, retaining term frequencies."""
-    return tokenize(" ".join(str(chunk.get(key) or "") for key in _SEARCH_FIELDS))
+    """Reuse exact-content analysis; never retain raw text, IDs or permissions."""
+    value = " ".join(str(chunk.get(key) or "") for key in _SEARCH_FIELDS)
+    key = sha256(value.encode("utf-8")).digest()
+    cached = _CHUNK_TOKENS.get(key)
+    if cached is None:
+        cached = tuple(tokenize(value))
+        _CHUNK_TOKENS.put(key, cached)
+    return list(cached)  # Callers cannot mutate the shared tuple.
 
 
 def retrieve(query: str, chunks: list[dict], top_k: int = 5) -> list[dict]:
@@ -80,7 +131,8 @@ def retrieve(query: str, chunks: list[dict], top_k: int = 5) -> list[dict]:
     Caller MUST filter scope, active revision/status and kind before calling:
     even IDF statistics must not depend on inaccessible documents. Equal scores
     retain input order. Scores may be zero/negative in small corpora and are not
-    confidence probabilities. No corpus/index is cached across requests.
+    confidence probabilities. Only bounded content tokens are reused; the
+    corpus and index are rebuilt from this request's authorized candidates.
     """
     if type(top_k) is not int or top_k < 1:
         raise ValueError("top_k must be a positive integer")
