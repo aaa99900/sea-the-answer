@@ -16,6 +16,7 @@
 
 | 문서 | 내용 | 상태 |
 |---|---|---|
+| [`2026-10-28-korean-llm-validation.md`](2026-10-28-korean-llm-validation.md) | 한국어 평가·브라우저 회귀·Docker 및 실제 모델 연결 검증 | 완료 (일반 한국어 품질은 후속) |
 | [`2026-10-22-rag-chunking-kiwi.md`](2026-10-22-rag-chunking-kiwi.md) | 목차·제목 청킹 및 Kiwi BM25 | 완료 |
 | [`2026-10-21-crew-admin-auth.md`](2026-10-21-crew-admin-auth.md) | 인증 구현·Ollama 실검증·CI 성공, PR 제출 | 보류 (#14 관리자 병합 대기) |
 | [`2026-10-15-bm25-debug.md`](2026-10-15-bm25-debug.md) | 읽기 전용 BM25 디버그 CLI | 완료 |

@@ -1,6 +1,6 @@
 # 해답 — SEA THE ANSWER
 
-현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-22**
+현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-29**
 
 선내 문서 근거와 운항 기록을 함께 보여 주는 선박 업무 지원 앱입니다. 화면은 Next.js, `/api/*`는 Python FastAPI, 저장소는 PostgreSQL이며, 저장소 최상위에서 `docker compose` 하나로 셋을 함께 실행합니다.
 
@@ -173,6 +173,28 @@ uv run --project backend pytest backend/tests/test_debug_bm25.py backend/tests/t
 ```
 
 DB 연결 실패 시 실행 중인 Compose 프로젝트·DB 상태 및 `DATABASE_URL`을 확인하세요. `활성 사용자 계정을 찾을 수 없습니다`는 계정명/활성 상태를 확인해야 합니다. 기존 이미지에서 import 오류가 나면 첫 줄의 backend 빌드를 다시 실행합니다. 상세 [진단 계약](docs/specs/api.md#개발자-진단-cli-계약-2026-10-15-확정).
+
+### 한국어 답변 고정 근거 평가
+
+준비물은 backend 의존성을 설치한 Python·uv이며, 명령은 **저장소 최상위 PowerShell**에서 실행합니다. 기본 문서의 고정 근거와 한국어 질문 16개를 사용합니다. 기본 모드는 DB·모델을 호출하지 않고 원문을 복사하므로 평가 도구와 자료 연결을 확인하는 용도입니다.
+
+```powershell
+New-Item -ItemType Directory -Force .verification | Out-Null
+uv run --project backend python scripts/evaluate_llm.py --output .verification/korean-extractive.json
+```
+
+실제 Ollama가 설치·실행되고 `ollama list`에서 모델을 확인한 뒤 아래를 실행합니다. 설정은 해당 터미널 프로세스에 적용되며 평가 도구는 개인 `.env`를 자동으로 읽거나 수정하지 않습니다.
+
+```powershell
+$env:LLM_API_BASE_URL = "http://127.0.0.1:11434/v1"
+$env:OPENAI_MODEL = "qwen2.5:3b"
+$env:LLM_RESPONSE_FORMAT = "json_schema"
+uv run --project backend python scripts/evaluate_llm.py --mode llm --output .verification/korean-model.json
+```
+
+`--case sulphur-limits --case english-lookout-korean-answer`를 붙이면 일부 사례만 실행합니다. 출력 파일은 새 이름을 사용하세요. 기존 파일은 덮어쓰지 않습니다. 결과의 `execution=real_model`, 사례별 `outcome`·`duration_seconds`·`citation_valid`와 기대 답변 요지를 확인합니다. 모델 요청·응답 검증 오류는 결과에 남기고 종료 코드 1을 반환합니다. 설정·자료·출력 경로 오류도 코드 1이며, 정상적인 근거 부족 응답은 실행 오류가 아닙니다.
+
+한글 포함·원문 인용 일치는 의미적 정답이나 한국어 품질 합격을 뜻하지 않습니다. `semantic_review=pending`인 답변은 사람이 근거와 대조해야 합니다. 이 평가는 검색·권한·Docker·브라우저 검증을 포함하지 않습니다. 상세 [평가 계약](docs/specs/llm-provider.md#7-한국어-생성고정-근거-평가-계약-2026-10-28-확정), [실제 검증 기록](docs/changelog.md)을 참고하세요.
 
 ## 설정 (`.env`)
 

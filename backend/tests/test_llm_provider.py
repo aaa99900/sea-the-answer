@@ -368,6 +368,62 @@ def test_insufficient_evidence_is_not_a_failed_model_call(api_client, model_serv
     assert result["status"] == "insufficient_evidence" and result["warnings"] == []
 
 
+@pytest.mark.parametrize("language,source,answer_text", [
+    ("ko", "Inspect the ballast valve before departure.", "출항 전에 평형수 밸브를 점검하세요."),
+    ("en", "출항 전에 평형수 밸브를 점검하세요.", "Inspect the ballast valve before departure."),
+])
+@pytest.mark.parametrize("output_format", ["text", "json_schema"])
+def test_answer_language_does_not_translate_source_citations(
+        monkeypatch, model_server, language, source, answer_text, output_format):
+    monkeypatch.setenv("LLM_API_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "local-model")
+    monkeypatch.setenv("LLM_RESPONSE_FORMAT", output_format)
+    evidence = [{**EVIDENCE[0], "text": source}]
+    statement = {"text": answer_text, "chunkId": evidence[0]["id"], "quote": source}
+    calls = model_server(completion({"insufficient": False, "statements": [statement]}))
+    db = MemoryWorkspace()
+    db.evidence = evidence
+
+    result = db.answer({"id": "model-test"}, {
+        "question": "When should the ballast valve be inspected?", "language": language,
+        "task": "documents", "mode": "llm",
+    })
+
+    assert result["language"] == language and result["generation"] == "llm"
+    assert result["status"] == "evidence_found" and result["warnings"] == []
+    assert result["statements"] == [statement]
+    assert len(calls) == 1
+    sent_evidence = json.loads(json.loads(calls[0].content)["messages"][1]["content"])["evidence"]
+    assert sent_evidence == [{"chunkId": evidence[0]["id"], "title": evidence[0]["title"], "text": source}]
+
+
+@pytest.mark.parametrize("language,source,translated_quote", [
+    ("ko", "Inspect the ballast valve before departure.", "출항 전에 평형수 밸브를 점검하세요."),
+    ("en", "출항 전에 평형수 밸브를 점검하세요.", "Inspect the ballast valve before departure."),
+])
+def test_translated_citation_falls_back_to_unchanged_source(
+        monkeypatch, model_server, language, source, translated_quote):
+    monkeypatch.setenv("LLM_API_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "local-model")
+    evidence = [{**EVIDENCE[0], "text": source}]
+    invalid = {"text": translated_quote, "chunkId": evidence[0]["id"], "quote": translated_quote}
+    # Reject the entire answer, including an otherwise valid statement.
+    valid = {"text": translated_quote, "chunkId": evidence[0]["id"], "quote": source}
+    calls = model_server(completion({"insufficient": False, "statements": [valid, invalid]}))
+    db = MemoryWorkspace()
+    db.evidence = evidence
+
+    result = db.answer({"id": "model-test"}, {
+        "question": "When should the ballast valve be inspected?", "language": language,
+        "task": "documents", "mode": "llm",
+    })
+
+    assert result["generation"] == "extractive"
+    assert result["warnings"] == ["MODEL_FAILED_EXTRACTIVE_FALLBACK"]
+    assert result["statements"] == [{"text": source, "chunkId": evidence[0]["id"], "quote": source}]
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize("mode,has_evidence", [("extractive", True), ("llm", False)])
 def test_extractive_or_no_evidence_does_not_contact_model(monkeypatch, model_server, mode, has_evidence):
     monkeypatch.setenv("LLM_API_BASE_URL", "http://localhost:11434/v1")
