@@ -26,9 +26,18 @@ def isolated_workspace(dsn):
             connection.execute(app_sql)
             jobs = migration.parent / "20261029000000_rag_index_jobs.sql"
             connection.execute(jobs.read_text(encoding="utf-8").split("-- migrate:up", 1)[1].split("-- migrate:down", 1)[0])
+            auth_migration = migration.parent / "20261021000000_user_password_change.sql"
+            connection.execute(auth_migration.read_text(encoding="utf-8").split("-- migrate:up", 1)[1].split("-- migrate:down", 1)[0])
             store = object.__new__(Workspace)
             store.db, store.dsn = connection, dsn
             store.bootstrap()
+            # Disposable test accounts, never production defaults.
+            for username, role in (("admin", "admin"), ("crew", "operator")):
+                store.save_user({"id": "fixture", "name": "Test fixture", "role": "admin"}, {
+                    "username": username, "name": username, "role": role,
+                    "password": "Test-only-password-2026",
+                })
+            store.run("UPDATE users SET must_change_password=false")
 
             class RequestWorkspace(Workspace):
                 def __init__(self, _dsn):
@@ -55,10 +64,10 @@ def configure_api(monkeypatch, request_workspace):
     monkeypatch.setattr(security, "login_attempts", {})
 
 
-def login(client):
+def login(client, username="admin", password="Test-only-password-2026"):
     health = client.get("/api/health")
     assert health.status_code == 200
     headers = {"X-Haedap-Token": health.json()["csrfToken"]}
-    result = client.post("/api/auth/login", headers=headers, json={"username": "admin", "password": "1234"})
+    result = client.post("/api/auth/login", headers=headers, json={"username": username, "password": password})
     assert result.status_code == 200
     return headers

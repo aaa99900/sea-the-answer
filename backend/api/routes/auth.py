@@ -1,10 +1,10 @@
-"""Admin login/logout. General users never log in (guest cookie only)."""
+"""Individual crew, viewer and administrator login and password rotation."""
 
 from __future__ import annotations
 
-import time
+import logging
 
-from ..errors import ApiError, require
+from ..errors import ApiError
 from ..web import security
 
 
@@ -14,16 +14,18 @@ def setup(_ctx):
 
 def login(ctx):
     request, body = ctx.request, ctx.body
-    remote = request.client.host if request.client else "local"
-    attempts = security.login_attempts.get(remote, {"count": 0, "until": 0})
-    if attempts["until"] < time.time():
-        attempts = {"count": 0, "until": time.time() + 60}
-    require(attempts["count"] < 10, "로그인 시도가 많습니다.", "LOGIN_LIMIT", 429)
-    attempts["count"] += 1
-    security.login_attempts[remote] = attempts
-    admin = ctx.db.authenticate(body.get("username", ""), body.get("password", ""))
-    require(admin["role"] == "admin", "관리자 계정으로 로그인해 주세요.", "FORBIDDEN", 403)
-    security.login_attempts.pop(remote, None)
+    username = body.get("username", "")
+    try:
+        security.check_login_limit(request, username)
+        admin = ctx.db.authenticate(username, body.get("password", ""))
+    except ApiError as exc:
+        # Failed request transactions roll back. Operational logs retain the event
+        # without passwords, raw usernames, cookies or submitted request bodies.
+        logging.getLogger("haedap.auth").warning(
+            "Login rejected account=%s remote=%s code=%s",
+            security.digest(str(username)), request.client.host if request.client else "local", exc.code)
+        raise
+    security.clear_login_failures(username)
     security.end_session(request)
     security.start_session(ctx.response, admin)
     return {"user": admin}
@@ -32,9 +34,18 @@ def login(ctx):
 def logout(ctx):
     security.end_session(ctx.request)
     ctx.response.delete_cookie("haedap_session")
-    if ctx.user["role"] == "admin":
+    if ctx.user["role"] != "guest":
         ctx.db.audit(ctx.user, "auth", "로그아웃", ctx.user["username"])
     return {"ok": True, "user": ctx.guest}
 
 
-POST = {"auth/setup": setup, "auth/login": login, "auth/logout": logout}
+def password(ctx):
+    security.check_login_limit(ctx.request, ctx.user["username"])
+    user = ctx.db.change_password(ctx.user, ctx.body)
+    security.clear_login_failures(ctx.user["username"])
+    security.end_session(ctx.request)
+    security.start_session(ctx.response, user)
+    return {"user": user}
+
+
+POST = {"auth/setup": setup, "auth/login": login, "auth/logout": logout, "auth/password": password}

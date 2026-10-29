@@ -52,9 +52,8 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
   const close = () => action('closeModal').click();
   const submit = (form) => page.locator(form).evaluate((f) => f.requestSubmit());
   const dialogClosed = () => page.waitForFunction(() => !document.querySelector('dialog').open);
-  const login = async (password = '1234') => {
-    await action('openLogin').click();
-    await page.locator('#auth-username').fill('admin');
+  const login = async (password = 'E2e-personal-admin-2026', username = 'e2e-admin') => {
+    await page.locator('#auth-username').fill(username);
     await page.locator('#auth-password').fill(password);
     await submit('#authForm');
   };
@@ -80,23 +79,57 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     );
   const records = async () => (await api('/api/operations')).data.records;
 
-  await test.step('Root redirect, public workspace and brand', async () => {
+  await test.step('Anonymous access blocked; bootstrap password rotation and crew provisioning', async () => {
     await page.goto('/');
-    await action('openLogin').waitFor();
-    await page.waitForURL('**/chat');
+    await page.locator('#authForm').waitFor();
+    expect((await api('/api/documents')).status).toBe(401);
+    await expect(page.locator('#question')).toHaveCount(0);
+    await login('E2e-initial-only-2026');
+    await page.locator('#passwordForm').waitFor();
+    expect((await api('/api/documents')).data.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+    await page.locator('#auth-password').fill('E2e-initial-only-2026');
+    await page.locator('#auth-new-password').fill('E2e-personal-admin-2026');
+    await page.locator('#auth-confirm-password').fill('E2e-personal-admin-2026');
+    await submit('#passwordForm');
+    await page.locator('#question').waitFor();
+    await expect(page).toHaveURL(/\/chat$/);
     await expect(page.locator('.brand small')).toHaveText('SEA THE ANSWER');
+    await go('admin');
+    await action('adminTab').filter({ hasText: '사용자' }).click();
+    await action('newUser').click();
+    await page.locator('#f-name').fill('E2E 선원');
+    await page.locator('#f-username').fill('e2e-crew');
+    await expect(page.locator('#f-role')).toHaveValue('operator');
+    await page.locator('#f-password').fill('E2e-initial-crew-2026');
+    await submit('#userForm');
+    await dialogClosed();
+    await action('logout').click();
+    await page.locator('#authForm').waitFor();
+    await login('E2e-initial-crew-2026', 'e2e-crew');
+    await page.locator('#passwordForm').waitFor();
+    await page.locator('#auth-password').fill('E2e-initial-crew-2026');
+    await page.locator('#auth-new-password').fill('E2e-personal-crew-2026');
+    await page.locator('#auth-confirm-password').fill('E2e-personal-crew-2026');
+    await submit('#passwordForm');
+    await page.locator('#question').waitFor();
+    expect((await api('/api/users')).status).toBe(403);
   });
 
   await test.step('Question, real search, source dialog', async () => {
     await page.locator('#question').fill('연료 황 함유량 기준을 알려줘');
+    const answerResponse = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/ask' && response.request().method() === 'POST',
+      { timeout: 60_000 },
+    );
     await submit('#askForm');
+    expect((await answerResponse).ok()).toBe(true);
     await expect(page.locator('.answer')).toContainText('0.50%');
     await action('source').first().click();
     expect(await page.locator('dialog').evaluate((d) => d.open)).toBe(true);
     await close();
   });
 
-  await test.step('Document routing, direct refresh, guest controls', async () => {
+  await test.step('Document routing, direct refresh, crew controls', async () => {
     await go('docs');
     await expect(action('newDocument')).toHaveCount(0);
     await action('document').first().click();
@@ -108,7 +141,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect(page.url()).toBe(documentUrl);
   });
 
-  await test.step('Guest mutation buttons hidden and backend rejects writes', async () => {
+  await test.step('Crew mutation buttons hidden and backend rejects writes', async () => {
     await go('operations');
     for (const a of ['newShip', 'newRecord', 'importOperations', 'editRecord', 'deleteRecord'])
       await expect(action(a)).toHaveCount(0);
@@ -116,10 +149,12 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
   });
 
   await test.step('Failed login retry, admin login, sample initialization', async () => {
+    await action('logout').click();
+    await page.locator('#authForm').waitFor();
     await login('wrong');
     await page.locator('#authError').filter({ hasText: '올바르지' }).waitFor();
     await expect(page.locator('#authForm button[type=submit]')).toBeEnabled();
-    await page.locator('#auth-password').fill('1234');
+    await page.locator('#auth-password').fill('E2e-personal-admin-2026');
     await submit('#authForm');
     await action('logout').waitFor();
     await go('operations');
@@ -140,10 +175,44 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     const created = page.locator('.docrow').filter({ hasText: 'Next.js 검증 문서' });
     await created.waitFor();
     await created.locator('[data-action=document]').click();
+    const before = (await api('/api/documents')).data.documents.find((d) => d.title === 'Next.js 검증 문서');
+    const writes = [];
+    const recordWrite = (request) => {
+      if (request.url().endsWith('/api/changes') && request.method() === 'POST') writes.push(request.postDataJSON());
+    };
+    page.on('request', recordWrite);
+    await action('editDocument').click();
+    await expect(page.locator('#f-documentMode')).toHaveValue('metadata');
+    await expect(page.locator('#f-text')).toBeHidden();
+    await expect(page.locator('#f-text')).toHaveValue('');
+    await page.locator('[name=checked]').check();
+    await submit('#documentForm');
+    await dialogClosed();
+    expect(writes).toHaveLength(0);
+    await action('editDocument').click();
+    await page.locator('#f-issuer').fill('재청킹 방지 검증');
+    await page.locator('[name=checked]').check();
+    await submit('#documentForm');
+    await dialogClosed();
+    expect(writes).toHaveLength(1);
+    expect(writes[0].payload.mode).toBe('metadata');
+    expect(writes[0].payload.document).toEqual({ id: before.logical_id });
+    const after = (await api('/api/documents')).data.documents.find((d) => d.id === before.id);
+    expect(after.sections).toEqual(before.sections);
+    expect(after.reviewed_at).toBe(before.reviewed_at);
+    expect(after.meta.issuer).toBe('재청킹 방지 검증');
+    page.off('request', recordWrite);
     await action('editDocument').click();
     await expect(page.locator('#documentForm button[type=submit]')).toHaveText('저장');
+    await page.locator('#f-documentMode').selectOption('content');
     await page.locator('#f-title').fill('Next.js 수정 문서');
     await page.locator('#f-version').fill('2');
+    await expect(page.locator('#f-text')).toHaveValue('');
+    await page.locator('[name=checked]').check();
+    await submit('#documentForm');
+    expect(await page.locator('dialog').evaluate((d) => d.open)).toBe(true);
+    expect(await page.locator('#f-text').evaluate((el) => el.validity.valueMissing)).toBe(true);
+    await page.locator('#f-text').fill('--- PAGE 7 ---\n개정된 원문 전체를 다시 검토합니다.');
     await page.locator('[name=checked]').check();
     await submit('#documentForm');
     await dialogClosed();
@@ -238,9 +307,11 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect(await records()).toHaveLength(22);
   });
 
-  await test.step('Guest report generation, saving, navigation, reload, review submission', async () => {
+  await test.step('Crew report generation, saving, navigation, reload, review submission', async () => {
     await action('logout').click();
-    await action('openLogin').waitFor();
+    await page.locator('#authForm').waitFor();
+    await login('E2e-personal-crew-2026', 'e2e-crew');
+    await page.locator('#question').waitFor();
     await go('reports');
     await action('templateNoon').click();
     await page.waitForFunction(() => document.querySelector('#report-text')?.value.includes('Noon'));
@@ -261,9 +332,14 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     await action('submitReport').click();
     await confirm();
     await page.waitForFunction(() => document.querySelector('#report-text')?.readOnly);
+    await expect(action('deleteReport')).toHaveCount(0);
+    const guestReportId = decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1));
+    expect((await api('/api/reports/delete', { id: guestReportId, version: 1 })).status).toBe(403);
   });
 
   await test.step('Report approval workflow', async () => {
+    await action('logout').click();
+    await page.locator('#authForm').waitFor();
     await login();
     await action('logout').waitFor();
     await go('admin');
@@ -280,15 +356,41 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect(report.status).toBe('approved');
   });
 
+  await test.step('Admin report deletion and pending review cleanup', async () => {
+    await go('reports');
+    await page.locator('.docrow').filter({ hasText: '게스트 Next 보고서' }).locator('[data-action=openReport]').click();
+    const id = decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1));
+    await action('deleteReport').click();
+    await confirm();
+    await page.waitForURL('**/reports');
+    expect((await api('/api/reports/' + id)).status).toBe(404);
+    const created = await api('/api/reports', { title: '삭제 대기 보고서', type: '규정 검토',
+      text: '검토 대기 삭제 검증', sources: [], version: 0, body: {} });
+    const report = created.data.report;
+    const submitted = await api('/api/reports/submit', { id: report.id, version: report.version });
+    expect((await api('/api/reports/delete', { id: report.id, version: report.version + 1 })).status).toBe(409);
+    expect((await api('/api/reports/delete', { id: report.id, version: report.version })).status).toBe(200);
+    const changes = (await api('/api/changes')).data.changes;
+    expect(changes.find(change => change.id === submitted.data.id).status).toBe('rejected');
+    expect((await api('/api/changes/review', { id: submitted.data.id, decision: 'approve' })).status).toBe(409);
+    await go('admin');
+  });
+
   await test.step('Backup creation, restoration and login invalidation', async () => {
     await action('adminTab').filter({ hasText: '백업·복구' }).click();
+    const created = page.waitForResponse((response) =>
+      response.url().endsWith('/api/backups') && response.request().method() === 'POST');
     await action('createBackup').click();
-    await action('downloadBackup').first().waitFor();
-    await action('restoreBackup').first().click();
+    const { backup } = await (await created).json();
+    const restore = page.locator(`[data-action=restoreBackup][data-id="${backup.id}"]`);
+    await restore.click();
     await page.locator('#f-confirm').fill('복구');
     await submit('#restoreForm');
-    await action('openLogin').waitFor();
+    await page.locator('#authForm').waitFor();
     expect((await api('/api/health')).data.user.role).toBe('guest');
+    expect((await api('/api/operations')).status).toBe(401);
+    await login();
+    await action('logout').waitFor();
     expect(await records()).toHaveLength(22);
   });
 
@@ -385,10 +487,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect((await api('/api/reports')).data.reports).toHaveLength(before + 1);
     await page.getByRole('button', { name: '저장한 초안 열기', exact: true }).click();
     await expect(page).toHaveURL(/\/reports\//);
-    // The earlier report flow leaves a dirty editor draft; preserve its existing guard.
-    await expect(page.getByRole('heading', { name: '작성 중인 초안을 바꿀까요?' })).toBeVisible();
-    await confirm();
-    await dialogClosed();
+    await expect(page.locator('#report-title')).toHaveValue(value.result.draft.title);
     await expect(page.locator('#report-text')).toHaveValue(value.result.draft.text);
     await go('reports');
     const savedRow = page.locator('.docrow').filter({ hasText: value.result.draft.title });
@@ -434,7 +533,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
   await test.step('No browser exceptions or React warnings', async () => {
     expect(errors, 'Browser runtime errors').toEqual([]);
     const significant = warnings.filter(
-      (t) => !['favicon', '403', '401', '[HMR]', 'React DevTools'].some((s) => t.includes(s)),
+      (t) => !['favicon', '403', '401', '404', '409', '[HMR]', 'React DevTools'].some((s) => t.includes(s)),
     );
     expect(significant, 'React/browser warnings').toEqual([]);
   });

@@ -1,9 +1,9 @@
-# 0017. Chroma 서버를 공식 이미지 기반 전용 이미지로 분리
+# 0020. Chroma 서버를 공식 이미지 기반 전용 이미지로 분리
 
-- 상태: 대체됨(0018)
+- 상태: 대체됨(0021)
 - 날짜: 2026-10-29
 - 결정자: 문서/RAG 사용자의 서버 이미지 분리 요청
-- 관련: [계획](../plans/2026-10-29-chroma-image.md), [검색 계약](../specs/rag-vector.md), [이전 ADR 0016](0016-local-vector-retrieval.md)
+- 관련: [계획](../plans/2026-10-29-chroma-image.md), [검색 계약](../specs/rag-vector.md), [이전 ADR 0019](0019-local-vector-retrieval.md)
 
 ## 배경
 
@@ -18,7 +18,7 @@ UID/GID 10001, 실행 명령과 HTTP 헬스체크만 추가한다. Python/PyTorc
 내부 hostname `chroma:8000`, 선택적 profile `vector`는 유지한다. 호스트 포트는 열지 않는다.
 공식 이미지에 Python/curl이 없어 bash 내장 TCP로 `/api/v2/heartbeat`의 HTTP 200을 검사한다.
 
-ADR 0016의 나머지 결정인 PostgreSQL 원본, 로컬 E5 CPU 임베딩·길이 처리, 별도 모델/벡터 볼륨,
+ADR 0019의 나머지 결정인 PostgreSQL 원본, 로컬 E5 CPU 임베딩·길이 처리, 별도 모델/벡터 볼륨,
 허용 후보 사전 필터·완전한 색인 확인·BM25 fallback·RRF와 수동 재색인은 그대로 이어받는다.
 이 결정으로 검색 기본값이나 LLM 설정을 바꾸지 않는다.
 

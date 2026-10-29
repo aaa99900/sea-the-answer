@@ -3,7 +3,7 @@
 - 상태: 완료
 - 작성: Codex · 2026-10-29
 - 담당: 문서/RAG
-- 관련: [계약](../specs/rag-index-jobs.md), [ADR 0018](../adr/0018-durable-index-jobs.md)
+- 관련: [계약](../specs/rag-index-jobs.md), [ADR 0021](../adr/0021-durable-index-jobs.md)
 
 ## 1. 배경과 목표
 

@@ -1,14 +1,14 @@
 # OpenAI 호환 Chat Completions 공급자 계약
 
-- 상태: 구현됨 (2026-10-14 검토 반영, 모의 HTTP·API 94개 검증; 실제 공급자 미검증)
+- 상태: 구현됨 (공급자별 실제 호출 결과는 [변경 이력](../changelog.md)에 기록)
 - 작성: 정호영 · Codex 지원 · 2026-10-13
 - 관련: [전환 계획](../plans/2026-10-13-openai-compatible-chat.md), [통합 답변 계약](integrated-answer.md), [PR #8](https://github.com/dudco/sea-the-answer/pull/8)
 
 ## 1. 목적
 
-팀장이 지정한 OpenAI 호환 Chat Completions를 하나의 호출 경계로 사용해 OpenAI·동국 AI Chat·로컬 Ollama를 설정으로 전환한다. #8 머지 후 구현·PR 작성에 대한 사용자 지시에 따라 아래 환경변수와 기본값을 구현 기준으로 확정했다. 동국의 실제 접속 정보와 실검증은 별도 미확정 항목으로 유지한다.
+팀장이 지정한 OpenAI 호환 Chat Completions를 하나의 호출 경계로 사용해 OpenAI·동국 AI Chat·로컬 Ollama를 설정으로 전환한다. #8 머지 후 구현·PR 작성에 대한 사용자 지시에 따라 아래 환경변수와 기본값을 구현 기준으로 확정했다. 동국 접속 정보와 실제 호출은 2026-10-14 확인했으며 공급자별 결과는 변경 이력에 구분한다.
 
-2026-10-13 #8은 머지 커밋 `196ad73`으로 반영되었다. 해당 머지본의 OpenAI Responses 호출을 `backend/api/llm.py`의 Chat Completions 호출로 전환했다. 공급자 간 실제 호환성과 동국의 접속 정보는 별도로 검증해야 한다.
+2026-10-13 #8은 머지 커밋 `196ad73`으로 반영되었다. 해당 머지본의 OpenAI Responses 호출을 `backend/api/llm.py`의 Chat Completions 호출로 전환했다. 검증한 공급자·모델·출력 형식 이외의 조합도 모두 호환된다고 해석하지 않는다.
 
 ## 2. 범위
 
@@ -42,18 +42,18 @@
 | 백엔드와 모델 위치 | `LLM_API_BASE_URL` 예시 | 전제 |
 |---|---|---|
 | OpenAI | `https://api.openai.com/v1` | 유효한 키·허용된 모델 필요 |
-| 동국 AI Chat | `https://factchat-cloud.mindlogic.ai/v1/gateway` | `DONGUK_AI_CHAT_API_KEY`(API Gateway 메뉴에서 발급)와 정확한 모델 ID 필요. 이 호스트는 `/chat/completions/`(끝 슬래시)로 호출([ADR 0014](../adr/0014-mindlogic-gateway-host.md)). 실제 호출은 미검증 |
+| 동국 AI Chat | `https://factchat-cloud.mindlogic.ai/v1/gateway` | `DONGUK_AI_CHAT_API_KEY`(API Gateway 메뉴에서 발급)와 정확한 모델 ID 필요. 이 호스트는 `/chat/completions/`(끝 슬래시)로 호출([ADR 0014](../adr/0014-mindlogic-gateway-host.md)). `gpt-6-luna` 실제 호출은 2026-10-14 검증 |
 | PC에서 직접 실행하는 백엔드 → 같은 PC의 Ollama | `http://127.0.0.1:11434/v1` | Ollama 실행·선택 모델 설치 필요 |
 | Docker Desktop 백엔드 → 호스트 PC의 Ollama | `http://host.docker.internal:11434/v1` | 호스트의 Ollama 수신 주소·방화벽과 컨테이너 연결 가능 여부 확인 |
 | 같은 Docker 네트워크의 Ollama 서비스 | `http://ollama:11434/v1` | `ollama`라는 서비스가 실제로 존재할 때만 사용. #8에는 이 서비스가 없음 |
 
 사용자가 제공한 동국 AI Chat 접속 링크는 [대시보드 채팅 주소](https://aichat.dongguk.edu/dashboard/chat)다. 이 주소의 경로만으로 모델 호출용 API 접두 주소를 결정할 수 없으며 `LLM_API_BASE_URL`에 그대로 넣지 않는다. 2026-10-13 웹 도구로 해당 주소와 서비스 루트에 접근을 시도했으나 페이지 본문을 읽지 못했고, 공개 검색에서도 적용할 공식 API 안내를 확보하지 못했다. 로그인 필요 여부·API 제공 여부·정확한 API 경로는 확인하지 못했으므로 추정하지 않는다. `OAOpenAI` 같은 경로 이름도 공식 엔드포인트 확인을 대신하지 않는다.
 
-후속 확인: 로그인한 서비스에서 API 연동·개발자·키 관리 안내를 제공한다면 그 공식 안내의 API 기본 주소·모델 ID·인증 방식을 확인한다. 해당 메뉴의 존재는 아직 확인하지 않았다. 안내가 없으면 팀에서 사용하는 공식 호출 예시를 확보한다. 실제 키·쿠키·로그인 토큰은 준비 문서에 넣지 않는다.
+후속 확인(2026-10-14): API Gateway 메뉴의 주소와 인증 방식을 확인하고 실제 호출에 성공했다([변경 이력](../changelog.md)). 위 2026-10-13 기록은 당시의 조사 한계다. 실제 키·쿠키·로그인 토큰은 문서에 넣지 않는다.
 
 Docker 컨테이너의 `127.0.0.1`은 컨테이너 자신이다. Linux Docker Engine에서는 호스트 연결을 위해 `extra_hosts: ["host.docker.internal:host-gateway"]` 등이 필요할 수 있다. Ollama는 기본적으로 루프백에서 수신하므로 연결 실패 시 `OLLAMA_HOST`와 방화벽을 확인한다. 호스트 바인딩을 바꾸면 접속 범위도 바뀌므로 사용 환경에 맞게 제한한다. [Docker Compose 네트워크 안내](https://docs.docker.com/compose/how-tos/networking/), [Ollama 환경설정 안내](https://docs.ollama.com/faq)
 
-기존 루트 `.env`에 아래 항목만 추가·수정하며 파일 전체를 덮어쓰지 않는다. 모델 자리표시는 `ollama list`에서 확인한 실제 설치 모델로 바꾼다. 설정 처리는 구현·모의 검증했으며 아래 실제 Ollama 접속은 아직 미검증이다.
+기존 루트 `.env`에 아래 항목만 추가·수정하며 파일 전체를 덮어쓰지 않는다. 모델 자리표시는 `ollama list`에서 확인한 실제 설치 모델로 바꾼다. [로컬 실행 절차](../user-guide.md#로컬-ollama-실행)와 변경 이력에서 검증 환경을 확인한다. 호스트 직접 실행과 Docker 컨테이너의 접속 결과는 별도로 구분한다.
 
 ```dotenv
 # Docker Desktop의 backend -> 호스트 PC의 로컬 Ollama
@@ -160,10 +160,37 @@ Chat Completions의 텍스트는 `choices[0].message.content`에서 읽는다. J
 - [x] PR #11 당시 Compose는 모델 설정을 backend에만 전달하며 기본 e2e에는 실제 모델 설정을 전달하지 않았다. 당시 Linux CI 검사·격리 e2e 통과는 이전 변경 검증이며, 현재 CI 워크플로는 별도 PR로 분리한다.
 - [x] 실제 동국 AI Chat에서 문서 질문 1건 이상이 `generation=llm`, 유효 인용, 모델 실패 경고 없음으로 확인된다. (2026-10-14, `https://factchat-cloud.mindlogic.ai/v1/gateway` · `gpt-6-luna`, [변경 이력](../changelog.md))
 - [x] 2026-10-14 검토 반영 코드에 별도 워크플로만 추가한 검증 브랜치에서 PostgreSQL 포함 백엔드 245개, 프런트 테스트·빌드, Compose 3종·Docker e2e와 정리 통과. 실제 모델 연결 검증은 포함하지 않는다([검증 기록](../changelog.md)).
-- [ ] 실제 로컬 Ollama에서도 위 기준을 확인하고, Docker 사용 시 컨테이너에서 호스트 모델에 도달함을 확인한다.
+- [x] 실제 로컬 Ollama의 영문 답변에서 `generation=llm`·유효 인용·실패 경고 없음을 확인했다(2026-10-21, Ollama 0.40.6·`qwen2.5:3b`·`json_schema`). 한국어 요청은 근거 부족 응답이므로 한국어 품질 수용 기준을 충족한 것으로 간주하지 않는다.
+- [x] 2026-10-28 같은 모델의 가상 한국어 단문으로 실제 브라우저→API→DB→모델 생성·원문 인용·오류 발췌 전환을 확인했다. 고정 근거 16문항/동일 6문항 비교는 별도이며 일반 한국어 품질 합격은 미충족으로 남긴다([변경 이력](../changelog.md)).
+- [x] Docker 컨테이너 → 호스트 Ollama 연결을 실제 검증했다(2026-10-29, Windows Docker Desktop 4.97.0·Ollama 0.40.6·`qwen2.5:3b`·`json_schema`). 현재 소스와 같은 backend 이미지에서 가상 한국어 단문·유효 인용을 확인했다. 호스트 직접 실행·모델 비활성 e2e·일반 품질 평가와 구분한다([변경 이력](../changelog.md)).
 
 ## 6. 열린 질문
 
-- 동국 AI Chat API 기본 주소는 `https://factchat-cloud.mindlogic.ai/v1/gateway`로 확인했다(2026-10-14). 모델 ID·지원 옵션과 실제 호출 성공은 아직 미확인이다. 일반적인 OpenAI 호환 계약을 준비했으며 실제 서버 동작을 확인한 것은 아니다.
+- 동국 AI Chat API 기본 주소는 `https://factchat-cloud.mindlogic.ai/v1/gateway`, 검증 모델은 `gpt-6-luna`다(2026-10-14). 다른 모델과 출력 옵션은 공급자 지원 범위를 별도로 확인한다.
 - 선택적 JSON 형식은 `LLM_RESPONSE_FORMAT=text` 기본값으로 확정했다. 출력 토큰 제한 옵션이 필요한 환경에서는 해당 공급자·모델 지원을 확인해 후속 계약을 정한다. 특정 모델의 미지원 옵션을 다른 모델로 바꿔 회피하지 않는다.
 - 로컬 모델의 최초 적재·응답 시간이 25초를 넘는다면 시간 제한 정책을 프록시 설정과 함께 정한다.
+
+## 7. 한국어 생성·고정 근거 평가 계약 (2026-10-28 확정)
+
+### 언어와 근거
+
+- `text`는 요청 언어로 설명하고 `quote`는 근거의 원래 언어·표기·공백을 그대로 복사한다. 한국어 답변에 영문 원문을 인용할 수 있으며 반대도 같다.
+- 번역이 필요하다는 이유만으로 `insufficient=true`를 반환하지 않도록 명시한다. 실제로 질문을 뒷받침하는 근거가 없으면 기존 근거 부족 계약을 유지한다.
+- 답변 예시는 출력 구조를 설명하기 위한 서버 지시다. 예시에 등장한 사실·ID를 실제 답변 근거로 사용하지 않는다. 질문·문서 안의 지시문은 신뢰하지 않는다.
+- 한국어 출력·의미적 근거 충실성을 검사하기 위해 기존 JSON·근거 ID·원문 포함 검증을 완화하거나, 잘못된 응답을 추측해서 고치거나, 자동 재시도하지 않는다.
+
+### 평가 CLI
+
+이 절은 `scripts/evaluate_llm.py` 구현 전 확정한 개발자용 계약이다. HTTP API·DB·서비스 런타임 계약은 바꾸지 않는다.
+
+- `uv run --project backend python scripts/evaluate_llm.py`는 기본 `--mode extractive`로 실행한다. 기본 문서의 고정 근거만 사용하며 DB·네트워크·실제 모델을 호출하지 않는다.
+- `--mode llm`을 명시하면 프로세스의 기존 `LLM_*`·`OPENAI_MODEL` 설정과 `config.llm_settings()`·`llm.grounded_statements()`를 사용해 실제 모델을 호출한다. 설정이 없거나 잘못됐으면 호출하지 않고 실패한다. 개인 `.env`는 자동으로 읽거나 수정하지 않는다.
+- 기본 평가 세트는 `scripts/fixtures/korean-llm-eval.json`의 16개 한국어 질문이다. 고정 근거는 `backend/knowledge/seed.json`의 문서 ID·section heading·원문 anchor로 검증한다. 자료는 제공 문서 내용 기준의 회귀 사례이며 현행 법률 판정용 정답 집합이 아니다.
+- `--case <id>`를 반복해 일부 사례만 실행할 수 있다. `--output <path>`는 UTF-8 JSON 결과를 새 파일에 저장하며 기존 파일은 덮어쓰지 않는다. 출력 경로를 생략하면 표준 출력으로 JSON을 반환한다.
+- 결과는 실행 모드, 실제 모델 호출 여부, 모델 ID·출력 형식·호출 코드 해시(`llm_code_sha256`)·질문/근거/기대값 입력 해시(`evaluation_input_sha256`), 질문·근거 식별자·기대 답변 요지, 실제 답변과 인용, 사례별 소요 시간·결과(`answered`, `insufficient`, `model_error`), 원문 인용 유효성·한글 포함 여부를 기록한다. 예상 근거 부족과 실제 결과의 일치 여부는 기술 지표이며 의미적 정답률이 아니다.
+- 원문 발췌 결과를 실제 모델 성공으로 집계하지 않는다. 실제 모델 오류는 발췌로 위장하지 않고 `model_error`와 `ReadTimeout`·`ConnectError`·`ValueError` 등 예외 클래스 이름만 남긴다. 원본 오류·키·Authorization 헤더는 기록하지 않는다. 출력 경로는 모델 호출 전에 배타적 생성으로 확보해 저장할 수 없는 경로에서는 모델을 호출하지 않는다.
+- 의미 정답성·한국어 품질은 `semantic_review=pending`으로 남기고 사람이 기대 답변·실제 답변·인용문을 대조한다. 한글이 포함됐다는 검사만으로 한국어 품질 합격을 주장하지 않는다.
+- 이 평가는 검색 단계를 고정하므로 검색 성능·사용자 인증·권한 필터·Docker·브라우저 전체 연결의 성공을 증명하지 않는다. 해당 검증은 별도로 수행·기록한다.
+- 종료 코드는 0(실행 완료), 1(설정·사례·출력·모델 오류), 2(잘못된 CLI 인자 문법)이다. 근거 부족은 정상 모델 응답이며 그 자체로 실행 오류가 아니다.
+
+구현·실제 검증 진행 상태는 [작업 계획](../plans/2026-10-28-korean-llm-validation.md), 실제 결과는 [변경 이력](../changelog.md)을 따른다.

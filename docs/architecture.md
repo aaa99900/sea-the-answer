@@ -1,6 +1,6 @@
 # 아키텍처
 
-> 대상 버전: 1.4.0 · 최종 확인: 2026-10-15 (코드 대조)
+> 대상 버전: 1.4.0 · 최종 확인: 2026-10-28 (코드 대조)
 > 이 문서는 **현재 구현**을 설명합니다. 앞으로 바꿀 계획은 [`plans/`](plans/), 바뀌지 않을 결정의 이유는 [`adr/`](adr/)에 있습니다.
 
 ## 현재 Python 문서 경로 (2026-10-13)
@@ -8,6 +8,8 @@
 현재 실행 코드는 `backend/api/main.py`(FastAPI)와 `backend/api/store/`(PostgreSQL·업무 로직)이다. 전처리 모듈은 `api/` 패키지 안에 두어 backend 단독 실행과 Docker 운영 이미지에서 같은 경로로 사용한다.
 
 문서 등록: `frontend/src/lib/pdf.js`가 브라우저에서 페이지별 텍스트를 추출 → `controller.jsx`에서 사용자가 검토한 본문을 sections로 변환 → `POST /api/changes` (`document.save`) → `api/store/documents.py`의 `DocumentStore.save_document` → `api/rag_preprocessing.py` → 기존 `documents`, `chunks`, `chunk_pages`, `document_files` 저장. 원본 PDF는 기존과 같이 base64로 보존하며 외부 추출 서비스에 보내지 않는다.
+
+2026-10-18 문서 정보 수정 경로: `frontend/src/lib/document-save.js`가 정보 변경과 본문 개정을 구분한다. `document.save`의 `mode: "metadata"`는 같은 저장 모듈에서 현재 개정·정보 버전을 검사하고 `document_meta`만 갱신한다. 본문 개정은 새로 제공한 원문만 전송하고 기존 조회 청크를 원문으로 재사용하지 않는다. 신규 원문 전처리 결과가 0개면 저장을 거부한다. DB 스키마·검색 알고리즘·백업 구조는 유지한다.
 
 전처리는 웹·DB 의존성이 없는 함수이고 문서 ID·제목은 저장 계층에서 기존 관계로 연결한다. 청킹 규칙과 변경 적용 범위는 [API 전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정), 검증과 새 구조 통합 기록은 [작업 기록](plans/2026-10-13-rag-preprocessing.md)에 있다. 2026-10-14부터 검색은 `api/rag_retrieval.py`의 BM25Okapi를 사용한다. 저장 계층이 권한·상태·종류를 먼저 필터링하고 모듈은 허용된 청크만 토큰화·정렬한다. PostgreSQL 저장·개정·전처리는 변경하지 않는다.
 
@@ -71,7 +73,7 @@ flowchart LR
 1. 브라우저 요청은 모두 Next.js가 받습니다. 화면·`/_next/*`·`frontend/public` 리소스는 Next.js가 직접 응답합니다.
 2. `/api/:path*`는 `proxy.js`(Next.js 16의 `middleware` 후속, Node.js 런타임)가 `NextResponse.rewrite`로 `HAEDAP_API_ORIGIN/api/:path*`에 프록시합니다. 원래 `Host`는 `X-Forwarded-Host`에 들어갑니다. 쿠키·`Set-Cookie`는 그대로 오갑니다.
 3. 프록시 설정(`experimental`): 요청 본문 최대 **101MB**(PDF 포함 문서 등록 38MB, 백업 가져오기 100MB), 응답 대기 **60초**.
-4. FastAPI의 `/api/{path}` 하나가 모든 앱 API를 받습니다. 요청마다 PostgreSQL 연결을 열고(`Workspace`), 첫 요청에서 `bootstrap()`(관리자 계정·기본 설정·`knowledge/seed.json` 문서 등록)을 한 번 실행합니다.
+4. FastAPI의 `/api/{path}` 하나가 모든 앱 API를 받습니다. 요청마다 PostgreSQL 연결을 열고(`Workspace`), 첫 요청에서 `bootstrap()`(명시적 초기 관리자 설정·기본 설정·`knowledge/seed.json` 문서 등록)을 한 번 실행합니다.
 5. **Host·Origin 검사**(`validate_origin`): `X-Forwarded-Host`(없으면 `Host`)의 호스트 이름이 `localhost`, `127.0.0.1`, `HAEDAP_ALLOWED_HOSTS`에 있어야 하고, `Origin`이 있으면 같은 주소여야 합니다. 아니면 403.
 6. 동시 요청 4개 제한, 백업 복구 중 다른 요청 차단(PostgreSQL advisory lock), 1분마다 자동 백업 여부 확인.
 7. `MARITIME_DATA_API_TOKEN`이 설정되어 있으면 `/api/maritime-data/*` 라우터가 `/api/{path}`보다 먼저 등록됩니다(8절).
@@ -116,7 +118,7 @@ sequenceDiagram
 |---|---|
 | `api/main.py` | FastAPI 앱 생성, lifespan(자동 백업 루프), 해사 데이터 라우터 마운트, 오류 응답 형식 |
 | `api/web/handler.py` | `/api/{path}` 진입점: 요청 슬롯, Content-Type·본문 크기, DB 세션, 인증·CSRF 후 `routes.dispatch` |
-| `api/web/security.py` | Host·Origin 검사, 게스트 쿠키, 관리자 세션(메모리), CSRF 토큰, 로그인 시도 기록 |
+| `api/web/security.py` | Host·Origin 검사, 기존 게스트 식별자, 개인 계정 세션(메모리), CSRF 토큰, 로그인 시도 기록 |
 | `api/web/concurrency.py` | 동시 요청 4개 제한, 복구 단독 실행(프로세스 카운터 + PostgreSQL advisory lock) |
 | `api/web/backup_job.py` | 1분마다 확인하는 하루 1회 자동 백업 |
 | `api/routes/` | 경로 표와 도메인별 핸들러: `system`(health·tools), `auth`, `documents`(문서·PDF·ask·search·history), `operations`, `changes`, `reports`, `admin`(users·logs·backups) |
@@ -137,17 +139,19 @@ DB 스키마는 backend가 아니라 최상위 `migrations/`(dbmate)가 소유�
 
 개발자용 `scripts/debug_bm25.py`는 backend 기본 uv 의존성만 사용하는 읽기 전용 진단 도구다. `DocumentStore.search_candidates`의 기존 조회·권한·상태·kind 필터와 `rag_retrieval.query_tokens/chunk_tokens/retrieve`를 공유한다. API는 계속 score 없는 상위 5개를 반환하고, CLI만 점수·일치 토큰·미리보기를 출력한다. DB READ ONLY 트랜잭션에서 실행하며 초기화·저장·질문 이력·LLM 호출은 하지 않는다. 운영 이미지에는 스크립트를 포함하지 않고 실행할 때 읽기 전용 마운트한다. 기본 guest 또는 명시한 기존 활성 계정의 scope를 적용하며 DB 자격 증명을 가진 개발자 전용이다. [실행 방법](../README.md#bm25-개발자-디버그), [출력 계약](specs/api.md#개발자-진단-cli-계약-2026-10-15-확정).
 
+개발자용 `scripts/evaluate_llm.py`는 기본 문서에서 고정 근거를 골라 한국어 생성만 비교한다. 기본 원문 발췌는 네트워크 없이 실행하고, 명시적 `--mode llm`만 기존 `api/llm.py`의 실제 모델 호출·원문 인용 검증을 사용한다. DB·검색·권한·이력 저장 경로를 호출하지 않으며 서비스 런타임에도 포함하지 않는다. 결과의 의미적 정답성은 사람 검토로 남긴다. [평가 계약](specs/llm-provider.md#7-한국어-생성고정-근거-평가-계약-2026-10-28-확정), [실행 방법](../README.md#한국어-답변-고정-근거-평가).
+
 `frontend/tests/`는 CSV·PDF 유틸 단위 테스트(`npm test`), 최상위 `e2e/tests/`는 화면 → API → DB 전체 흐름 검증(Playwright)입니다.
 
 ## 4. 보안 경계
 
 모듈을 교체하더라도 아래 경계는 유지해야 합니다.
 
-- **접속 범위**: 공개되는 포트는 frontend 하나입니다. 기본 바인딩은 `127.0.0.1`(이 PC만). `HAEDAP_BIND=0.0.0.0`으로 LAN·서버 접속을 열고, 접속에 쓰는 호스트 이름·IP를 `HAEDAP_ALLOWED_HOSTS`에 넣습니다. TLS는 포함하지 않으므로 인터넷 공개 시 앞단에 리버스 프록시(TLS)가 필요합니다.
+- **접속 범위**: 공개되는 포트는 frontend 하나입니다. 기본 바인딩은 `127.0.0.1`(이 PC만). `HAEDAP_BIND=0.0.0.0`으로 LAN·서버 접속을 열고, 접속에 쓰는 호스트 이름·IP를 `HAEDAP_ALLOWED_HOSTS`에 넣습니다. TLS는 포함하지 않으므로 운영에는 앞단 HTTPS 리버스 프록시와 `HAEDAP_HTTPS=true`가 필요합니다. 외부 업무 접속은 조직의 VPN·추가 인증 정책을 함께 적용합니다.
 - **내부 API·DB**: backend와 db는 compose 내부 네트워크에만 있고 운영 구성에서는 호스트에 공개하지 않습니다(개발 오버레이만 `127.0.0.1`로 공개). backend는 compose 네트워크 안에서만 접근되므로 로그인 시도 제한을 위해 `X-Forwarded-For`를 신뢰합니다(`--forwarded-allow-ips *`).
 - **접속자 IP 범위**: 백엔드는 접속자 IP·서브넷을 검사하지 않습니다. 같은 서브넷으로 제한하려면 OS 방화벽을 씁니다(Ubuntu: `ufw allow from 192.168.0.0/24 to any port 5173`).
 - **단일 출처**: 브라우저는 Next.js 주소 하나만 사용. Origin 검사는 실제 호스트(`X-Forwarded-Host`) 기준.
-- **인증**: 관리자만 로그인(salt + scrypt, HttpOnly·SameSite=Strict 세션 쿠키, 12시간, 서버 메모리 보관 — backend 재시작 시 로그아웃). 일반 사용자는 무작위 `haedap_guest` 쿠키로 작업공간만 구분(인증 수단 아님).
+- **인증**: 선원·관리자·열람 계정의 서버 세션. 익명 업무 API 차단, 초기 비밀번호 교체, 30분 유휴·12시간 절대 만료, 계정 버전·활성 상태 재확인. HttpOnly·SameSite=Strict 및 HTTPS 운영 시 Secure 쿠키. 상세 계약은 [authentication.md](specs/authentication.md), 운영 조건은 [사용 안내 2절](user-guide.md#2-역할과-승인)을 따릅니다. backend 재시작 시 세션과 로그인 제한 기록이 초기화되는 단일 worker 구조입니다.
 - **쓰기 보호**: 모든 POST는 JSON + `X-Haedap-Token` 필요. 원본 자료(문서·선박·운항) 변경은 서버에서 관리자 여부를 검사.
 - **열람 범위**: 문서 `scope`(all/operator/admin)를 **검색 단계부터** 적용하고, 원본 PDF·보고서 근거·질문 이력 재열람에도 다시 검사.
 - **LLM 인증키 격리**: `LLM_API_BASE_URL`을 파싱한 호스트가 `api.openai.com`이면 `OPENAI_API_KEY`, `dongguk.edu` 또는 하위 도메인이면 `DONGUK_AI_CHAT_API_KEY`만 선택. 해당 키가 없으면 모델 비활성. 로컬 Ollama·기타 호환 서버에는 두 키가 설정되어 있어도 인증 헤더를 보내지 않음. URL 경로·유사 도메인으로 키를 선택하지 않음([ADR 0013](adr/0013-provider-credential-isolation.md)).
@@ -184,7 +188,7 @@ DB 스키마는 backend가 아니라 최상위 `migrations/`(dbmate)가 소유�
 ## 7. 알려진 한계
 
 - 문서 청크를 요청마다 읽고 권한 필터 후 메모리 BM25 인덱스를 만드는 캡스톤 데모 규모 설계. 대규모 운영에는 인덱스 재사용·페이징·파일 저장소·TLS·로그 보존 정책이 필요.
-- 검색은 Kiwi 한국어 형태소·영숫자·제한된 해사 별칭·불용어 기반이다. 한글 bigram은 제거했다. 분석기만 프로세스 단위로 재사용하며 corpus는 요청마다 분석하므로 첫 모델 초기화와 큰 corpus에서 지연이 있을 수 있다. 사전 밖 용어·다의어·영문 활용형·의미 검색에는 한계가 있다. 작은 corpus의 BM25 점수는 0 또는 음수일 수 있으며 확률이 아니다. 상세 규칙은 [검색 계약](specs/api.md#문서-검색-bm25)을 따른다.
+- 검색은 Kiwi 한국어 형태소·영숫자·제한된 해사 별칭·불용어 기반이다. 한글 bigram은 제거했다. 분석기와 동일 내용 청크의 분석 토큰을 프로세스 단위로 재사용한다. 토큰 캐시는 SHA-256 키·불변 튜플만 보관하며 최대 2,048항목·계산 객체 크기 합 16MiB의 LRU로 제한한다. 현재 DB에서 확인한 권한·선택 문서·활성 개정 후보만 검색에 참여하고 BM25 인덱스는 매 요청 새로 만든다. 결과·원문·질의·권한 인덱스는 캐시하지 않는다. 최초·변경·퇴출된 청크 분석과 큰 corpus의 인덱스 생성 비용은 남는다. 토큰 메모리 보관의 제한과 위험은 [ADR 0017 제안](adr/0017-bounded-chunk-token-reuse.md)에 기록했다. 사전 밖 용어·다의어·영문 활용형·의미 검색에는 한계가 있다. 작은 corpus의 BM25 점수는 0 또는 음수일 수 있으며 확률이 아니다. 상세 규칙은 [검색 계약](specs/api.md#문서-검색-bm25)을 따른다.
 - 관리자 세션은 backend 프로세스 메모리에 있어 backend를 여러 개 띄우면 공유되지 않음.
 - 질문 유형 분기는 단어 규칙 기반. 질문 속 날짜·선박명 자동 추출은 미구현.
 
@@ -210,7 +214,7 @@ flowchart LR
 
 `vessels.ship_id`의 선택적 외래키로 기존 앱 `ships`를 재사용합니다. 연결은 준비 CLI의 명시적 매핑으로만 수행하고 외부 선박 전체를 자동 등록하지 않습니다. MRV는 보고기간 단위이므로 기존 일별 `operations`로 분해하지 않습니다. 원본 식별자와 REAL/SYN 구분, 출처·품질 정보를 그대로 유지합니다.
 
-독립 Tool 라우트는 서버 전용 Bearer 토큰을 요구합니다. 기존 화면의 실행 패널은 이 토큰을 받지 않고 일반 앱의 `/api/skills/run`을 호출합니다. 서버가 앱 ID의 명시 매핑과 IMO 정체성을 확인한 뒤 계산 함수를 직접 실행하고 queries/query_owner/audit에 기록합니다. 접근 범위는 기존 앱의 공개 운항 조회 정책을 따르며 사용자별 선박 ACL은 추가하지 않았습니다. 공식 CII 등급은 생성하지 않으며, 독립 Tool `/ask`의 실제 LLM 호출은 계속 비활성입니다.
+독립 Tool 라우트는 서버 전용 Bearer 토큰을 요구합니다. 기존 화면의 실행 패널은 이 토큰을 받지 않고 일반 앱의 `/api/skills/run`을 호출합니다. 서버가 앱 ID의 명시 매핑과 IMO 정체성을 확인한 뒤 계산 함수를 직접 실행하고 queries/query_owner/audit에 기록합니다. 접근 범위는 기존 앱의 로그인·역할 기반 운항 조회 정책을 따르며 사용자별 선박 ACL은 추가하지 않았습니다. 공식 CII 등급은 생성하지 않으며, 독립 Tool `/ask`의 실제 LLM 호출은 계속 비활성입니다.
 
 `tools.api.create_app()`은 테스트·역할4 도구용 독립 앱으로 남아 있습니다. 마이그레이션은 앱과 해사 DDL을 소유하고 loader는 DDL을 실행하지 않습니다. 기존 단일 스키마 채택·rollback 제한과 앱 복구 시 선박 연결 정책은 [데이터 모델](data-model.md#9-postgresql-해사-데이터-tool-선택)에 정의합니다. 입출력은 [API 명세](specs/tools.md), 데이터 확보는 [운영 안내](user-guide.md#10-해사-데이터-tool-선택)를 참고하세요.
 ## 선택적 로컬 벡터/RRF 검색 경계
@@ -226,12 +230,13 @@ Chroma 서버는 Docker 내부 전용이며 자동 worker와 함께 기본 실�
 공식 Chroma 1.5.9에 기존 UID/GID 10001·저장 경로와 bash HTTP 헬스체크만 추가한다.
 CPU PyTorch·E5 실행·Python 클라이언트는 backend/worker에 있다. 모델은 이미지 `/opt/models/e5-small`, 벡터는 named volume이다.
 PostgreSQL만 원본이므로 Chroma 결과의 본문을 신뢰하지 않고 현재 후보 행으로 결과를 구성한다.
-기본 BM25는 모델/Chroma를 로딩하지 않으며 캐시 커밋을 이 작업에 병합하지 않았다.
-상세 실패·부분 색인·동기화 정책은 [검색 계약](specs/rag-vector.md), 현재 선택 이유는 [ADR 0018](adr/0018-durable-index-jobs.md) 참고.
+기본 BM25는 E5/Chroma를 로딩하지 않으며 upstream/main의 제한된 분석 토큰 캐시를 사용한다.
+상세 실패·부분 색인·동기화 정책은 [검색 계약](specs/rag-vector.md), 현재 선택 이유는 [ADR 0021](adr/0021-durable-index-jobs.md) 참고.
 
 ### 자동 색인 경계
 
 `rag_jobs.enqueue`는 `save_document`와 같은 트랜잭션으로 작업을 기록한다.
+정보만 수정하는 경로와 변경 없는 저장도 같은 작업을 요청한다. 원문·청크·PDF는 그대로 유지한다.
 `rag_worker`는 전용 DB 세션에서 커밋된 작업을 획득하며 임베딩 동안 DB 트랜잭션을 열어두지 않는다.
 세션 advisory lock은 중복 worker를 막고, generation/claim token은 오래된 완료를 막는다.
 실패 정책·CLI 계약은 [rag-index-jobs](specs/rag-index-jobs.md)에 정의한다. 웹 응답은 색인을 기다리지 않는다.

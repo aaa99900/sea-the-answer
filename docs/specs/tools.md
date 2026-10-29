@@ -6,7 +6,7 @@
 
 ## 목적과 범위
 
-PostgreSQL 해사 데이터를 읽는 `backend/tools/`의 요청·응답·오류·산술 범위를 정의합니다. `MARITIME_DATA_API_TOKEN`이 설정되면 앱 backend(FastAPI)에 `/api/maritime-data/*`로 함께 마운트되고([ADR 0009](../adr/0009-split-packages-and-compose.md)), 독립 앱(`create_app`)으로도 실행할 수 있습니다. Tool 경로·요청·응답은 두 방식이 같습니다. [앱 API](api.md)와 달리 서버 전용 Bearer 토큰을 씁니다. 운항 정보 화면의 MRV 업무는 별도 [일반 앱 어댑터](workflow-skills.md)에서 명시 매핑·IMO 정체성·기존 공개 접근 정책을 검증하고 Python 계산 함수를 호출합니다. 사용자별 선박 ACL과 자연어 자동 Tool 선택은 추가하지 않았습니다.
+PostgreSQL 해사 데이터를 읽는 `backend/tools/`의 요청·응답·오류·산술 범위를 정의합니다. `MARITIME_DATA_API_TOKEN`이 설정되면 앱 backend(FastAPI)에 `/api/maritime-data/*`로 함께 마운트되고([ADR 0009](../adr/0009-split-packages-and-compose.md)), 독립 앱(`create_app`)으로도 실행할 수 있습니다. Tool 경로·요청·응답은 두 방식이 같습니다. [앱 API](api.md)와 달리 서버 전용 Bearer 토큰을 씁니다. 운항 정보 화면의 MRV 업무는 별도 [일반 앱 어댑터](workflow-skills.md)에서 명시 매핑·IMO 정체성·기존 로그인·역할 기반 접근 정책을 검증하고 Python 계산 함수를 호출합니다. 사용자별 선박 ACL과 자연어 자동 Tool 선택은 추가하지 않았습니다.
 
 | 메서드·경로 | 역할 | Bearer 토큰 |
 |---|---|---|

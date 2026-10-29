@@ -189,7 +189,7 @@ export function createOperationsViews(model, views) {
                           {btn('수정', 'editRecord', 'sm', '', {
                             'data-id': r.id,
                           })}
-                          {btn('삭제', 'deleteRecord', 'ghost sm', '', {
+                          {btn('삭제', 'deleteRecord', 'danger-outline sm', '', {
                             'data-id': r.id,
                           })}
                         </div>

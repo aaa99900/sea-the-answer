@@ -1,6 +1,5 @@
 import React from 'react';
 import * as helpers from '../components/common';
-import { sectionsToText } from '../lib/pdf';
 export function createForms(model, views) {
   const noop = () => {};
   const { state, isAdmin } = model;
@@ -65,55 +64,101 @@ export function createForms(model, views) {
     return form(
       'documentForm',
       <>
-        <p className={'small muted mb'}>
-          {'PDF를 선택하면 페이지별 본문을 읽습니다. 추출 결과와 적용 조건을 확인한 뒤 등록하세요.'}
-        </p>
-        <div className={'field'}>
-          <label htmlFor={'document-file'}>{'PDF 파일 (최대 25MB)'}</label>
-          <input
-            id={'document-file'}
-            name={'file'}
-            type={'file'}
-            accept={'.pdf,application/pdf'}
-            onChange={noop}
-          />
-        </div>
-        <div id={'pdfProgress'} className={'small muted mt'} role={'status'}></div>
-        {d?.hasPdf ? (
-          <p className={'small muted'}>{'새 파일을 선택하지 않으면 기존 원본 PDF를 유지합니다.'}</p>
+        {d ? (
+          <>
+            <p className={'small muted mb'}>{d.title}</p>
+            {select(
+              'documentMode',
+              '수정 방식',
+              [
+                ['metadata', '정보만 수정'],
+                ['content', '본문·버전 개정'],
+              ],
+              'metadata',
+            )}
+            <p className={'small muted mb'}>
+              {
+                '정보만 수정하면 기존 본문과 인용을 유지합니다. 문서명·버전·원문을 바꾸려면 본문·버전 개정을 선택하세요.'
+              }
+            </p>
+          </>
         ) : (
-          ''
+          <input type={'hidden'} name={'documentMode'} value={'content'} />
         )}
-        <div className={'grid2 mt'}>
-          {field('title', '문서명', d?.title || '', 'text', {
-            required: true,
-            maxLength: '200',
-          })}
-          {field('version', '버전', d?.version || '1', 'text', {
-            required: true,
-            maxLength: '100',
-          })}
-          {select(
-            'kind',
-            '문서 종류',
-            [
-              ['onboard', '선내 문서·규정 원문'],
-              ['official-summary', '공식 안내 요약'],
-              ['sample', '가상 샘플'],
-            ],
-            d?.kind || 'onboard',
+        <fieldset
+          id={'document-revision-fields'}
+          hidden={!!d}
+          disabled={!!d}
+          style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+        >
+          <p className={'small muted mb'}>
+            {d
+              ? 'PDF를 다시 선택하거나 원문 전체를 입력하세요. 추출 결과와 페이지를 확인한 뒤 저장하세요.'
+              : 'PDF를 선택하면 페이지별 본문을 읽습니다. 추출 결과와 적용 조건을 확인한 뒤 등록하세요.'}
+          </p>
+          <div className={'field'}>
+            <label htmlFor={'document-file'}>{'PDF 파일 (최대 25MB)'}</label>
+            <input
+              id={'document-file'}
+              name={'file'}
+              type={'file'}
+              accept={'.pdf,application/pdf'}
+              onChange={noop}
+            />
+          </div>
+          <div id={'pdfProgress'} className={'small muted mt'} role={'status'}></div>
+          {d?.hasPdf ? (
+            <p className={'small muted'}>
+              {'새 파일을 선택하지 않으면 기존 원본 PDF를 유지합니다.'}
+            </p>
+          ) : (
+            ''
           )}
-          {field('issuer', '발행기관', m.issuer, 'text', {
-            maxLength: '200',
+          <div className={'grid2 mt'}>
+            {field('title', '문서명', d?.title || '', 'text', {
+              required: true,
+              maxLength: '200',
+            })}
+            {field('version', '버전', d?.version || '1', 'text', {
+              required: true,
+              maxLength: '100',
+            })}
+            {select(
+              'kind',
+              '문서 종류',
+              [
+                ['onboard', '선내 문서·규정 원문'],
+                ['official-summary', '공식 안내 요약'],
+                ['sample', '가상 샘플'],
+              ],
+              d?.kind || 'onboard',
+            )}
+            {field('reference', '조항·참조명', d?.reference || '본문', 'text', {
+              required: true,
+              maxLength: '200',
+            })}
+            {field('url', '외부 원문 링크 (선택)', d?.url || '', 'url', {
+              placeholder: 'https://…',
+            })}
+          </div>
+          {area('text', '검색할 본문 · 페이지 구분 유지', '', {
+            required: true,
+            rows: '10',
+            maxLength: '2200000',
+            placeholder:
+              'PDF를 선택하거나 원문 전체를 입력하세요. 페이지별로 --- PAGE 1 --- 구분자를 사용할 수 있습니다.',
           })}
+        </fieldset>
+        <div className={'grid2 mt'}>
+          {field('issuer', '발행기관', m.issuer, 'text', { maxLength: '200' })}
           {field('issuedAt', '발행일', m.issuedAt, 'date')}
           {field('revisedAt', '개정일', m.revisedAt, 'date')}
           {select(
             'scope',
             '열람 범위',
             [
-              ['all', '누구나 열람'],
-              ...(state.user?.role !== 'guest' ? [['operator', '담당자·관리자']] : []),
+              ['all', '로그인 사용자'],
+              ['operator', '선원·관리자'],
               ...(isAdmin() ? [['admin', '관리자만']] : []),
             ],
             m.scope || 'all',
@@ -127,28 +172,16 @@ export function createForms(model, views) {
             ],
             m.status || 'active',
           )}
-          {field('reference', '조항·참조명', d?.reference || '본문', 'text', {
-            required: true,
-            maxLength: '200',
-          })}
-          {field('url', '외부 원문 링크 (선택)', d?.url || '', 'url', {
-            placeholder: 'https://…',
-          })}
         </div>
         {area('applicability', '적용 조건 (선종·운항구역·기간 등)', m.applicability, {
           rows: '2',
           maxLength: '1000',
         })}
-        {area('text', '검색할 본문 · 페이지 구분 유지', d ? sectionsToText(d.sections) : '', {
-          required: true,
-          rows: '10',
-          maxLength: '2200000',
-          placeholder:
-            'PDF를 선택하거나 본문을 입력하세요. 페이지별로 --- PAGE 1 --- 구분자를 사용할 수 있습니다.',
-        })}
         <label className={'checkline mt'}>
           <input name={'checked'} type={'checkbox'} required onChange={noop} />
-          {' 추출 본문·페이지와 적용 버전을 확인했습니다.'}
+          {d
+            ? ' 변경할 문서 정보와 개정 시 원문·페이지를 확인했습니다.'
+            : ' 추출 본문·페이지와 적용 버전을 확인했습니다.'}
         </label>
       </>,
     );
@@ -270,7 +303,7 @@ export function createForms(model, views) {
             minLength: '3',
             maxLength: '40',
           })}
-          {select('role', '권한', [['admin', '관리자']], u.role || 'admin')}
+          {select('role', '권한', [['operator', '일반 선원'], ['viewer', '열람 전용'], ['admin', '관리자']], u.role || 'operator')}
           {select(
             'active',
             '계정 상태',
@@ -278,7 +311,7 @@ export function createForms(model, views) {
               ['true', '활성'],
               ['false', '비활성'],
             ],
-            u.active === 0 ? 'false' : 'true',
+            u.active === false ? 'false' : 'true',
           )}
         </div>
         {field('password', u.id ? '새 비밀번호 (변경 시 입력)' : '비밀번호', '', 'password', {
@@ -287,12 +320,12 @@ export function createForms(model, views) {
             : {
                 required: true,
               }),
-          minLength: '10',
+          minLength: '12',
           maxLength: '128',
           autoComplete: 'new-password',
         })}
         <p className={'small muted mt'}>
-          {'추가 로그인 계정은 관리자용입니다. 일반 사용자는 계정이 필요하지 않습니다.'}
+          {'업무에 필요한 최소 권한으로 개인 계정을 발급하세요. 초기 비밀번호는 본인이 로그인한 뒤 변경해야 합니다.'}
         </p>
       </>,
       '계정 저장',

@@ -94,7 +94,9 @@ class VectorIndex:
             if unique:
                 encoded = (self.encoder or embedder()).documents(list(unique.values()), batch_size=batch_size)
                 reusable.update(zip(unique, encoded))
-            vectors = [reusable[self.input_hash(row)] for row in batch]
+            # Chroma get() returns ndarrays while the encoder returns lists.
+            # Normalize every vector, independent of batch order, before upsert.
+            vectors = [[float(value) for value in reusable[self.input_hash(row)]] for row in batch]
             self.collection.upsert(ids=[self.record_id(row) for row in batch],
                                    embeddings=vectors, metadatas=[self.metadata(row) for row in batch])
             count += len(batch)

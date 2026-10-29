@@ -29,9 +29,19 @@ def handle(request: Request, response: Response, path: str, body: dict | None):
             require(request.headers.get("x-haedap-token") == security.csrf_token,
                     "연결을 새로고침한 뒤 다시 시도하세요.", "SESSION_EXPIRED", 403)
             require(isinstance(body, dict), "JSON 객체가 필요합니다.")
+        if path not in ("health", "auth/login", "auth/logout", "auth/setup"):
+            require(user["role"] in ("admin", "operator", "viewer"),
+                    "로그인 후 이용해 주세요.", "AUTH_REQUIRED", 401)
+        if path not in ("health", "auth/login", "auth/logout", "auth/password", "auth/setup"):
+            require(not user.get("must_change_password"), "비밀번호를 변경한 뒤 이용해 주세요.",
+                    "PASSWORD_CHANGE_REQUIRED", 403)
         context = RequestContext(db=db, user=user, guest=guest, path=path, method=request.method,
                                  body=body or {}, request=request, response=response)
-        return dispatch(context)
+        result = dispatch(context)
+        if user["role"] != "guest" and path not in ("health", "auth/login", "auth/logout", "auth/password", "backups/restore"):
+            db.audit(user, "access", request.method, path,
+                     {"remote": request.client.host if request.client else "local"})
+        return result
 
 
 @router.api_route("/api/{path:path}", methods=["GET", "POST"])

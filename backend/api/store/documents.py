@@ -61,6 +61,14 @@ class DocumentStore:
         return sha256(payload.encode("utf-8"))
 
     def save_document(self, payload: dict) -> dict:
+        mode = payload.get("mode", "content")
+        require(mode in ("content", "metadata"), "문서 저장 방식을 확인해 주세요.")
+        if mode == "metadata":
+            result = self._save_document_metadata(payload)
+            # Keep source chunks intact, but repair missing/cancelled/model-stale
+            # indexing after metadata-only saves (including reactivation).
+            enqueue(self, result["id"])
+            return result
         raw = payload.get("document")
         require(isinstance(raw, dict), "문서가 필요합니다.")
         logical_id = text(raw.get("id"), "문서 ID", 80)
@@ -77,7 +85,7 @@ class DocumentStore:
         meta = payload.get("meta") or {}
         require(meta.get("scope", "all") in ("all", "operator", "admin"), "문서 열람 범위를 확인해 주세요.")
         require(meta.get("status", "active") in ("active", "retired"), "문서 상태를 확인해 주세요.")
-        current = self.one("SELECT id,hash FROM documents WHERE logical_id=%s AND active=true", (logical_id,))
+        current = self.one("SELECT id,hash FROM documents WHERE logical_id=%s AND active=true FOR UPDATE", (logical_id,))
         if "expectedId" in payload:
             require((current or {}).get("id", "") == payload["expectedId"], "문서가 변경되었습니다.", "VERSION_CONFLICT", 409)
         if current and "expectedMetaRevision" in payload:
@@ -86,16 +94,21 @@ class DocumentStore:
         digest = self._document_hash(raw)
         revision_id = logical_id + "-" + digest[:16]
         unchanged = bool(current and current["hash"] == digest)
+        existing_revision = self.one("SELECT id FROM documents WHERE id=%s", (revision_id,)) if not unchanged else None
+        chunks = None
+        if not unchanged and not existing_revision:
+            chunks = preprocess_sections(raw["sections"])
+            require(bool(chunks), "전처리 후 검색할 본문이 없습니다. 원문을 확인해 주세요.")
         if not unchanged:
             self.run("UPDATE documents SET active=false WHERE logical_id=%s", (logical_id,))
-        if not unchanged and self.one("SELECT id FROM documents WHERE id=%s", (revision_id,)):
+        if not unchanged and existing_revision:
             self.run("UPDATE documents SET active=true WHERE id=%s", (revision_id,))
         elif not unchanged:
             self.run("""INSERT INTO documents(id,logical_id,hash,title,kind,url,reference,version,
                 reviewed_at,language,active) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true)""",
                 (revision_id, logical_id, digest, title, raw["kind"], raw.get("url"), reference,
                  version, reviewed, raw.get("language", "ko")))
-            for position, chunk in enumerate(preprocess_sections(raw["sections"]), 1):
+            for position, chunk in enumerate(chunks, 1):
                 chunk_id = f"{revision_id}-{position}"
                 self.run("INSERT INTO chunks VALUES(%s,%s,%s,%s,%s)",
                          (chunk_id, revision_id, position, chunk["heading"], chunk["text"]))
@@ -125,6 +138,46 @@ class DocumentStore:
                          (revision_id, old_file["name"], old_file["base64"]))
         enqueue(self, revision_id)
         return {"id": revision_id, "status": "unchanged" if unchanged else "updated" if current else "created"}
+
+    def _save_document_metadata(self, payload: dict) -> dict:
+        """Update only metadata; stored chunks must never be treated as source text."""
+        raw = payload.get("document")
+        require(isinstance(raw, dict) and set(raw) == {"id"}, "정보 수정에는 문서 ID만 전달해 주세요.")
+        require("file" not in payload, "PDF 교체는 본문·버전 개정을 이용해 주세요.")
+        logical_id = text(raw.get("id"), "문서 ID", 80)
+        require(bool(re.fullmatch(r"[a-z0-9][a-z0-9-]*", logical_id)), "문서 ID가 올바르지 않습니다.")
+        require(isinstance(payload.get("expectedId"), str) and bool(payload["expectedId"])
+                and type(payload.get("expectedMetaRevision")) is int, "현재 문서 버전 정보가 필요합니다.")
+        patch = payload.get("meta")
+        allowed = {"scope", "status", "issuer", "issuedAt", "revisedAt", "applicability"}
+        require(isinstance(patch, dict) and bool(patch) and set(patch) <= allowed, "수정할 문서 정보를 확인해 주세요.")
+        if "scope" in patch:
+            require(patch["scope"] in ("all", "operator", "admin"), "문서 열람 범위를 확인해 주세요.")
+        if "status" in patch:
+            require(patch["status"] in ("active", "retired"), "문서 상태를 확인해 주세요.")
+        for key, maximum in (("issuer", 200), ("applicability", 1000)):
+            if key in patch:
+                require(isinstance(patch[key], str) and len(patch[key]) <= maximum, "문서 정보 길이를 확인해 주세요.")
+        for key in ("issuedAt", "revisedAt"):
+            if key in patch and patch[key] != "":
+                iso_date(patch[key], "문서 일자")
+        current = self.one("SELECT id,hash FROM documents WHERE logical_id=%s AND active=true FOR UPDATE", (logical_id,))
+        require(current and current["id"] == payload["expectedId"], "문서가 변경되었습니다.", "VERSION_CONFLICT", 409)
+        old_meta = self.document_meta(current["id"])
+        require(old_meta.get("revision", 0) == payload["expectedMetaRevision"],
+                "문서 정보가 변경되었습니다.", "VERSION_CONFLICT", 409)
+        if all(old_meta.get(key, "") == value for key, value in patch.items()):
+            return {"id": current["id"], "status": "unchanged"}
+        next_meta = {**old_meta, **patch,
+                     "revision": max(int(datetime.now(timezone.utc).timestamp() * 1000),
+                                     old_meta.get("revision", 0) + 1)}
+        # Preserve the existing policy: access scope applies to historical revisions too.
+        for row in self.all("SELECT id FROM documents WHERE logical_id=%s", (logical_id,)):
+            meta = self.document_meta(row["id"])
+            meta["scope"] = next_meta.get("scope", "all")
+            self.run("INSERT INTO document_meta VALUES(%s,%s) ON CONFLICT(id) DO UPDATE SET body=excluded.body",
+                     (row["id"], Jsonb(next_meta if row["id"] == current["id"] else meta)))
+        return {"id": current["id"], "status": "updated"}
 
     def delete_document(self, doc_id: str) -> dict:
         row = self.one("SELECT id,logical_id,active FROM documents WHERE id=%s", (doc_id,))

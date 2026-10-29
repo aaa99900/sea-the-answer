@@ -4,6 +4,67 @@
 
 ## 변경 이력
 
+### 2026-10-29 — 혼합 벡터 색인 수정·팀 main/CI 통합
+
+- `upstream/main` e388a2a와 `cxo/feature/ci-verification` cfa7fb5의 변경을 통합했다.
+  두 원격 부모를 가진 미완료 머지 상태로 유지하며 커밋·푸시는 하지 않았다.
+  실제 3-way 병합 결과를 기준으로 README·문서·테스트 fixture 충돌을 양쪽 내용을 보존해 해결했다.
+  CI의 `.github/workflows/verify.yaml`은 원격과 동일하다. 프런트·인증·LLM·BM25 캐시 코드는 main과 동일하게 유지했다.
+- Chroma에서 읽은 ndarray와 E5가 만든 list가 같은 upsert 배치에 들어가면 첫 항목에 따라 실패하던
+  문제를 모든 벡터의 float 리스트 변환으로 수정했다. 임베딩 값·모델 fingerprint·record ID는 유지하므로
+  완료된 벡터는 재사용하고 실패 작업 retry로 나머지를 처리할 수 있다.
+- main의 `mode: metadata` 저장에도 같은 트랜잭션의 enqueue를 연결했다. 원문/청크/PDF와 응답은 유지하며
+  재활성화·색인 누락·변경 없는 저장도 작업을 요청한다. UI가 변경 없는 요청을 생략하면 enqueue도 없다.
+  인증 및 색인 migration을 모두 적용하는 fixture, 로그인 필수 벡터 API 검증을 반영했다.
+- 팀 ADR 0016/0017과의 번호 중복을 피하려고 이 브랜치의 RAG ADR 0016/0017/0018을
+  0019/0020/0021로 재번호화했다. 결정 본문은 보존하고 번호·참조만 정리했다.
+  기존 평가 JSON/보고서는 stash 백업과 blob 해시가 동일함을 확인했다.
+
+검증 및 적용 범위:
+
+- 수정 전 혼합 배치 회귀: **1 실패·1 통과**로 오류 재현. 수정 후 `uv run --locked --project backend pytest backend/tests/test_rag_vector.py -q --tb=short`: **25 통과**.
+- frontend `npm.cmd test`: **20 통과**. Docker Next.js production 빌드 성공.
+- `docker compose -p haedap-rag-merge-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`:
+  **8 통과(1.0분)**, 종료 코드 0. 같은 프로젝트의 `down`으로 테스트 컨테이너·네트워크 정리 완료.
+- 해당 새 backend 이미지에서 `docker run --rm --network none ... python /app/check_mixed.py`:
+  실제 고정 E5 CPU·임시 Chroma로 재사용+신규 혼합 배치 저장, 재실행 중복 없음(3개 record),
+  vector/hybrid가 fallback 없이 기대 문서·페이지 반환. 외부 다운로드·앱 DB 없이 검증했다.
+- 첫 backend 전체 검증은 **575 통과·2 실패·4 건너뜀**이었다. 두 실패는 main의 로그인 필수 정책에
+  맞지 않는 기존 벡터 API 테스트였으며 선원 로그인과 익명 401·scope 제외 검증으로 보정했다.
+- 최종 `uv run --locked --project backend python .verification/bm25-db-tests.py`:
+  Windows/Python 3.13/임시 PostgreSQL 17의 `python -m pytest -q -rs --tb=short` **578 통과·4 건너뜀(137.08초)**.
+  네 건은 `MARITIME_DATA_TEST_DATABASE_URL`이 필요한 기존 해사 데이터셋 계산 2·조회 2이며
+  RAG/인증/메타데이터 저장/작업 큐/캐시/벡터 API 테스트는 실행했다. 임시 DB는 종료했다.
+  운영·개발·E2E `docker compose ... config -q` 모두 통과. GitHub Actions 서버에서의 실행은 미검증이다.
+- 실제 앱 재빌드/재시작·작업 retry·기존 PDF 대량 색인·질의 이력 저장은 수행하지 않았다.
+  실제 데이터의 전체 색인 완료 및 질문 10개 벡터 정확도 재평가는 배포·retry 이후 별도 확인이 필요하다.
+
+### 2026-10-14 — CI 워크플로 분리 (cxo 브랜치에서 가져온 기록)
+
+PR #11 검토에 따라 `.github/workflows/verify.yaml`을 CI PR #14로 분리했다.
+해당 브랜치의 기존 기록: 2026-10-14 커밋 8112816의 fork Actions에서 backend 151 통과·4 건너뜀,
+frontend 4개·Next.js 빌드, Compose 구성 3종과 Docker E2E 1개 통과.
+이는 당시 원격 브랜치의 검증 기록이며 이번 통합 결과는 위 2026-10-29 항목을 따른다.
+
+### 2026-10-29 — 등록 PDF 질문 10개 검색 평가 (코드 수정 없음)
+
+- 실제 등록 PDF 3개와 로컬 원본 일치 확인 후 질문 세트·평가 보고서를 추가했다.
+  guest 허용 7문서 5,485청크, 질문 10개 × BM25/vector/hybrid, 문서 필터 10개·영어 대조 6개를 읽기 전용 실행했다.
+- 기대 조항 후보 Hit@1 5/10, Hit@5 8/10, MRR@5 0.62. 전체 BM25 평균 8.110초, DB snapshot 조회 0.202초.
+  PDF 물리 페이지/조항 후보 검색 평가이며 법규 해석·LLM 답변 정답률·전문가 확정 정답 세트는 아니다.
+- 실제 PDF 색인 작업은 모두 5회 실패했고 1,686/5,485청크만 현재 Chroma에 있었다.
+  vector/hybrid 각각 10/10회 `index_incomplete_or_stale`로 BM25 fallback하여 독립 정확도는 평가할 수 없었다.
+- 재사용 ndarray·신규 list 혼합 배치의 Chroma 입력 검증 ValueError를 세 실제 누락 배치에서 재현했다.
+  메모리에서 list로 통일하면 로컬 검증이 통과했다. 제품 코드 수정·Chroma 저장·작업 retry는 하지 않았다.
+- Q08(SOx scrubber 제출자료)은 한국어 79위/영어 대조 2위, Q10(BWMS 승인)은 53위/1위였다.
+  목차 상위 노출, 반복 머리말/꼬리말 heading과 반복 토큰화 비용도 기록했다.
+- 실행: `uv run --locked --project backend python .verification/run-registered-eval.py`.
+  메타데이터 전용 로컬 결과는 `.verification/registered-rag-evaluation.json`이며 원문 본문은 저장하지 않았다.
+  PDF 메타데이터 확인은 임시 pypdf/pypdfium2 환경을 사용했고 pyproject/uv.lock은 변경하지 않았다.
+  실제 DB·원본 PDF·질의 이력·.env·서비스 상태·브랜치 변경 및 커밋/푸시 없음.
+  문서/평가 자료만 추가했으므로 관련 없는 전체 단위 테스트/E2E는 다시 실행하지 않았다.
+  상세 기준·한계·질문은 [평가 보고서](rag-evaluation-2026-10-29.md) 참고.
+
 ### 2026-10-29 — 저장 후 자동 색인·이미지 내 E5 (1.4.0 유지)
 
 - 신규 `rag_index_jobs` migration으로 문서 저장과 같은 트랜잭션에 작업을 기록한다.
@@ -59,7 +120,7 @@ PG 세션이 살아 있는 정지 worker는 재시작이 필요하며 네트워�
   기존에는 이미지 레이어를 공유했고 이전 이미지·테스트 이미지는 삭제하지 않았다.
 - 기존 `rag-vectors` 볼륨명·마운트 루트 경로·내부 hostname/port·외부 포트 미공개를 유지했다.
   현재 앱 컨테이너·PostgreSQL·사용자 PDF·`.env`는 변경하지 않았고 실제 서비스 전환/커밋/푸시는 하지 않았다.
-  [ADR 0017](adr/0017-dedicated-chroma-image.md)이 0016의 서버 이미지 선택을 대체하고 나머지 검색 결정을 계승한다.
+  [ADR 0017](adr/0020-dedicated-chroma-image.md)이 0016의 서버 이미지 선택을 대체하고 나머지 검색 결정을 계승한다.
 
 검증(2026-10-29, Windows Docker Desktop / Linux 컨테이너):
 
@@ -128,8 +189,80 @@ PG 세션이 살아 있는 정지 worker는 재시작이 필요하며 네트워�
   하이브리드가 항상 벡터보다 정확한 것은 아니며, BM25 캐시 미포함으로 큰 corpus의 BM25 비용은 남는다.
   권한 후보 전수 metadata 확인·최종 DB 재조회 비용, 긴 청크 평균의 의미 희석, 수동 재색인/오래된 벡터 정리도 남는다.
   라이브러리/모델이 바뀌면 새 fingerprint collection으로 전체 재색인이 필요하다.
+- **PR #20 최신 main 충돌 해결 / 2026-10-29**: `origin/main`의 `7c0ba46`(PR #19)을 한국어 LLM 검증 브랜치에 병합했다. `docs/README.md`·`docs/plans/README.md`·변경 이력의 충돌 3곳에서 한국어 평가·Docker 기록과 검색 토큰 재사용·해사 검색 평가 기록을 모두 보존했다. LLM·보고서 코드는 기존 PR과, 검색 런타임·검색 평가 도구는 최신 main과 동일함을 확인했다.
+  - Windows·Python 3.13.16·격리 PostgreSQL 18.6에서 병합 후 backend/scripts 전체 **533 통과·4 건너뜀(200.87초)**. 건너뛴 4건은 별도 해사 데이터셋이 필요한 기존 테스트이며 기존 Starlette/httpx 경고 1건이 남는다. 검증 실행기의 Windows 기동 대기·한글 경로 읽기 문제는 테스트 시작 전 중단으로 구분하고, 실행기 보정 후 새 DB에서 위 결과를 확인했다. 임시 DB와 이번에 시작한 PostgreSQL은 정리했다.
+  - Next.js 16.3.8 Docker production 빌드와 Compose e2e **8건 통과(1.8분)**: 실제 브라우저→API→PostgreSQL 업무 흐름 1건과 모의 API UI 회귀 7건. Compose 실행·정리 모두 종료 코드 0이며 이번 재검증에서 실제 모델은 호출하지 않았다. 화면 소스가 기존 PR과 같아 frontend 단위 테스트 20건은 앞선 결과를 유지한다. `npm ci`는 기존 잠금 의존성에서 critical 1건 경고를 출력했으며 의존성 변경 없이 별도 점검 대상으로 기록한다.
+  - 로컬 검증 결과는 `.verification/backend_20261028_d02c6eac/`와 `.verification/docker-e2e-20261029-74e239a7/`에 보존했다. 문서 링크와 충돌 표시·공백 검사를 수행했으며 모델·로그·개인 설정은 PR에 포함하지 않는다.
+
+- **재부팅 후 로컬 Docker 엔진 검증 / 2026-10-29** (1.4.0 유지): 사용자 재부팅 완료 후 WSL 상태가 기본 버전 2로 정상 응답하고 재부팅 대기가 해소됨을 확인했다. Docker의 새 가상 디스크 포맷·VM 초기화에 약 2분이 걸려 첫 45초 확인은 시간 초과였으며, 이후 실제 Docker Server **29.9.2 / Linux amd64 / WSL2 kernel 6.18.54.1** 응답과 `docker compose ... config --quiet` 통과를 확인했다. 재부팅 전 `Virtual Machine Platform not enabled` 오류와 구분한다. 엔진의 실제 Server 응답을 확인했으며 CLI 버전만으로 성공 처리하지 않았다.
+  - **보고서 초기화 경합 수정**: 첫 Docker e2e는 UI 6건 통과·실제 workspace 1건 실패였다. trace를 확인해 선원 재로그인 후 운항 조회 완료 전에 Noon을 눌러 `보고서 대상 선박을 선택해 주세요`로 종료되고 생성 POST가 없음을 확인했다. `report-view.jsx`의 Noon/MRV 버튼을 `state.ready`·`state.connecting`에 따라 비활성화하도록 수정했다. 로그인 후 운항 응답을 보류하고 실제 logout toast의 만료 render를 clock으로 재현해, 초기화 중 두 버튼 잠금·조회 완료 후 활성화·정확한 선박으로 초안 생성을 검사하는 회귀를 추가했다. 대기 시간은 늘리지 않았다.
+  - **최종 frontend·Docker 검증**: Node 24.21.0의 `npm test` **20 통과**, 수정 후 Next.js 16.3.8 Docker production 빌드 성공. 새 임시 DB의 Compose e2e **8 통과(1.7분)**: 실제 브라우저→API→PostgreSQL 업무 흐름 1건과 모의 API UI/지연 응답 회귀 7건이다. 격리 프로젝트 `haedap-korean-e2e-20261029`의 실행·`down` 정리 모두 종료 코드 0이며, 앱 DB·개인 `.env`는 변경하지 않았다. e2e에서는 실제 모델을 비활성화했다. 최초 Node 실행의 샌드박스 `spawn EPERM`은 승인 환경의 성공 재실행과 구분한다.
+  - **컨테이너→호스트 실제 모델 검증**: 같은 backend 이미지에서 `http://host.docker.internal:11434/v1`의 Ollama 0.40.6·기존 `qwen2.5:3b`·`json_schema`를 호출했다. 모델 목록 HTTP 200·설치 모델 확인·가상 한국어 단문 생성·원문 인용 검증을 **19.28초**에 통과했다. 별도 모델 최초 적재는 12.19초였으며 앱 응답 시간과 합치지 않는다. 호스트 바인딩은 `127.0.0.1:11434`였고, 컨테이너의 `llm.py` SHA-256이 현재 소스와 일치했다. 이 검사는 직접 transport·인용 검사이며 인증 API·DB·브라우저 전체 모델 흐름이나 일반 한국어 품질 합격으로 확대하지 않는다.
+  - **기록·정리**: 첫 실패 로그는 `.verification/docker-e2e-20261029-b09cbcaa/`, 최종 성공·정리 로그는 `.verification/docker-e2e-20261029-9499f1c6/`, 실제 모델 결과는 `.verification/container-llm-20261029-f64912e2/`에 보존했다. 기본 `e2e/` 보고서는 재실행 결과로 갱신된다. 설치 완료된 임시 Docker 설치 파일과 이 작업의 앱 복사본만 정리했고 모델·원본·검증 기록은 보존했다. Docker Desktop과 호스트 Ollama 검증 서버는 실행 상태다.
+
+- **한국어 근거 답변·평가 도구 / 2026-10-28** (1.4.0 유지): 요청 언어의 `text`와 원문 그대로의 `quote`를 분리하고, 다른 언어의 근거도 활용하며 답변을 짧게 작성하도록 프롬프트를 보완했다. JSON·근거 ID·8자 이상 원문 인용·단일 요청·25초 제한·오류 시 전체 발췌 전환은 유지한다. `scripts/evaluate_llm.py`와 기본 문서 기준 한국어 사례 16개를 추가했다. 기본 발췌는 네트워크 없이 실행하고 `--mode llm`만 실제 모델을 호출한다. 코드·평가 입력 해시와 시간·오류 유형·인용·한글 여부를 기록하며 의미적 정답성은 사람 검토로 남긴다. 출력 경로를 호출 전에 확보하고 기존 결과를 덮어쓰지 않는다.
+  - Windows·Python 3.13.16·PostgreSQL 18.6의 새 검증 DB에서 `uv run --locked --offline --no-sync pytest` **504 통과·4 건너뜀(272.77초)**. 제외 4개는 별도 해사 데이터셋이 필요한 기존 테스트다. 검증 중 추가한 출력 사전 검사·입력 해시 테스트와 최종 프롬프트까지 포함한 집중 실행은 **138 통과(12.67초)**. 실제 검색/BM25→모의 모델 HTTP 권한 회귀, 익명·초기 비밀번호·회수 세션 요청 0회, 번역한 원문 인용의 전체 폐기를 확인했다. 이 집중 테스트는 실제 모델 품질 검증이 아니다. 기존 Starlette/httpx 경고 1건이 남아 있다.
+  - 최초 샌드박스 실행은 Windows 임시 폴더 `PermissionError`로 일부 setup을 수행하지 못했고, 승인 환경에서 재실행한 위 성공 결과와 구분한다. 실제 앱 DB·`.env`는 변경하지 않고 별도 검증 클러스터의 data 경로를 확인한 뒤 임시 DB를 만들고 삭제했다.
+  - PR #18이 2026-10-22 `91a1cc6`으로 병합된 사실을 확인해 후속 계획을 바로잡았다. CI #14는 README 충돌을 확인하고 현재 문서를 보존하는 workflow-only 패치의 `git apply --check`를 통과했다. 패치·검토 메모는 `.verification/ci-pr14-20261028/`에 보존했다. 실제 브랜치 갱신·push·관리자 병합·새 원격 CI 실행은 수행하지 않았다.
+  - Docker e2e 명령은 실제 시도했으나 Docker 미설치로 `CommandNotFoundException`이었다. 따라서 Compose e2e·Docker → 호스트 Ollama 연결은 이번 변경에서 미검증이다. 실제 모델 비교·브라우저 결과는 아래 후속 기록에 구분한다.
+  - **실제 모델 1차 측정**: Ollama 0.40.6·`qwen2.5:3b` Q4_K_M·CPU·`json_schema`·기존 25초 제한으로 고정 근거 16문항을 실행했다. 원래 프롬프트는 답변 1/근거 부족 2/요청 또는 검증 실패 13, 중간 수정 프롬프트는 0/3/13이었다. 두 실행 중 pytest 등 CPU 작업이 함께 진행돼 성능 전후 비교 기준으로 사용하지 않는다. 오류 대부분은 약 25초 종료와 Ollama 요청 취소를 관측했다. 오류를 발췌 성공이나 의미적 오답으로 바꾸어 집계하지 않았다. 원본 결과는 `.verification/korean-llm-{baseline,candidate}-20261028.json`에 보존했다.
+  - **별도 진단**: 운영 제한을 변경하지 않고 한 사례만 진단용 90초 제한으로 호출했으며 실제로는 **20.70초**에 끝났다. 원문 인용 검증을 통과했지만 답변에서 ECA 안/밖 조건이 잘못 반복되는 의미 오류를 발견했다. 따라서 유효 인용·정상 완료만으로 한국어 품질 합격을 주장하지 않는다. 진단은 앱의 실제 25초 제한 성공 검사와 별도이며 `.verification/diagnose-model-20261028.json`에 보존했다. 최종 프롬프트에는 숫자·단위·조건을 원문대로 유지하라는 지시도 추가했다.
+  - **부하 제거 후 동일 6문항 순차 비교**: 입력 해시 `cdad591c…f4cddb8`로 같은 질문·근거·순서를 확인했다. 원래 프롬프트는 답변 2/근거 부족 2/오류 2(시간 초과 1, 검증 실패 1), 답변·인용 분리 지시는 1/2/3(시간 초과 2, 검증 실패 1), 별도 한국어 우선 실험은 0/2/4(시간 초과 4)였다. 원래 프롬프트의 답변 2건 중 1건은 한국어 요청에 영어를 그대로 반환했다. 수정 지시의 황 한도 사례는 한국어·안/밖 조건·원문 인용을 확인했지만 전체 품질 개선은 입증하지 못했다. 기본 샘플링의 단일 실행 관찰이며 자동 정답률로 해석하지 않는다. 한국어 우선 실험은 서비스에 채택하지 않았다.
+  - **temperature 0 실험**: 기존 3B 가중치를 재사용한 임시 프리셋으로 4문항을 별도 실행해 답변 1/근거 부족 1/응답 검증 실패 2였다. 운영 모델·공통 요청 옵션은 바꾸지 않았다. 실험 결과를 기본 설정으로 권장하지 않는다. 결과·코드 해시·오류 종류·입력 일치 확인은 `.verification/korean-llm-comparison-20261028.json`과 각 원본 JSON에 보존했다. 의미적 품질은 사람 검토 대기다.
+  - **실제 모델 브라우저 2건 통과**: Chrome → Next production standalone → 인증 FastAPI → 새 PostgreSQL DB → 실제 Ollama `qwen2.5:3b/json_schema`. 가상 단문 `청해쿼츠는 출항 전 장비 점검 절차입니다`에 대한 한국어 생성·원문 인용·원문 모달·관리자/폐기 문서 제외·근거 없는 질문을 확인했다(성공 단계 41.51초, 모델 HTTP 호출 약 13.40초). 없는 모델로 백엔드를 재시작한 단계도 원문 발췌·실패 경고·유효 인용을 확인해 통과했다(14.74초). 실제 모델/DB/API를 모의 처리하지 않았다. 두 단계는 최소 연결 검사이며 16문항 전체 품질 합격을 뜻하지 않는다. 앱 서버·임시 DB는 정리했고 결과 JSON·스크린샷은 `.verification/live_20261028_86db9538/`에 있다. 성공 실행에는 trace를 보존하지 않았다. 화면 소스는 변경하지 않아 frontend 테스트·빌드는 재실행하지 않았고 기존 production 빌드를 사용했다.
+  - **Docker·WSL 설치 완료, 재부팅 후 실행 검증 대기**: 사용자가 이 PC에 직접 설치·실행하도록 지시했다. Windows 10 Enterprise 22H2(19045.6456)·RAM 16GiB·하드웨어 가상화·SLAT를 확인했다. 관리자 권한으로 WSL 및 VirtualMachinePlatform을 Disabled→Enabled로 바꾸고 WSL 설치 종료 코드 0을 확인했다. WSL 3.0.3.0·kernel 6.18.54.1을 확인했으며 OS는 재부팅 후 적용을 명시했다. Docker 공식 설치 파일의 유효한 Docker Inc 서명과 SHA-256을 기록하고 **Docker Desktop 4.97.0 사용자 설치 종료 코드 0**·실행 파일을 확인했다. Docker CLI 29.9.2·Compose 5.6.1·Desktop CLI 4.97.0을 확인했다.
+  - **설치와 엔진 실행 결과 구분**: 실제 `docker desktop start --timeout 45`는 시작 대기 후 실패했다. backend 로그는 `Virtual Machine Platform not enabled`로 `starting→stopping→stopped`를 기록하고, `wsl --status`는 `WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED`를 반환했다. `docker info`도 HTTP 500이었고 Server 정보가 없어 엔진 성공으로 집계하지 않는다(이 명령은 종료 코드가 0이라 출력까지 확인했다). 자동 재부팅하지 않았으며 사용자 승인/재부팅 후 Compose e2e·컨테이너→호스트 Ollama를 이어간다. 설치 서명·해시·종료 코드·선별 엔진 오류는 `.verification/docker-*-20261028.json`에 보존했다. 임시 앱/DB·검증 PostgreSQL·temperature 0 프리셋은 정리했다. [검증 재현 절차](plans/2026-10-28-korean-llm-validation.md#docker-검증-재현-순서)를 계획에 남겼다.
+
+- **문서 토큰 재사용으로 반복 검색 지연 개선 / 2026-10-28**: 프로파일의 청크 분석 병목(4.525초 중 4.475초)을 확인하고 `rag_retrieval.py`에 내용 기반·최대 2,048항목·계산 크기 16MiB LRU를 추가했다. 캐시 값은 분석 토큰만이며 원문·질의·결과·권한·BM25 인덱스는 저장하지 않는다. 현재 DB 후보의 권한·활성 개정·선택 범위를 매번 확인하고 인덱스를 새로 만든다. 분석 코드·어휘 배포 시 재시작하며 토큰 메모리 보관의 한계는 ADR에 기록했다.
+  - PR 제출 준비에서 평가셋의 원문 해시를 정규 JSON 내용 기반으로 보완했다. Git LF와 Windows CRLF·들여쓰기 차이는 허용하고 내용 변경은 거부한다. 파일 바이트 해시는 실행 provenance에 따로 보존한다. 관련 **122 통과(5.27초)**, 질문·근거·검색 런타임 변경 없음.
+  - PR 전 최신 main·열린 #14와 중복 점검: 새 검색 구현을 복제하지 않았고 기존 진단 CLI·응답 점검 스킬과 평가 목적이 다름을 확인했다. #14는 CI·공통 문서만 변경한다. 선택하지 않은 문서가 warm cache에서 결과·점수에 섞이지 않는 테스트를 보강하여 관련 **120 통과(7.63초)**. 런타임 코드는 이 재점검에서 변경하지 않았다. README 날짜 변경 제거, 공통 문서 병합 조정 가능성은 비교 결과에 기록했다.
+  - 같은 문서 955청크·질문 20개·k=5·질문별 1회에서 결과 순서·float 점수·메타데이터가 모두 기준선과 일치했다. Hit@5/Recall@5 1.0·MRR@5 0.96875 유지. warm p50 **7.009초 → 0.057초**, p95 **7.664초 → 0.078초**. 첫 검색은 **9.300초**이며 전체 API·LLM 지연이나 선내 장비 성능 보증은 아니다.
+  - Windows·Python 3.13.7·잠금 의존성·격리 PostgreSQL 18에서 backend/scripts 전체 **496 통과·4 건너뜀(247.87초)**. 선택 해사 데이터셋 등 환경이 필요한 기존 4개 건너뜀과 Starlette/httpx 경고 1건은 유지한다. 관련 표적 테스트는 119 통과이며 전체 결과에 중복 합산하지 않는다.
+  - 별도 Compose 운영 빌드·마이그레이션·Chromium **7 통과(2.2분)**, 종료 코드 0: 실제 DB 전체 업무 흐름 1개와 모의 API UI 6개를 구분한다. 실제 외부/로컬 LLM 호출은 하지 않았다. 임시 DB·검증 컨테이너 정리, 개인 DB·기존 체험 앱 변경 없음. 로컬 구현이며 PR·push 없음. [비교·재현 결과](search-optimization-results.md), [ADR 0017 제안](adr/0017-bounded-chunk-token-reuse.md).
+
+- **해사 질문 평가셋·검색 기준선 / 2026-10-28**: 기본 문서 스냅샷을 대상으로 `scripts/evaluate_retrieval.py`와 질문–원문 인용 라벨 20건을 추가했다. 운영 전처리·BM25 함수를 그대로 사용하고 JSON·CSV·Markdown으로 지표·검색 후보·시간·해시를 기록한다. 실제 앱·DB·API·검색 알고리즘은 변경하지 않았다.
+  - Windows 11·Python 3.13.7·Intel Core i5-1335U, `uv sync --frozen` 환경에서 관련 pytest **110 통과**. International 조건을 명확히 한 후 평가 도구 테스트 **15 재통과**(중복 합산 안 함).
+  - 문서 10개·955청크, 답 있는 질문 16개 Hit@5/Recall@5 **1.0**, MRR@5 **0.96875**, 근거 1위 **15/16**. 답 없는 질문 4개 모두 후보 노출: 최종 답변 오류·환각으로 판정하지 않고 수동 검토 대상으로 분리했다.
+  - 최종 실행은 질문별 **1회** 측정: 첫 검색 **12.965초**, 이후 질문 분포 p50 **7.009초**, p95 **7.664초**. HTTP·DB·LLM 지연·실제 선내 장비 성능은 검증하지 않았다. 작성자 초기 평가셋이며 독립 전문가·미공개 질문 평가와 전체 backend/Docker 검증은 이번 범위가 아니다. [사용법](retrieval-evaluation.md), [결과·한계·재현 해시](retrieval-evaluation-baseline.md).
+
+- **PR #18 최신 main 충돌 해결 / 2026-10-22**: `origin/main`의 `826563e`(PR #17)를 개인 계정 인증 브랜치에 병합했다. API 명세·변경 이력·로그인 화면의 충돌 3곳을 해결하고 BM25/Kiwi·업무 스킬·문서 정보 수정/본문 개정·관리자 보고서 삭제와 개인 계정·비밀번호 변경·소유권 검사를 함께 유지했다. 자동 병합된 문서의 이전 단어 포함 검색 설명을 제거해 현재 BM25 계약과 맞췄다. 새 API/UI 테스트는 익명 401·선원/열람자 403·관리자 허용으로 구분했다.
+  - Windows·Python 3.13.16·PostgreSQL 18.6의 새 임시 DB에서 backend **472 통과·4 건너뜀(222.35초)**. 별도 해사 데이터셋을 요구하는 4개와 기존 Starlette/httpx 경고 1건은 유지한다. 첫 실행은 신규 문서 테스트의 두 번째 개정에 생성용 빈 `expectedId`가 남아 **471 통과·1 실패·4 건너뜀**이었고, 실제 첫 개정 ID를 넣어 전체 재실행을 통과했다. 버전 잠금·오래된 정보 409 검사는 변경하지 않았다.
+  - Node 24.21.0에서 frontend **20 통과**, Next.js 16.3.8 production 빌드 성공. 실제 Chrome → Next standalone → FastAPI → PostgreSQL 전체 업무 시나리오 **1 통과(약 1.6분)**: 개인 로그인·비밀번호 변경·권한, 검색·PDF·문서 정보 수정/개정, 보고서 승인·관리자 삭제·충돌·검토 대기 종료, 백업 복구 후 재로그인과 업무 스킬을 확인했다. 첫 브라우저 실행은 검색 응답 전 15초 요소 검사에서 실패해 실제 `/api/ask` 응답 완료·성공을 확인한 뒤 화면을 검사하도록 수정하고 새 DB에서 통과했다. 앱의 요청 중단 제한은 바꾸지 않았다.
+  - 실제 빌드 화면의 **모의 API UI 6건 통과**도 별도로 확인했다. 개인 계정 표시·브랜드·탐색, 질문 초기화·늦은 응답 무시, 삭제 취소/충돌/성공과 모바일 화면 검증이며 실제 DB 검증으로 집계하지 않는다. 검증 스크립트의 Windows 한글 경로 읽기도 보정했다. 임시 DB·서버는 정리했고 실제 앱 DB·`.env`는 사용하거나 변경하지 않았다. Docker 미설치로 Compose 컨테이너 e2e와 실제 외부 모델 호출은 이번 검증에 포함하지 않았다.
+
+- **최신 main 병합·검증 / 2026-10-22**: `origin/main`의 `ba93cf7`(PR #15, BM25·Kiwi·목차 청킹)을 개인 계정 인증 브랜치에 병합했다. 문서 4개의 충돌에서 인증·Ollama·CI 기록과 새 검색·전처리 설명을 함께 보존했다. 새 BM25 API 회귀 테스트는 기존 접근 정책에 맞춰 일반 선원 계정으로 로그인하며 관리자 문서·폐기 문서 제외 검증을 유지한다. Windows·Python 3.13.16·PostgreSQL 18.6의 새 임시 DB에서 backend 전체 **441 통과·4 건너뜀(217.54초)**. 건너뛴 4개는 별도 해사 데이터셋 설정이 필요한 기존 테스트이고 Starlette/httpx 사용 중단 경고 1건이 남아 있다. 테스트 DB와 이 작업에서 시작한 검증 서버를 정리했다. `git diff --check`와 변경 문서의 로컬 파일 링크를 확인했다. 화면 소스는 바뀌지 않아 frontend 테스트·빌드는 재실행하지 않았으며, 실제 외부 모델 호출도 수행하지 않았다. Docker 실행 파일이 없어 지정된 Compose e2e 명령은 실행하지 못했다. 새 검증 클러스터 초기화는 Windows 제한 토큰·한글 인코딩 오류로 실패해 기존 검증용 PostgreSQL에 별도 DB를 만들어 확인했으며, 실제 앱 DB·`.env`는 사용하거나 변경하지 않았다.
+
+- **UI 표시·탐색 정리와 관리자 보고서 삭제 / 2026-10-18** (1.4.0 유지): 일반 사용자 표시에서 식별자 숨김, 화면의 HAEDAP 문구를 SEA THE ANSWER로 통일, 사이드바 로고를 통합 질문 이동 버튼으로 변경. 문서·운항 기록·보고서 삭제에 공통 붉은 테두리 스타일을 적용했다. 통합 질문 메뉴를 누르면 새 질문 화면으로 초기화하고 질문 이력은 유지하며 이전 요청의 늦은 응답을 무시한다.
+  - 저장된 보고서 상세에 관리자 전용 삭제 버튼 추가. 확인·버전 충돌 안내·임시 초안 정리·목록 이동을 연결했다. 삭제 중 중복 삭제·저장을 차단한다.
+  - 백엔드 실행 코드 변경은 `api/routes/reports.py`, `api/store/reports.py`, `api/store/changes.py` 3개 파일이다. 기존 POST 보안 검사 안에서 관리자 삭제를 수행하고, 대기 검토를 종료하며 감사 로그를 기록한다. 검토 승인·반려와 삭제의 동시 처리는 보고서 행 잠금으로 순서를 맞춘다. DB 스키마·청킹·RAG·LLM·Tool 코드는 변경하지 않았다.
+  - 검증: 2026-10-18 Linux / Node 24.19.0 / Python 3.13.16. `frontend/npm test` **20 통과**, `npm run build` **성공**, `backend/uv run --locked pytest` **271 통과·67 건너뜀**(PostgreSQL 필요). 보고서 삭제 권한·버전·검토 경합·API 보안 회귀 테스트 13건을 포함한다.
+  - 실제 Next.js 빌드에 Playwright로 접속한 **모의 API UI 시나리오 6건 통과**: 일반 사용자 표시·브랜드·권한, 질문 초기화·이력 재열람, 늦은 답변 무시, 삭제 버튼 색·크기, 보고서 삭제 취소·충돌·성공·임시 보관 정리·새로고침, 모바일 화면·키보드 로고 이동. 모의 API 테스트는 실제 DB/LLM 연동 검증이 아니다.
+  - Docker 실행 파일이 없는 환경이어서 Docker/PostgreSQL 전체 e2e는 미수행. 기존 `e2e/tests/workspace.spec.js`에 실제 관리자 보고서 삭제·일반 사용자 거부·검토 대기 종료·충돌 검증 단계를 추가했으며 팀 Docker 환경에서 실행할 수 있다.
+
+- **프론트엔드 본문 보존·긴 입력 분할 보완 / 2026-10-18** (1.4.0 유지): 앞선 재청킹 방지 수정에 이어 `frontend/src/lib/pdf.js`에서 첫 페이지 구분자 앞의 본문을 `page: null`로 보존한다. 19,000자 입력 분할은 문단·문장·줄·공백 경계를 우선하고, 경계가 없는 긴 문자열만 강제 분할하며 서로게이트 쌍·CRLF를 보존한다. 페이지 간 본문을 합치지 않으며 이전 재청킹 방지 기능을 유지한다. 입력 변환 규칙은 [API 명세](specs/api.md#화면의-페이지-본문-변환-2026-10-18-보완)에 기록했다.
+  - 이번 추가 변경은 프론트엔드 실행 코드 1개와 회귀 테스트·문서뿐이다. 이전 전달본 대비 `backend/`와 `migrations/`의 모든 파일이 동일함을 바이트 비교로 확인했다. 최종 Python 청킹·검색·LLM·DB는 추가로 변경하지 않았다. 이미 저장된 본문 누락이나 청크는 자동 복구하지 않는다.
+  - 검증: 2026-10-18 Linux / Node 24.19.0에서 `frontend/npm test` **20 통과**(새 회귀 테스트 10건 포함), `npm run build` **성공**. 실제 빌드 화면의 Playwright 검증 **8개 시나리오 통과**: 앞선 정보 수정·충돌·PDF 추출 흐름과 함께, 본문 개정 시 머리말 보존·페이지 번호·긴 단어 경계·전체 본문 전달을 확인했다.
+  - 화면 검증의 API 응답은 모의 처리했다. Docker가 없는 실행 환경이므로 실제 PostgreSQL·Docker 통합 e2e는 수행하지 않았다.
+
+- **정보 수정 시 불필요한 재청킹 방지 / 2026-10-18** (1.4.0 유지): 수정 화면을 기본 **정보만 수정**과 **본문·버전 개정**으로 구분했다. 변경이 없으면 요청을 생략하고, 정보 수정은 `document.save`의 `mode: "metadata"`로 문서 ID·현재 버전·허용된 정보만 보낸다. 기존 청크를 편집용 원문으로 재사용하지 않으며 본문 개정에는 PDF 재추출 또는 원문 전체 입력을 요구한다. PDF 추출 중 중복 선택을 막고 추출 실패 시 이전 본문이 남지 않도록 했다. 정보 수정 이력도 본문 없이 표시한다.
+  - 백엔드 기능 변경은 `backend/api/store/documents.py` 한 파일: 메타데이터 전용 분기, 현재 개정 행 잠금·충돌 검사, 기존 문서·청크·페이지·PDF 유지, 전처리 결과 0개 거부. DB 스키마·마이그레이션·백업·청킹 알고리즘·검색·LLM·Tool 코드는 변경하지 않았다.
+  - 검증: Linux / Python 3.13.16 / Node 24.19.0에서 `frontend/npm test` **10 통과**, `npm run build` **성공**; `backend/uv run --locked pytest` **258 통과·67 건너뜀**(실제 PostgreSQL 필요), 새 저장 경계 회귀 테스트 16건 포함.
+  - 실제 빌드 화면을 Playwright로 확인: 변경 없는 저장 요청 0건, 정보 저장 payload, 충돌 시 입력 유지, 새 원문 필수 개정, 변경 이력 열람, 실제 PDF.js 추출, 추출 실패 후 정보 수정, 수정 방식 전환·모바일 가로 넘침 없음 등 8개 시나리오 통과. 이 화면 검증은 **API 응답을 모의 처리**했으며 실제 DB 연동 검증은 아니다.
+  - `docker compose --profile e2e ...`는 실행 환경에 Docker가 없어 실행하지 못했다. 실제 DB용 테스트 2건과 기존 전체 e2e 흐름의 재청킹 회귀 검증을 추가했으며 팀 Docker 환경에서 실행해야 한다. 원문 영구 보관·OCR·청킹 품질 개선·기존 청크 복구·제목/버전 개정 시 청크 재사용은 이번 범위 밖이다.
 
 - **목차 청킹·Kiwi BM25 / 2026-10-22** (1.4.0 유지): 목차 항목의 줄바꿈 제목·쪽번호를 묶고 목차 heading 승격을 억제한다. 연속된 짧은 상위·하위 제목은 설명과 함께 청킹한다. 한글 bigram을 Kiwi 형태소 분석으로 교체하고 `api/rag_vocabulary.py`에 해사 사용자 사전·한영 별칭·제한적 불용어를 분리했다. 질의와 corpus가 같은 토큰화를 사용하며 조사·어미를 제외하고 부정어·숫자·단위를 보존한다. 사용자 설치 Kiwi 의존성을 그대로 사용한다. 저장/hash/개정/권한/API/UI는 변경하지 않았고 기존 DB 재청킹·벡터·RRF는 수행하지 않았다. [계획](plans/2026-10-22-rag-chunking-kiwi.md).
+
+- **최신 main 병합·검증 / 2026-10-21**: `origin/main`의 `0257175`를 개인 계정 인증 브랜치에 병합했다. 문서 4개의 충돌에서 인증·Ollama 기록과 업무 스킬 설명을 함께 보존하고, 업무 스킬의 로그인 요건을 API·구조 문서에 반영했다. 스킬 통합 테스트는 로그인한 별도 계정으로 실행하며 익명 접근 차단을 확인하고, 브라우저 테스트는 계정 전환 전 사용자의 미저장 초안 상태에 의존하지 않도록 했다. Windows·Python 3.13.16·PostgreSQL 18.6의 새 임시 DB에서 backend **363 통과·4 건너뜀(162.13초)**, Node 24.21.0에서 frontend **4 통과**와 Next.js 16.3.8 production 빌드 성공. 실제 Chrome → Next standalone → FastAPI → PostgreSQL 통합 시나리오 **1 통과(57.5초)**. 임시 DB·서버는 검증 후 정리했다. 실제 외부 모델은 호출하지 않았고 Docker 미설치로 Compose e2e는 실행하지 못했다. 기존 Starlette httpx 사용 중단 경고 1건이 남아 있다.
+
+- **Ollama 실제 연동 / 2026-10-21**: Windows·CPU·16GB RAM, Ollama **0.40.6**, 공식 `qwen2.5:3b` Q4_K_M, `http://127.0.0.1:11434/v1`, `json_schema`. 실행 파일과 모델의 공식 SHA-256을 확인했다. 실제 모델을 미리 적재한 뒤 `grounded_statements` 호출은 **14.97초**, 선원 로그인한 FastAPI TestClient → 실제 PostgreSQL 검색 → 실제 Ollama HTTP 호출은 **9.91초**에 영문 `generation=llm`, 원문과 일치하는 인용, 실패 경고 없음을 확인했다. 가상 절차 문서 1건을 사용했고 외부 호출·DB를 모의 처리하지 않았다. 존재하지 않는 모델은 Ollama 오류 후 `MODEL_FAILED_EXTRACTIVE_FALLBACK`·유효 발췌로 전환됐다.
+  - **품질 한계**: 영어 질문의 한국어 출력 요청(9.12초)과 한국어 원문·질문(4.50초)은 `insufficient_evidence`·빈 statements를 반환했다. 이를 한국어 답변 성공으로 집계하지 않는다. `qwen2.5:1.5b`에서는 정상 인용 사례 외에 불일치 JSON·변형 인용·빈 답변도 관찰했으며, temperature 0 프리셋으로도 해결되지 않았다. 한국어 품질 개선과 기존 검색 순위 문제는 후속 과제다. 이 검증은 모델 전체 품질 평가가 아니며, Docker → 호스트 Ollama 연결·Ollama를 켠 브라우저 흐름은 미검증이다. 별도의 전체 브라우저/Compose 검증에서는 모델을 껐다.
+  - **로컬 산출물**: 재현 스크립트·실제 응답 JSON·공식 실행 파일·모델은 Git에서 제외된 `.verification/`에 보관했다. 기존 운영 `.env`·DB를 변경하지 않고 별도 검증 DB와 루프백 포트를 사용했다. 일반 설치·실행 절차는 [사용 안내](user-guide.md#로컬-ollama-실행)에 있다.
+- **최종 코드 재검증 / 2026-10-21**: 프롬프트 보완까지 포함한 `8d67a50`에 #14 워크플로를 결합한 `7ba0680`의 [CI 39486841355](https://github.com/cxo-ca/sea-the-answer/actions/runs/39486841355)에서 backend **329 통과·4 건너뜀(24.20초)**, frontend 테스트·빌드, Compose e2e **1 통과(28.4초)** 및 종료 코드 0 확인. CI #14 자체 최신 커밋 `cfa7fb5`도 [39483905479](https://github.com/cxo-ca/sea-the-answer/actions/runs/39483905479)에서 세 작업 모두 성공했다.
+- **로컬 모델 응답 지시 보완 / 2026-10-21**: 실제 Ollama에서 작은 모델이 근거 부족 예시를 반복하거나 인용문을 바꾸는 응답을 확인해, 근거가 충분한 JSON 예시와 원문 대소문자·문구를 그대로 복사하는 지시를 추가했다. 질문·문서 안의 지시를 따르지 않는 경계와 서버의 JSON·인용 거부 규칙은 유지한다. 공급자 HTTP·API 회귀 **104 통과(4.51초)**. 이 수정만으로 모든 모델의 출력 품질을 보장하지 않는다.
+- **원격 CI 통합 검증 / 2026-10-21**: [GitHub Actions 39482809765](https://github.com/cxo-ca/sea-the-answer/actions/runs/39482809765)에서 인증 구현 `a1d2d93` + PR #14 워크플로(`cce3c71`) 검증 성공. Linux·PostgreSQL 18 backend **329 통과·4 건너뜀(24.65초)**, frontend 테스트·빌드 성공, 운영·개발·e2e Compose 설정 검사 및 격리된 DB를 사용하는 **Compose e2e 1 통과(27.2초)**, 종료 시 `down` 정리 성공. 실제 모델은 이 CI에서 호출하지 않았다. #14 README 날짜 충돌은 `cfa7fb5`로 제거했다. upstream 병합은 `cxo-ca`에 쓰기 권한이 없어 관리자 처리 대기다.
+- **개인 계정 인증 / 2026-10-21** (1.4.0 유지, [ADR 0016](adr/0016-crew-admin-authentication.md)): 일반 선원·열람·관리자 개인 계정 로그인, 관리자 계정 발급·회수, 최초·초기화 비밀번호 변경, 익명 업무 API 차단, 계정 버전 기반 세션 회수, 30분 유휴·12시간 절대 만료와 로그인 시도 제한을 구현했다. 내장 관리자 비밀번호를 제거하고 빈 DB의 명시적 초기 관리자 설정으로 전환했다. 기존 계정·보고서를 보존하며 새 마이그레이션에서 기존 계정도 비밀번호 변경을 요구한다. 권한·접속 로그, 운영 절차·인증 명세를 갱신했다. 실제 규정의 적용 범위와 프로젝트 정책을 ADR에 구분했다.
+- **인증·화면 검증 / 2026-10-21**: Windows, Python 3.13.16, PostgreSQL 18.6의 별도 DB에서 backend 전체 **329 통과·4 건너뜀**, 최종 인증 집중 **26 통과**. Node 24.21.0에서 frontend **4 통과**, Next.js 16.3.8 production 빌드 성공. 실제 Chrome → Next standalone → FastAPI → PostgreSQL 통합 시나리오 **1 통과(56.9초)**: 익명 차단, 초기 관리자·선원 비밀번호 변경, 계정 발급, 권한 제한, 문서·PDF·운항·보고서·승인, 백업 복구 후 재로그인, 모바일 탐색. 백업 생성 완료를 기다리도록 테스트를 보완했다. 이 PC에는 Docker가 없어 로컬 결과를 Compose 실행 결과로 표기하지 않는다. Starlette의 기존 httpx 사용 중단 경고 1건은 남아 있다.
+
 
 - **RAG 브랜치 최신 팀 main 통합 / 2026-10-21**: 로컬 `main`을 `upstream/main`의 `0257175`로 fast-forward하고 `feature/rag-bm25`에 병합했다. 문서 검색·변경 이력 충돌을 해결해 팀의 선택 문서 ID 검증·SQL 범위 제한과 기존 BM25·디버그 CLI를 함께 보존했다. 선택하지 않은 문서는 BM25 통계에 포함하지 않는다. 기본 용어집 확충에 영향을 받던 합성 순위 테스트는 롤백 전용 테스트 스키마 안에서 corpus를 격리했다. 사용자 Kiwi 의존성 변경은 별도 미커밋 변경으로 보존하며 실제 앱 DB·`.env`·사용자 PDF는 수정하지 않는다.
 
@@ -140,6 +273,9 @@ PG 세션이 살아 있는 정지 worker는 재시작이 필요하며 네트워�
 - **기본 문서 확충 / 2026-10-15** (버전 유지): 원본 PDF와 함께 등록되는 기본 문서 5건(해양환경관리법 법률 제21416호, 선박안전법 제19134호, 해상교통안전법 제19573호, 선박직원법 제21053호 — 2026-10-15 국가법령정보센터에서 받은 본문 PDF; USCG Navigation Rules and Regulations Handbook 2024-08-12 수정판)과 법령 정의 조항·COLREG Rule 3 기반 `해사 기본 용어집`을 `seed.json`에 추가. 법령은 조문 단위, 핸드북은 페이지 단위 절이며 원문 페이지 번호를 보존한다. `seed.json` 항목의 `file` 필드가 `knowledge/` 아래 PDF를 가리키면 `bootstrap()`이 원본을 함께 저장한다(`knowledge/` 밖 경로는 거부). 재생성 스크립트 `scripts/build_seed_documents.py` 추가. 검증: 2026-10-15 `uv run pytest` 242 통과·65 건너뜀(PostgreSQL 필요), 신규 `test_seed_documents.py` 9건 포함. 실제 PostgreSQL 적재와 화면 확인은 미수행. 알려진 한계: 키워드 검색이 조사가 붙은 단어(예: "조종불능선이")를 찾지 못하고 흔한 단어와 핵심 단어를 같은 점수로 세어, 문서가 늘면서 일부 질문의 근거 순위가 나빠진다.
 - **AI 답변 실패 배너 오표시 수정 / 2026-10-14**: 통합 질문 화면이 경고 코드가 하나라도 있으면 "AI 답변을 생성하지 못해…" 배너를 띄워, 모델 답변이 성공(`generation=llm`)해도 `OPERATIONS_CONTEXT_REQUIRED`만으로 실패처럼 보였다. `MODEL_FAILED_EXTRACTIVE_FALLBACK`·`MODEL_NOT_CONFIGURED`일 때만 표시하도록 `frontend/src/views/views.jsx`를 수정. 검증: 2026-10-14 `npm test` 4 통과. 같은 날 동국 AI Chat 게이트웨이(`gpt-6-luna`)로 backend 컨테이너에서 `grounded_statements` 실호출 성공(200, 유효 인용, 4.3초), 웹 화면에서 "연료 황 함유량 기준은?" 질문이 AI 초안으로 표시됨을 확인.
 - **동국 AI Chat 게이트웨이 호스트 / 2026-10-14** (버전 유지, [ADR 0014 제안](adr/0014-mindlogic-gateway-host.md)): 확인된 API 기본 주소 `https://factchat-cloud.mindlogic.ai/v1/gateway`의 정확한 호스트에 `DONGUK_AI_CHAT_API_KEY`를 보내고, 이 호스트에서는 문서 표기대로 `/chat/completions/`로 호출한다. 다른 `*.mindlogic.ai`·유사 도메인에는 키를 보내지 않는다. 검증: 2026-10-14 로컬 작업 폴더의 `backend/`에서 (Linux, Python 3.13) `uv run pytest` 233 통과·65 건너뜀(PostgreSQL 필요 테스트). 실제 게이트웨이 호출·e2e는 미수행.
+
+- **후속 작업 우선순위 기록 / 2026-10-15** (문서만 변경, 버전 유지): 사용자가 지정한 [후속 계획](plans/2026-10-13-openai-compatible-chat.md)에 일반 선원·관리자 인증 우선, 로컬 Ollama 실제 연동 검증·운영 문서 보완, CI PR #14의 추후 병합을 기록했다. 검색·문서 정보 질문·접근 정책 등 사용자 보고 문제를 보존했으며 이번 작업에서 재검증한 결과로 표현하지 않는다.
+
 ### 2026-10-15 - 선택적 LLM을 사용하는 앱 업무 스킬
 
 - 실행·저장 상태 보완: 처리 중 양식을 잠그고 저장 중 새 실행을 차단한다. 보고서 저장 성공 문구와 과거 이력 미리보기의 상태 안내를 구분했다. 지연 요청을 포함한 Docker 전체 19단계 통과(49.3초), frontend 4 passed·production build 성공.
@@ -189,6 +325,9 @@ PG 세션이 살아 있는 정지 worker는 재시작이 필요하며 네트워�
 
 ## 검증 기록
 
+### 2026-10-15 — 후속 작업 메모 문서 확인
+
+사용자의 최신 우선순위를 계획에 반영하고 기존 인증 설명·API 계약과 대조했다. 변경 문서의 로컬 파일 링크와 `git diff --check`를 확인했다. 실행 코드 변경이 없어 단위·브라우저 테스트를 실행하지 않았으며, 로그인 구현·실제 Ollama 호출·CI PR 병합도 수행하지 않았다.
 ### 2026-10-22 — 목차 청킹·Kiwi 검증
 
 - Windows Python 3.13, Kiwi 0.24.0, 별도 임시 PostgreSQL 17에서 `backend/` 기준 `uv run python ../.verification/bm25-db-tests.py` 실행: **415 passed / 4 skipped**, 90.10초. helper는 `.env` 없이 임시 서버/테스트 DB에서 `python -m pytest -q -rs --tb=short`를 실행하고 종료했다. skip 4개는 기존 해사 데이터셋을 요구하는 `MARITIME_DATA_TEST_DATABASE_URL` 미설정이며 이번 검색·청킹 테스트는 모두 실행했다. 기존 Starlette/httpx 경고 1개.

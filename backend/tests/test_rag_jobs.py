@@ -268,6 +268,37 @@ def test_retry_limit_and_current_model_only(db_factory):
         assert store.one("SELECT state FROM rag_index_jobs WHERE fingerprint='other-model'")["state"] == "pending"
 
 
+def test_worker_real_chroma_mixed_vectors_after_content_revision(db_factory, tmp_path):
+    import chromadb
+    from chromadb.config import Settings
+    from api.rag_vector import VectorIndex
+    from api.rag_search import search
+    from test_rag_vector import Encoder
+    client = chromadb.PersistentClient(path=str(tmp_path), settings=Settings(anonymized_telemetry=False))
+    index = VectorIndex(create=True, db=client, encoder=Encoder(), model_contract={"test": 1})
+    data = payload()
+    data["document"]["sections"] = [
+        {"page": 1, "heading": "Checks", "text": "선급 검사를 진행하는 가상 문서입니다."},
+        {"page": 2, "heading": "Fuel", "text": "Synthetic fuel inspection instructions."},
+    ]
+    first = saved(db_factory, data)
+    assert run(db_factory, index)
+    assert state(db_factory, first)["state"] == "done"
+    data["expectedId"] = first
+    data["document"]["sections"][1]["text"] += " Revised instructions."
+    revised = saved(db_factory, data)
+    assert revised != first
+    assert run(db_factory, index)  # Reused first vector + new second vector, same batch.
+    assert state(db_factory, revised)["state"] == "done"
+    with db_factory() as store:
+        rows = store.search_candidates({"role": "operator"})
+        assert {r["document_id"] for r in rows} == {revised}
+        for mode in ("vector", "hybrid"):
+            report = search("선급 검사", rows, mode=mode, vector_index=index)
+            assert report["effective_mode"] == mode
+            assert report["results"][0]["page"] == 1
+
+
 def test_job_generation_fences_late_completion(db_factory):
     identity = saved(db_factory)
     with db_factory() as worker:
@@ -278,6 +309,43 @@ def test_job_generation_fences_late_completion(db_factory):
         jobs.unlock(worker, job["id"])
     assert state(db_factory, identity)["state"] == "pending"
     assert state(db_factory, identity)["generation"] == 2
+
+
+def test_metadata_save_reactivation_repair_and_rollback(db_factory):
+    identity = saved(db_factory)
+    index = Index()
+    run(db_factory, index)
+    with db_factory() as store:
+        original = jobs.chunks(store, identity)
+
+    def edit(status):
+        with db_factory() as store:
+            meta = store.document_meta(identity)
+            return store.save_document({"mode": "metadata", "document": {"id": "rag-synthetic"},
+                "expectedId": identity, "expectedMetaRevision": meta["revision"],
+                "meta": {"status": status}})
+
+    edit("retired")
+    run(db_factory, index)
+    assert state(db_factory, identity)["state"] == "cancelled"
+    index.stored.clear()  # A missing derived index must be repairable.
+    edit("active")
+    assert run(db_factory, index)
+    assert state(db_factory, identity)["state"] == "done"
+    with db_factory() as store:
+        assert jobs.chunks(store, identity) == original
+    generation = state(db_factory, identity)["generation"]
+    with pytest.raises(RuntimeError), db_factory() as store:
+        meta = store.document_meta(identity)
+        store.save_document({"mode": "metadata", "document": {"id": "rag-synthetic"},
+            "expectedId": identity, "expectedMetaRevision": meta["revision"],
+            "meta": {"scope": "admin"}})
+        raise RuntimeError("rollback")
+    assert state(db_factory, identity)["generation"] == generation
+    assert edit("active")["status"] == "unchanged"
+    assert state(db_factory, identity)["generation"] == generation + 1
+    assert run(db_factory, index)
+    assert state(db_factory, identity)["state"] == "done"
 
 
 def test_new_migration_down_up_and_foreign_key_cleanup(db_factory):

@@ -14,16 +14,22 @@
 
 ## 목록
 
+- [2026-10-29 벡터 색인 복구·통합 검증](2026-10-29-vector-index-repair-integration.md): 완료 (머지 커밋 대기).
+
 - [2026-10-29 Chroma 이미지 분리](2026-10-29-chroma-image.md): 완료.
 
 - [2026-10-27 벡터·RRF](2026-10-27-vector-hybrid.md): 완료.
 
 | 문서 | 내용 | 상태 |
 |---|---|---|
+| [`2026-10-28-korean-llm-validation.md`](2026-10-28-korean-llm-validation.md) | 한국어 평가·브라우저 회귀·Docker 및 실제 모델 연결 검증 | 완료 (일반 한국어 품질은 후속) |
+| [`2026-10-28-search-token-reuse.md`](2026-10-28-search-token-reuse.md) | 내용별 토큰 재사용과 검색 순위·권한·속도 회귀 검증 | 완료·로컬 검증 |
+| [`2026-10-28-maritime-retrieval-evaluation.md`](2026-10-28-maritime-retrieval-evaluation.md) | 원문 인용 기반 질문 평가와 BM25 지표·실패 분석 | 완료 |
 | [`2026-10-22-rag-chunking-kiwi.md`](2026-10-22-rag-chunking-kiwi.md) | 목차·제목 청킹 및 Kiwi BM25 | 완료 |
+| [`2026-10-21-crew-admin-auth.md`](2026-10-21-crew-admin-auth.md) | 인증 구현·Ollama 실검증·CI 성공, PR 제출 | 보류 (#14 관리자 병합 대기) |
 | [`2026-10-15-bm25-debug.md`](2026-10-15-bm25-debug.md) | 읽기 전용 BM25 디버그 CLI | 완료 |
 | [`2026-10-14-bm25-retrieval.md`](2026-10-14-bm25-retrieval.md) | 권한 적용 후 한영 BM25 문서 검색 | 완료 |
-| [`2026-10-13-openai-compatible-chat.md`](2026-10-13-openai-compatible-chat.md) | 모델 호출 전환·#11 검토 반영·CI 분리·후속 PR | 진행 중 |
+| [`2026-10-13-openai-compatible-chat.md`](2026-10-13-openai-compatible-chat.md) | 모델 호출 전환·인증·공급자 실검증, CI 분리 | 보류 (#14 관리자 병합 대기) |
 | [`2026-10-13-rag-preprocessing.md`](2026-10-13-rag-preprocessing.md) | Python 해사 문서 전처리·청킹, 실제 PDF 검증 및 새 구조 통합 | 완료 |
 | [`2026-10-08-team-module-integration.md`](2026-10-08-team-module-integration.md) | RAG·LLM·Tool·문서 형식 등 팀 모듈 연결 로드맵 | 초안 |
 | [`2026-10-08-tools-and-data-preparation-docs.md`](2026-10-08-tools-and-data-preparation-docs.md) | 역할4 PR 문서·모듈 구조 정리 | 완료 |

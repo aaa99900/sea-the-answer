@@ -23,15 +23,16 @@
 
 ## 목록
 
-- [0017 Chroma 전용 이미지](0017-dedicated-chroma-image.md): 대체됨(0018). 전용 서버 분리는 유지.
-- [0016 로컬 E5·Chroma 검색](0016-local-vector-retrieval.md): 대체됨(0017).
+- [0020 Chroma 전용 이미지](0020-dedicated-chroma-image.md): 대체됨(0021). 전용 서버 분리는 유지.
+- [0019 로컬 E5·Chroma 검색](0019-local-vector-retrieval.md): 대체됨(0020).
 
 | 번호 | 결정 | 상태 | 날짜 |
 |---|---|---|---|
+| [0017](0017-bounded-chunk-token-reuse.md) | 권한 인덱스는 매번 만들고 내용별 토큰만 크기 제한 메모리에서 재사용 | 제안·로컬 구현 | 2026-10-28 |
 | [0001](0001-docs-directory.md) | 문서를 최상위 `docs/`에 모으고 AGENTS.md를 공통 지침으로 사용 | 채택 | 2026-10-08 |
 | [0002](0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 대체됨(0006) | 2026-10-05 |
 | [0003](0003-sqlite-fts5-local-storage.md) | 내장 SQLite + FTS5로 로컬 저장·검색 | 대체됨(0009) | 2026-09-30 |
-| [0004](0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 채택 | 2026-09-30 |
+| [0004](0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 대체됨(0016) | 2026-09-30 |
 | [0005](0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 (Docker는 운영·테스트 환경용) | 채택 (접속 주소·프록시 방향은 0006, Docker 개발 오버레이는 0009로 일부 대체) | 2026-10-08 |
 | [0006](0006-nextjs-entry-rewrites-to-api.md) | Next.js를 공개 진입점으로, `/api/*`는 rewrites로 내부 API에 전달 | 채택 (전달 수단은 0007로 대체) | 2026-10-08 |
 | [0007](0007-runtime-api-origin-via-proxy.md) | `/api/*` 전달 주소를 빌드가 아닌 실행 시점에 결정(`proxy.js`) | 채택 | 2026-10-08 |
@@ -42,7 +43,11 @@
 | [0012](0012-openai-compatible-chat-completions.md) | OpenAI 호환 Chat Completions 공통 호출과 로컬 인용 검증 | 대체됨(0013) | 2026-10-13 |
 | [0013](0013-provider-credential-isolation.md) | 공통 LLM 설정과 URL 호스트에 따른 공급자별 인증키 격리 | 채택 | 2026-10-14 |
 | [0014](0014-mindlogic-gateway-host.md) | 동국 AI Chat API 게이트웨이(Mindlogic) 호스트 계약 추가 | 제안 | 2026-10-14 |
+| [0016](0016-crew-admin-authentication.md) | 개인 계정·최소 권한·업무 API 인증 | 채택 | 2026-10-21 |
 
 0002~0004는 이미 구현된 결정을 2026-10-08에 소급 기록한 것입니다. 날짜는 해당 결정이 들어간 버전의 날짜입니다.
 
-- [0018 PostgreSQL 작업 큐와 이미지 모델](0018-durable-index-jobs.md) — 채택 (0017 대체)
+- [0021 PostgreSQL 작업 큐와 이미지 모델](0021-durable-index-jobs.md) — 채택 (0020 대체)
+
+2026-10-29 통합 시 팀 main의 인증/토큰 캐시 ADR 번호를 보존하기 위해 RAG의 기존
+0016/0017/0018을 0019/0020/0021로 재번호화했다. 결정 내용은 바꾸지 않았다.

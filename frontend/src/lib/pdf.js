@@ -62,28 +62,75 @@ export async function extractPdf(file, progress = () => {}) {
 export function sectionsToText(sections) {
   return sections.map((s) => `--- PAGE ${s.page || '?'} ---\n${s.text}`).join('\n\n');
 }
-export function textToSections(text, reference) {
-  const parts = text.split(/^--- PAGE (\d+|\?) ---\s*$/m);
-  if (parts.length === 1) {
-    const s = [];
-    for (let i = 0; i < text.trim().length; i += 19000)
-      s.push({
-        heading: reference || '본문',
-        text: text.trim().slice(i, i + 19000),
-      });
-    return s;
+
+// These are bounded API input sections, not the final RAG chunks made by Python.
+const SOURCE_SECTION_LIMIT = 19000;
+
+function splitSourceText(value) {
+  const text = value.trim();
+  const pieces = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + SOURCE_SECTION_LIMIT, text.length);
+    if (end < text.length) {
+      // One extra character lets sentence detection inspect the next whitespace.
+      const window = text.slice(start, end + 1);
+      const boundaries = [/\r?\n[ \t]*\r?\n/g, /[.!?。！？]["'’”)]*(?=\s)/g, /\r?\n/g, /\s/g].map(
+        (pattern) => {
+          let last = 0;
+          for (const match of window.matchAll(pattern)) {
+            const position = match.index + match[0].length;
+            if (position <= SOURCE_SECTION_LIMIT) last = position;
+          }
+          return last;
+        },
+      );
+      // Prefer paragraph, sentence, line and word boundaries, without isolating
+      // a short heading. An earlier whitespace is still better than cutting a word.
+      let cut =
+        boundaries.find((position) => position >= SOURCE_SECTION_LIMIT * 0.4) ||
+        boundaries.at(-1) ||
+        SOURCE_SECTION_LIMIT;
+      if (!window.slice(0, cut).trim()) cut = SOURCE_SECTION_LIMIT;
+      end = start + cut;
+      // A continuous string may need a hard cut; keep Unicode pairs and CRLF intact.
+      const before = text.charCodeAt(end - 1);
+      const after = text.charCodeAt(end);
+      if (
+        (before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff) ||
+        (before === 13 && after === 10)
+      )
+        end--;
+    }
+    const piece = text.slice(start, end);
+    if (piece.trim()) pieces.push(piece);
+    start = end;
   }
-  const sections = [];
+  return pieces;
+}
+
+export function textToSections(text, reference) {
+  const parts = text.split(/^--- PAGE (\d+|\?) ---[ \t]*\r?$/m);
+  if (parts.length === 1) {
+    return splitSourceText(text).map((part) => ({
+      heading: reference || '본문',
+      text: part,
+    }));
+  }
+  // Text before the first marker is source too; its PDF page is unknown.
+  const sections = splitSourceText(parts[0]).map((part) => ({
+    page: null,
+    heading: reference || '본문',
+    text: part,
+  }));
   for (let i = 1; i < parts.length; i += 2) {
     const page = parts[i] === '?' ? null : Number(parts[i]);
-    const t = parts[i + 1]?.trim();
-    if (t) {
-      for (let j = 0; j < t.length; j += 19000)
-        sections.push({
-          page,
-          heading: reference || `페이지 ${page || '미지정'}`,
-          text: t.slice(j, j + 19000),
-        });
+    for (const part of splitSourceText(parts[i + 1] || '')) {
+      sections.push({
+        page,
+        heading: reference || `페이지 ${page || '미지정'}`,
+        text: part,
+      });
     }
   }
   return sections;

@@ -1,8 +1,8 @@
 # HTTP API
 
 - 상태: 구현됨 (1.4.0)
-- 최종 확인: 2026-10-13 (`backend/api/` 대조)
-- 관련: [`../architecture.md`](../architecture.md), [`../data-model.md`](../data-model.md), [`integrated-answer.md`](integrated-answer.md), [ADR 0004](../adr/0004-public-access-admin-only-writes.md)
+- 최종 확인: 2026-10-21 (`backend/api/` 대조)
+- 관련: [`../architecture.md`](../architecture.md), [`../data-model.md`](../data-model.md), [`integrated-answer.md`](integrated-answer.md), [ADR 0016](../adr/0016-crew-admin-authentication.md)
 
 ## 1. 목적
 
@@ -14,52 +14,50 @@
 
 - API 서버(FastAPI)는 Next.js만 닿을 수 있는 곳에 둡니다. compose에서는 내부 네트워크의 `backend:8000`(호스트에 공개하지 않음), 직접 실행에서는 `127.0.0.1:8000`.
 - 실제 호스트 = `X-Forwarded-Host`(Next.js 프록시가 설정) 또는 `Host`. 호스트 이름이 `127.0.0.1`·`localhost`·`HAEDAP_ALLOWED_HOSTS` 중 하나가 아니면 403 `HOST_DENIED`. 포트는 검사하지 않습니다.
-- `Origin`이 있으면 `http://<실제 호스트>`와 같아야 하고, `Sec-Fetch-Site`가 `cross-site`/`same-site`면 거부합니다(403 `ORIGIN_DENIED`).
+- `Origin`이 있으면 `http://<실제 호스트>`(`HAEDAP_HTTPS=true`이면 `https://`)와 같아야 하고, `Sec-Fetch-Site`가 `cross-site`/`same-site`면 거부합니다(403 `ORIGIN_DENIED`).
 - `X-Forwarded-For`는 로그인 시도 제한의 접속자 구분에만 씁니다(API가 내부 네트워크에만 있으므로 신뢰). 권한 판단에는 쓰지 않습니다.
 - 앱 API는 `/api/{path}` 하나가 처리하고, 없는 경로는 404 `NOT_FOUND`. `MARITIME_DATA_API_TOKEN`이 있으면 `/api/maritime-data/*`가 먼저 매칭됩니다([해사 데이터 API](tools.md)).
 
 ## 2. 인증과 쓰기 보호
 
-- `GET /api/health`: 연결 상태, 현재 사용자(관리자 또는 `role:guest`), `authenticated`, `publicAccess:true`, CSRF 토큰, `setupRequired:false`, 공개 문서 수.
-- 시작 시 기본 관리자 `admin / 1234`를 자동 설정합니다(일회성 이전, `settings.publicAccessV1`). 기본 계정은 사용자 변경 API에서 고정입니다.
-- `POST /api/auth/setup`: 사용하지 않으며 **410**.
-- `POST /api/auth/login`, `POST /api/auth/logout`: 관리자만 로그인. `haedap_session` 쿠키(HttpOnly, SameSite=Strict) 발급·폐기. 비밀번호는 salt + scrypt. 기본 관리자만 4자리 비밀번호, 추가 관리자는 10자 이상.
-- 일반 사용자: 32바이트 난수 `haedap_guest` 쿠키(HttpOnly, SameSite=Strict, 최대 1년). DB 소유자 ID는 `guest_` + 쿠키 SHA-256. 인증 수단이 아니라 작업공간 구분용입니다.
-- 요청 헤더 `X-Haedap-Identity`가 현재 쿠키의 사용자와 다르면 **401** — 다른 탭·세션 만료로 사용자가 바뀐 상태에서 이전 사용자의 내용이 저장되는 것을 막습니다. 권한 부여는 이 헤더가 아니라 서버의 역할 검사로 합니다.
-- 세션 12시간, 로그인 실패 횟수 제한, 계정 `version` 변경 시 기존 세션 무효화. 서버 재시작·전체 복구 후 재로그인.
-- **모든 POST**: `Content-Type: application/json` + `X-Haedap-Token`(CSRF) 필요. 같은 출처·Host 검사.
-- 역할: `admin` — 승인·사용자·백업·전체 로그·원본 자료 변경. `guest` — 공개 문서·운항 조회, 질문·계산, 자기 초안 작성·저장·검토 요청. 이전 `operator`/`viewer` 레코드는 보존하지만 로그인 불가.
-- 제한 문서는 검색 입력 단계부터 제외하고, 원본 PDF·이전 버전·보고서 근거·질문 이력 재열람에도 범위를 검사합니다.
-- 본문 크기 제한: `/api/changes` 38MB(PDF 포함 문서 등록), `/api/backups/import` 100MB, 그 외 POST 1MB. JSON이 아니면 **415 `CONTENT_TYPE`**. Next.js 프록시 한도는 101MB, 응답 대기는 60초입니다.
+인증·계정 발급·비밀번호·세션·오류의 계약은 [authentication.md](authentication.md)에 정의합니다. `admin/operator/viewer` 개인 계정으로 로그인하며 업무 API는 익명 접근을 차단합니다. `health.publicAccess=false`; 초기 비밀번호 변경 전에는 업무를 사용할 수 없습니다.
+
+- 모든 POST는 JSON + `X-Haedap-Token`(CSRF)이 필요합니다. 같은 출처·Host를 검사합니다.
+- `X-Haedap-Identity`가 현재 세션 사용자와 다르면 401입니다. 서버가 저장된 역할로 권한을 결정합니다.
+- 문서 범위는 검색 단계부터 원문 PDF·보고서 근거·질문 이력 재열람까지 검사합니다.
+- 요청 크기: `/api/changes` 38MB, `/api/backups/import` 100MB, 그 외 POST 1MB. JSON이 아니면 415입니다.
+- 기존 게스트 식별자와 소유 자료는 보존하지만 로그인 계정으로 자동 이전하지 않습니다.
 
 ## 3. 경로
 
 | 메서드 · 경로 | 권한 | 동작 |
 |---|---|---|
 | GET `/api/health` | 모두 | 상태·사용자·CSRF 토큰 |
-| GET `/api/skills` | 모두 | 고정 업무 스킬 목록 |
-| POST `/api/skills/run` | 모두(본인 이력·문서 권한 검사) | [업무 스킬](workflow-skills.md). 입력 범위·매핑 검증 후 실행, 초안 저장은 별도 |
-| POST `/api/auth/login` · `/api/auth/logout` | 모두 | 관리자 로그인·로그아웃 |
-| GET `/api/documents` | 모두 | 허용 문서 목록·메타데이터·페이지별 본문 |
-| GET `/api/documents/:id/pdf` | 모두(범위 검사) | 허용된 저장 원본 PDF |
-| GET `/api/operations` | 모두 | 선박과 일별 운항 기록 |
+| GET `/api/skills` | 로그인 계정 | 고정 업무 스킬 목록 |
+| POST `/api/skills/run` | 로그인 계정(본인 이력·문서 권한 검사) | [업무 스킬](workflow-skills.md). 입력 범위·매핑 검증 후 실행, 초안 저장은 별도 |
+| POST `/api/auth/login` · `/api/auth/logout` | 모두 | 개인 계정 로그인·로그아웃 |
+| POST `/api/auth/password` | 로그인 계정 | 본인 비밀번호 변경·세션 재발급 |
+| GET `/api/documents` | 로그인 계정 | 허용 문서 목록·메타데이터·페이지별 본문 |
+| GET `/api/documents/:id/pdf` | 로그인 계정(범위 검사) | 허용된 저장 원본 PDF |
+| GET `/api/operations` | 로그인 계정 | 선박과 일별 운항 기록 |
 | POST `/api/operations/validate` | 관리자 | CSV 행 검증 `{rows:[...]}` |
 | POST `/api/operations/example` | 관리자 | 빈 작업공간에 가상 예시 등록 |
 | POST `/api/changes` | 관리자 | `{kind, payload}` 변경 즉시 반영. 일반 사용자는 403 |
 | GET `/api/changes` | 관리자 | 변경·승인 목록 (최근 200) |
 | POST `/api/changes/review` | 관리자 | `{id, decision:"approve"|"reject", note}` |
 | GET/POST `/api/users` | 관리자 | 계정 목록·생성·수정 |
-| POST `/api/ask` | 모두 | 통합 답변 → [`integrated-answer.md`](integrated-answer.md) |
-| POST `/api/search` | 모두 | 열람 범위가 적용된 검색 결과 |
-| GET `/api/history` | 모두(본인) | 당시 질문·답변·근거 (최근 100) |
+| POST `/api/ask` | 로그인 계정 | 통합 답변 → [`integrated-answer.md`](integrated-answer.md) |
+| POST `/api/search` | 로그인 계정 | 열람 범위가 적용된 검색 결과 |
+| GET `/api/history` | 로그인 계정(본인) | 당시 질문·답변·근거 (최근 100) |
 | GET `/api/logs` | 관리자 | 감사 로그 최근 500건 |
-| GET/POST `/api/reports` | 모두 | 보고서 목록·저장. 새 초안은 새 UUID |
+| GET/POST `/api/reports` | 조회: 로그인 계정 / 저장: 선원·관리자 | 보고서 목록·저장. 새 초안은 새 UUID |
 | GET `/api/reports/:id` | 열람 권한 | 개별 보고서 |
 | GET/POST `/api/reports/current` | 열람 권한 | 이전 공용 초안 ID 호환 경로 |
-| POST `/api/reports/generate` | 모두 | `{template:"noon"|"mrv", ship, from, to}` |
+| POST `/api/reports/generate` | 선원·관리자 | `{template:"noon"|"mrv", ship, from, to}` |
 | POST `/api/reports/submit` | 소유자·관리자 | `{id, version}` 검토 요청 |
-| POST `/api/tools/calculate_emissions` | 모두 | `{fuel, factor, dwt, distance}` |
-| POST `/api/tools/voyage_time` | 모두 | `{start, end, before, after}` UTC 시간 계산 |
+| POST `/api/reports/delete` | 관리자 | `{id, version}` 저장된 보고서 삭제 |
+| POST `/api/tools/calculate_emissions` | 로그인 계정 | `{fuel, factor, dwt, distance}` |
+| POST `/api/tools/voyage_time` | 로그인 계정 | `{start, end, before, after}` UTC 시간 계산 |
 | GET/POST `/api/backups` | 관리자 | 백업 목록 / 생성 |
 | GET `/api/backups/:id` | 관리자 | 백업 파일 다운로드 |
 | POST `/api/backups/import` | 관리자 | 백업 JSON 형식·체크섬 검증 후 목록에 추가 |
@@ -101,7 +99,9 @@ DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 �
 - 질의의 처음 30개 형태소/영숫자 토큰에 토큰 또는 연속 구 단위로 일치하는 별칭 그룹을 한 번 확장하고 중복을 제거한다. 부분 문자열 및 확장어를 다시 확장하는 연쇄 처리는 하지 않는다. corpus에는 별칭을 추가하지 않고 반복 토큰을 빈도 계산에 유지한다. 영문 stemming은 없으며 필요한 복수형은 사전에 명시한다.
 - BM25Okapi 기본값(`k1=1.5`, `b=0.75`, `epsilon=0.25`)으로 계산한다. 일치 토큰이 없는 청크는 반환하지 않는다. 작은 corpus에서 0·음수 점수인 일치 청크도 반환하며 점수 내림차순, 동점은 입력 순서(DB의 문서 ID·청크 순서)를 유지한다. 점수는 확률이나 corpus 간 비교 가능한 신뢰도가 아니다.
 - 검색 모듈은 빈 질의·빈 corpus·토큰 없는 corpus에 빈 목록을 반환한다. `top_k`는 양의 정수여야 한다. 외부 API의 기존 빈 질문 검증은 그대로 유지한다.
-- BM25는 매 요청 허용 청크로 메모리 인덱스를 만들며 검색 변경에는 DB 재등록·재청킹이 필요 없다. Kiwi 분석기와 고정 별칭 분석 결과만 프로세스 내 재사용한다. 사용자 질의·문서 토큰·권한 인덱스를 요청 간 캐시하지 않는다. 첫 검색에는 모델·별칭 초기화 비용, 매 검색에는 corpus 분석 비용이 발생한다. 선택적 벡터/RRF 경로는 별도 [계약](rag-vector.md)을 따른다.
+- 매 요청 허용 청크로 메모리 인덱스를 만들며 검색 변경에는 DB 재등록·재청킹이 필요 없다. Kiwi 분석기·고정 별칭과 내용 기반 문서 분석 토큰을 프로세스 내 재사용한다. 문서 토큰은 title/reference/heading/text 전체의 SHA-256을 키로 최대 2,048항목·계산 객체 크기 합 16MiB의 LRU에 보관하고 반환 시 목록을 복사한다. 원문 문자열·사용자 질의·권한·검색 결과·BM25 인덱스는 요청 간 캐시하지 않는다. 현재 DB 후보로 통계를 매번 다시 만들며 삭제·개정·권한·선택 범위 변경을 우회하지 않는다. 내용 변경·캐시 퇴출·프로세스 재시작 후 첫 분석 비용은 남는다. 어휘/분석 코드 변경 시 프로세스를 재시작한다. 토큰에도 민감한 단어가 남을 수 있고 크기 한도는 전체 RSS 상한이 아님은 [ADR 0017](../adr/0017-bounded-chunk-token-reuse.md)에 명시한다. 의미 검색·벡터 검색은 포함하지 않는다.
+
+선택적 벡터/RRF 경로는 별도 [계약](rag-vector.md)을 따른다. 위 토큰 캐시 설명은 BM25 경로에 한정된다.
 
 ## 4. 문서 등록 payload (`document.save`)
 
@@ -142,6 +142,36 @@ DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 �
 
 문서 삭제는 행을 지우지 않고 `status:'deleted'`로 검색·열람에서 제외합니다. 페이지 번호 없는 기존 자료는 `페이지 미지정`으로 표시합니다.
 
+### 문서 정보만 수정 (2026-10-18 구현)
+
+같은 `POST /api/changes`, `kind: "document.save"`에서 `payload.mode: "metadata"`를 사용한다. 관리자 권한·CSRF·변경 이력·트랜잭션은 기존 경로를 그대로 적용한다. 예시 payload:
+
+```json
+{
+  "mode": "metadata",
+  "document": {"id": "manual-001"},
+  "expectedId": "manual-001-current-revision-id",
+  "expectedMetaRevision": 1792281600000,
+  "meta": {"issuer": "수정한 발행기관", "scope": "admin"}
+}
+```
+
+- `expectedId`와 `expectedMetaRevision`은 편집을 시작할 때 조회한 실제 값으로 반드시 보낸다. 현재 개정 행을 잠근 뒤 두 값을 검사하며 불일치 시 409를 반환한다.
+- `document`에는 논리 ID만 허용한다. `file`과 본문·제목·버전 등 추가 document 필드는 400으로 거부한다.
+- `meta`는 `scope`, `status`, `issuer`(≤200자), `issuedAt`, `revisedAt`(빈 문자열 또는 유효한 YYYY-MM-DD), `applicability`(≤1,000자) 중 한 개 이상이다. 생략한 기존 정보와 확장 필드는 유지한다. `revision` 등 다른 키는 거부한다.
+- `documents`의 ID·hash·확인일, `chunks`, `chunk_pages`, `document_files`는 수정하지 않는다. 전처리도 호출하지 않는다. 열람 범위는 기존처럼 이전 개정본에도 적용한다.
+- 응답은 기존 `{id, status}`를 유지한다. 변경이 없으면 `unchanged`, 있으면 `updated`와 증가한 `meta.revision`을 다음 조회에서 확인한다.
+- 정보만 수정하는 경우에도 같은 트랜잭션에서 파생 벡터 색인 작업을 요청한다. `unchanged`도 원문은 유지하면서 누락/모델 변경 색인 복구를 요청한다. 저장 실패 시 작업도 롤백된다. [자동 색인 계약](rag-index-jobs.md).
+- `mode` 생략 또는 `content`는 기존 전체 문서 등록·개정 계약을 사용한다. 제목·버전·종류·조항·URL 변경은 이 경로이며 기존 개정 해시 규칙을 유지한다.
+
+화면은 변경이 없으면 요청을 생략하고, 수정 화면에서 기본으로 정보만 수정한다. 본문·버전 개정은 새 PDF 추출 또는 원문 전체 입력이 필요하다. `GET /api/documents`의 `sections`는 검색 청크이며 편집용 원문으로 재전송하지 않는다. 별도 원문 저장소·원문 조회 API·기존 청크 재색인은 이번 변경에 포함하지 않는다.
+
+### 화면의 페이지 본문 변환 (2026-10-18 보완)
+
+- `frontend/src/lib/pdf.js`의 `textToSections`가 검토한 본문을 기존 `document.sections` 입력으로 변환한다. 첫 `--- PAGE n ---` 구분자 앞의 본문은 `page: null`로 보존하며 빈 본문은 제외한다. 표시된 페이지 번호와 입력 순서는 유지한다.
+- 페이지별 본문이 19,000 UTF-16 코드 단위를 넘으면 문단→문장→줄→공백 경계를 우선한다. 한도 40% 이후의 경계를 우선하고, 없으면 앞쪽 공백까지 찾는다. 경계가 없는 긴 문자열은 한도 안에서 나누되 서로게이트 쌍과 CRLF는 쪼개지 않는다. 본문 양끝 공백 외에 일반적인 분할 경계의 공백·줄바꿈은 원래대로 남기며, 공백만 있는 조각은 제외한다.
+- 이 분할은 기존 API 입력 길이 제한을 지키기 위한 것이다. 페이지를 서로 합치지 않으며 최종 검색 청크 생성은 아래 Python 전처리가 계속 담당한다. API 형식·백엔드·DB는 이 보완에서 변경하지 않는다. 이미 저장된 청크는 자동 변경하지 않는다.
+
 ### Python 문서 전처리 계약 (2026-10-13 확정)
 
 현재 등록은 `POST /api/changes`의 `kind: "document.save"`이다. PDF.js가 만든 페이지별 `sections`와 선택적 `file`을 받고, `backend/api/store/documents.py`의 `DocumentStore.save_document`가 저장한다. raw PDF만 보내는 새 업로드 API는 추가하지 않는다.
@@ -155,6 +185,7 @@ DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 �
 - 2026-10-22: 점선+쪽번호 형태가 3개 이상이거나 명시적 CONTENTS/목차 표제와 점선 항목이 함께 있는 입력 절은 목차로 취급한다. 이어진 제목 줄·분리된 쪽번호를 항목 단위로 묶어 가능한 한 같은 청크에 넣고 본문 heading으로 승격하지 않는다. 900자를 넘는 단일 항목은 길이 제한을 우선한다. 점선 없는 목차·본문과 혼합된 목차 판별은 제한적이다.
 - 본문에서 설명 없이 연속된 짧은 상위·하위 제목은 뒤 설명 블록에 함께 넣고 heading에 두 제목을 보존한다(누적 제목이 청크 한도의 40% 미만일 때). 페이지 끝에 제목만 있고 설명이 다음 페이지에 있거나 제목 자체가 매우 긴 경우에는 페이지·길이 제한을 우선하므로 짧은 청크가 남을 수 있다.
 - 기존 문서 hash와 `unchanged` 판정을 유지한다. 이미 등록된 동일 문서/재활성화된 이전 개정본의 청크는 다시 쓰지 않는다. 변경된 청킹은 새 문서·새 내용의 개정부터 적용된다. 기존 청크를 바꾸는 재색인은 별도 작업이다.
+- 새 개정본은 전처리를 한 번 수행하고, 결과가 0개면 400 `INVALID_INPUT`으로 거부한다. 이전 개정본의 활성 상태를 바꾸기 전에 검사한다. 기존 동일 해시·과거 개정본의 청크는 재검사·재생성하지 않는다.
 - API 응답·PostgreSQL 테이블·열람 범위·인용 검증은 그대로 유지한다. 현재 검색은 위 BM25 계약을 따른다.
 
 CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest`). 빈 DB의 첫 요청 때 `backend/knowledge/seed.json`(위 `document` 객체 배열)이 자동 등록됩니다.
@@ -181,3 +212,13 @@ CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest
 `health.retrieval`은 기본 `bm25-ko-en`, 설정에 따라 `vector-e5` 또는 `hybrid-rrf`다.
 이는 설정된 모드이지 모델·색인의 준비 보증이 아니다. 요청별 fallback은 안전한 서버 경고/개발자 CLI에 표시한다.
 구체적인 준비·권한·색인 누락·RRF 동작은 [rag-vector.md](rag-vector.md)를 따른다.
+
+### 보고서 삭제 (2026-10-18)
+
+`POST /api/reports/delete`는 관리자만 호출한다. `{id: string, version: 양의 정수}`를 받고 `{ok: true, id}`를 반환한다. 모든 POST의 기존 CSRF·사용자 식별·복구 중 요청 차단을 적용한다.
+
+- 보고서 행을 잠그고, 없으면 404 `NOT_FOUND`, 버전이 바뀌었으면 409 `VERSION_CONFLICT`로 거부한다.
+- 작성 중·검토 중·승인됨 상태 모두 관리자가 삭제할 수 있다. `report_meta`와 `reports`의 해당 행을 같은 트랜잭션에서 삭제한다. DB 스키마 변경은 없다.
+- 해당 보고서의 대기 중 검토 요청은 기존 `rejected` 상태와 ‘보고서 삭제로 검토 요청 종료’ 사유로 마감한다. 기존 승인·반려 이력과 근거 문서·운항 기록은 보존하며 감사 로그에 보고서 삭제를 남긴다.
+- 검토 승인·반려도 같은 보고서 행을 먼저 잠그고 대기 상태를 다시 확인하여 삭제와 경합할 때 이미 종료된 요청을 처리하지 않는다.
+- 화면은 삭제 성공 후 해당 보고서의 임시 초안을 비우고 목록으로 이동한다. 실패 시 편집 내용과 오류 안내를 유지한다.

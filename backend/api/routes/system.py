@@ -14,8 +14,9 @@ def health(ctx):
     retrieval = {"vector": "vector-e5", "hybrid": "hybrid-rrf"}.get(mode, "bm25-ko-en")
     return {"ok": True, "storage": "postgresql", "retrieval": retrieval, "llmConfigured": config.llm_configured(),
             "csrfToken": security.csrf_token, "user": user, "setupRequired": False,
-            "documents": len(ctx.db.allowed_document_ids(user)), "version": config.VERSION,
-            "authenticated": user["role"] == "admin", "publicAccess": True}
+            "documents": len(ctx.db.allowed_document_ids(user)) if user["role"] != "guest" and not user.get("must_change_password") else 0,
+            "version": config.VERSION, "authenticated": user["role"] in ("admin", "operator", "viewer"),
+            "publicAccess": False}
 
 
 def tools(_ctx):

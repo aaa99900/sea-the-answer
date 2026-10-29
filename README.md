@@ -1,6 +1,6 @@
 # 해답 — SEA THE ANSWER
 
-현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-15**
+현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-29**
 
 선내 문서 근거와 운항 기록을 함께 보여 주는 선박 업무 지원 앱입니다. 화면은 Next.js, `/api/*`는 Python FastAPI, 저장소는 PostgreSQL이며, 저장소 최상위에서 `docker compose` 하나로 셋을 함께 실행합니다.
 
@@ -13,9 +13,9 @@
 | 보고서 | Noon / MRV 검토 초안 자동 생성, 편집·저장, 검토 요청 → 관리자 승인 |
 | 관리 | 계정·역할, 승인, 질의·변경·오류 로그, 백업·복구 |
 
-일반 기능은 로그인 없이 쓰고, 등록·수정·삭제·승인·백업은 관리자(기본 **`admin / 1234`**, 실제 사용 전에 변경)만 할 수 있습니다.
+업무 기능은 개인 계정으로 로그인한 뒤 사용합니다. 일반 선원은 문서·운항 조회와 자기 보고서 업무를, 관리자는 계정 발급과 원본 자료 변경·승인·백업을 수행합니다. 공용 기본 비밀번호는 없으며 최초 관리자 설정과 기존 버전 전환은 [계정 운영 안내](docs/user-guide.md#2-역할과-승인)를 따릅니다.
 
-**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크를 기본 BM25로 정렬하며, 저장 후 worker의 자동 색인이 완료되면 로컬 E5 벡터/RRF 하이브리드를 선택할 수 있습니다. Docker 이미지에 고정 E5 모델이 포함되며, 기존 문서는 명시적 초기 색인이 필요합니다. 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 공통 호출은 모의 HTTP로 검증했고, 동국의 실제 API 정보와 실제 Ollama 연결은 아직 미검증입니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
+**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크를 기본 BM25로 정렬하며 분석 토큰을 제한된 메모리 캐시에 재사용합니다. 저장 후 worker의 자동 색인이 완료되면 로컬 E5 벡터/RRF 하이브리드를 선택할 수 있습니다. Docker 이미지에 고정 E5 모델이 포함되며, 기존 문서는 명시적 초기 색인이 필요합니다. 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 동국 AI Chat 실제 호출은 2026-10-14에 검증했고 로컬 Ollama 실제 검증 결과는 [변경 이력](docs/changelog.md)에 기록합니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
 
 ## 프로젝트 구조
 
@@ -48,23 +48,26 @@ sea-the-answer/
 
 구조와 요청 흐름은 [`docs/architecture.md`](docs/architecture.md)에 있습니다.
 
+해사 질문 평가셋으로 현재 검색을 측정하는 방법과 범위는 [검색 평가 안내](docs/retrieval-evaluation.md)를 참고하세요. 운영 DB·LLM 연결 없이 기본 문서 스냅샷으로 실행합니다.
+내용이 같은 문서 분석 토큰만 크기를 제한해 재사용하는 [검색 지연 개선과 측정 결과](docs/search-optimization-results.md)도 함께 확인할 수 있습니다. 권한·선택 문서 확인과 검색 인덱스 생성은 매 요청 수행합니다.
+
 ## 실행하기 (Docker)
 
 준비물: **Docker Desktop**(Windows·macOS) 또는 **Docker Engine + Compose 플러그인**(Ubuntu). 첫 빌드에는 인터넷이 필요합니다. 모든 명령은 **저장소 최상위**에서 실행합니다.
 
-1. 설정 파일을 만듭니다. 기본값으로도 이 PC에서는 바로 동작합니다. 공유 서버라면 `POSTGRES_PASSWORD`를 **처음 시작하기 전에** 바꾸세요.
+1. 설정 파일을 만듭니다. `HAEDAP_BOOTSTRAP_USERNAME`에 개인 관리자 아이디, `HAEDAP_BOOTSTRAP_NAME`에 표시 이름, `HAEDAP_BOOTSTRAP_PASSWORD`에 본인이 정한 12~128자 초기 비밀번호를 입력하세요. 공유 서버라면 `POSTGRES_PASSWORD`도 **처음 시작하기 전에** 바꾸세요. 초기 관리자 설정은 빈 사용자 테이블에서만 적용됩니다.
 
    ```bash
    cp .env.example .env            # Windows PowerShell: Copy-Item .env.example .env
    ```
 
-2. 실행합니다. 처음에는 이미지 빌드로 몇 분 걸립니다. `migrate` 서비스가 DB 마이그레이션을 적용한 뒤 backend가 시작하고, DB가 비어 있으면 기본 문서와 관리자 계정이 만들어집니다.
+2. 실행합니다. 처음에는 이미지 빌드로 몇 분 걸립니다. `migrate` 서비스가 DB 마이그레이션을 적용한 뒤 backend가 시작하고, DB가 비어 있으면 기본 문서와 명시적으로 설정한 관리자 계정이 만들어집니다.
 
    ```bash
    docker compose up --build -d
    ```
 
-3. 브라우저에서 <http://localhost:5173>을 엽니다.
+3. 브라우저에서 <http://localhost:5173>을 열어 설정한 개인 계정으로 로그인하고 비밀번호를 변경합니다. 관리 화면에서 선원 계정을 발급하세요. 최초 설정 후 `.env`의 `HAEDAP_BOOTSTRAP_PASSWORD`를 비우고 backend를 재생성합니다. 이미 저장된 비밀번호는 바뀌지 않습니다.
 
 | 하려는 일 | 명령 |
 |---|---|
@@ -125,7 +128,7 @@ docker compose run --rm migrate rollback             # 마지막 파일 되돌�
 
 BM25 검색은 backend의 `rank-bm25`와 한국어 형태소 분석기 `kiwipiepy`를 사용합니다. Docker에서는 `docker compose up --build -d`로 반영하고, 직접 실행할 때는 `backend/`에서 `uv sync` 후 백엔드를 재시작하세요. Kiwi 모델은 의존성 설치에 포함되며 별도 API 키가 필요하지 않습니다. 첫 검색은 모델·별칭 초기화로 늦을 수 있습니다. 검색 개선은 기존 청크에도 적용됩니다. DB 없는 회귀 테스트는 `backend/`에서 `uv run pytest tests/test_rag_preprocessing.py tests/test_rag_retrieval.py tests/test_debug_bm25.py -q`로 실행합니다. 알고리즘·한계는 [검색 계약](docs/specs/api.md#문서-검색-bm25)에 있습니다.
 
-목차 항목 묶음과 연속 제목 청킹 개선은 새 문서·새 내용의 개정에 적용됩니다. **기존 DB 청크는 자동으로 바뀌지 않으며, 같은 입력을 다시 저장해도 `unchanged`이면 재청킹하지 않습니다.** 확인하려면 원본 PDF를 새 테스트 문서로 등록하세요. 기존 문서 수정 화면에서 가져온 sections는 저장된 청크이므로 원본 페이지 추출본으로 간주하면 안 됩니다. 기존 문서 전체의 재색인은 별도 작업입니다.
+목차 항목 묶음과 연속 제목 청킹 개선은 새 문서·새 내용의 개정에 적용됩니다. **기존 DB 청크는 자동으로 바뀌지 않으며, 같은 입력을 다시 저장해도 `unchanged`이면 재청킹하지 않습니다.** 정보만 수정하면 기존 청크를 유지하고, 본문·버전 개정에는 PDF 재추출 또는 원문 전체 입력이 필요합니다. 기존 조회 청크를 원본 페이지 추출본으로 재사용하지 않습니다. 벡터 재색인은 저장된 청크를 사용하며 재청킹과는 별개입니다.
 
 | 범위 | 위치 | 명령 |
 |---|---|---|
@@ -174,6 +177,28 @@ uv run --project backend pytest backend/tests/test_debug_bm25.py backend/tests/t
 
 DB 연결 실패 시 실행 중인 Compose 프로젝트·DB 상태 및 `DATABASE_URL`을 확인하세요. `활성 사용자 계정을 찾을 수 없습니다`는 계정명/활성 상태를 확인해야 합니다. 기존 이미지에서 import 오류가 나면 첫 줄의 backend 빌드를 다시 실행합니다. 상세 [진단 계약](docs/specs/api.md#개발자-진단-cli-계약-2026-10-15-확정).
 
+### 한국어 답변 고정 근거 평가
+
+준비물은 backend 의존성을 설치한 Python·uv이며, 명령은 **저장소 최상위 PowerShell**에서 실행합니다. 기본 문서의 고정 근거와 한국어 질문 16개를 사용합니다. 기본 모드는 DB·모델을 호출하지 않고 원문을 복사하므로 평가 도구와 자료 연결을 확인하는 용도입니다.
+
+```powershell
+New-Item -ItemType Directory -Force .verification | Out-Null
+uv run --project backend python scripts/evaluate_llm.py --output .verification/korean-extractive.json
+```
+
+실제 Ollama가 설치·실행되고 `ollama list`에서 모델을 확인한 뒤 아래를 실행합니다. 설정은 해당 터미널 프로세스에 적용되며 평가 도구는 개인 `.env`를 자동으로 읽거나 수정하지 않습니다.
+
+```powershell
+$env:LLM_API_BASE_URL = "http://127.0.0.1:11434/v1"
+$env:OPENAI_MODEL = "qwen2.5:3b"
+$env:LLM_RESPONSE_FORMAT = "json_schema"
+uv run --project backend python scripts/evaluate_llm.py --mode llm --output .verification/korean-model.json
+```
+
+`--case sulphur-limits --case english-lookout-korean-answer`를 붙이면 일부 사례만 실행합니다. 출력 파일은 새 이름을 사용하세요. 기존 파일은 덮어쓰지 않습니다. 결과의 `execution=real_model`, 사례별 `outcome`·`duration_seconds`·`citation_valid`와 기대 답변 요지를 확인합니다. 모델 요청·응답 검증 오류는 결과에 남기고 종료 코드 1을 반환합니다. 설정·자료·출력 경로 오류도 코드 1이며, 정상적인 근거 부족 응답은 실행 오류가 아닙니다.
+
+한글 포함·원문 인용 일치는 의미적 정답이나 한국어 품질 합격을 뜻하지 않습니다. `semantic_review=pending`인 답변은 사람이 근거와 대조해야 합니다. 이 평가는 검색·권한·Docker·브라우저 검증을 포함하지 않습니다. 상세 [평가 계약](docs/specs/llm-provider.md#7-한국어-생성고정-근거-평가-계약-2026-10-28-확정), [실제 검증 기록](docs/changelog.md)을 참고하세요.
+
 ## 설정 (`.env`)
 
 | 변수 | 기본값 | 설명 |
@@ -210,7 +235,7 @@ LLM_RESPONSE_FORMAT=text
 
 25초를 넘는 추론은 실패 전환되므로 로컬 모델을 미리 적재해 확인하세요. 기본 호환 요청은 공급자별 선택 필드를 생략하여 기존 2,200 출력 토큰 한도도 보내지 않습니다. 생성 한도는 모델 서버 설정에 따르며 앱은 최대 5개 답변 문장과 인용을 검증합니다. 상세 형식·제약은 [공급자 계약](docs/specs/llm-provider.md)에 있습니다.
 
-CI 워크플로는 [별도 PR #14](https://github.com/dudco/sea-the-answer/pull/14)로 분리했습니다. 수행한 검증과 미검증 범위는 [변경 이력](docs/changelog.md)에 기록합니다.
+push·PR에는 [GitHub Actions 검증](.github/workflows/verify.yaml)이 연결됩니다. backend 테스트(임시 PostgreSQL 포함), frontend 단위 테스트·빌드, Compose 구성 검사와 격리 브라우저 E2E를 실행합니다. 실제 외부 모델 키는 사용하지 않습니다. CI PR #14의 워크플로를 이 브랜치에도 통합했으며 실제 수행한 검증은 [변경 이력](docs/changelog.md)에 기록합니다.
 
 ## API
 

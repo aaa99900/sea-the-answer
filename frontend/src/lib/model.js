@@ -123,11 +123,12 @@ export function createModel() {
     dirty: false,
     localFailed: false,
     saving: false,
+    deletingReport: false,
     reportError: '',
     conflict: null,
     reportQuery: '',
   };
-  const canWrite = () => ['admin', 'operator', 'guest'].includes(state.user?.role);
+  const canWrite = () => ['admin', 'operator'].includes(state.user?.role);
   const isAdmin = () => state.user?.role === 'admin';
   function currentShip() {
     return (

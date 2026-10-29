@@ -3,7 +3,7 @@
 - 상태: 완료
 - 작성: Codex · 2026-10-29
 - 담당: 문서/RAG
-- 관련: [벡터 검색 계약](../specs/rag-vector.md), [ADR 0016](../adr/0016-local-vector-retrieval.md)
+- 관련: [벡터 검색 계약](../specs/rag-vector.md), [ADR 0019](../adr/0019-local-vector-retrieval.md)
 
 ## 1. 배경과 목표
 

@@ -110,6 +110,28 @@ def test_legacy_vector_metadata_still_searchable(index):
     assert ix.search("선급", [a])[0]["id"] == "legacy"
 
 
+@pytest.mark.parametrize("reuse_first", [True, False])
+def test_mixed_reused_and_new_vectors_resume_and_reindex(index, reuse_first):
+    """Real Chroma returns ndarray; our encoder returns lists. Both orders work."""
+    ix, db = index
+    calls = []
+    encode = ix.encoder.documents
+    ix.encoder.documents = lambda rows, batch_size: calls.append(len(rows)) or encode(rows, batch_size)
+    original = chunk("original")
+    ix.index([original])  # A previously completed batch survives worker failure.
+    reused = chunk("new-revision", page=22)
+    new = chunk("new-content", "연료 황 함유량")
+    batch = [reused, new] if reuse_first else [new, reused]
+    assert ix.index([original, *batch]) == {"requested": 3, "indexed": 2, "already_current": 1}
+    assert calls == [1, 1]  # Only the genuinely new input needs encoding.
+    restored = VectorIndex(db=db, encoder=Encoder(), model_contract={"test": 1})
+    assert restored.index([original, *batch])["already_current"] == 3
+    assert restored.collection.count() == 3
+    result = restored.search("선급", batch)
+    assert result[0]["id"] == reused["id"]
+    assert result[0]["page"] == 22
+
+
 def test_dispatch_default_and_fallback(monkeypatch, caplog):
     import api.rag_search as module
     a = chunk("a")

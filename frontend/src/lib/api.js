@@ -80,6 +80,7 @@ export function createApiClient() {
     calculate: (body) => request('/api/tools/calculate_emissions', body),
     voyageTime: (body) => request('/api/tools/voyage_time', body),
     saveReport: (body) => request('/api/reports', body),
+    deleteReport: (body) => request('/api/reports/delete', body),
     report: (id) => request('/api/reports/' + encodeURIComponent(id)),
     change: (kind, payload) =>
       request('/api/changes', {

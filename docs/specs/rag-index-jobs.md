@@ -2,7 +2,7 @@
 
 - 상태: 구현됨
 - 작성: Codex · 2026-10-29
-- 관련: [계획](../plans/2026-10-29-automatic-vector-indexing.md), [ADR](../adr/0018-durable-index-jobs.md)
+- 관련: [계획](../plans/2026-10-29-automatic-vector-indexing.md), [ADR](../adr/0021-durable-index-jobs.md)
 
 ## 1. 목적
 
@@ -10,7 +10,10 @@
 
 ## 2. 범위
 
-등록·개정·동일 입력 저장 모두 현재 모델 작업을 요청한다. 검색 모드와 독립적이다.
+등록·개정·동일 입력 저장과 `mode: metadata` 저장 모두 현재 모델 작업을 요청한다.
+정보 수정은 원문·청크·PDF를 바꾸지 않으며, 상태 재활성화·누락 색인의 복구도 작업 큐로 처리한다.
+변경 없는 정보 저장도 원문 변경 없이 작업만 요청한다. UI가 요청 자체를 생략한 경우에는 작업이 생성되지 않는다.
+검색 모드와 독립적이다.
 기존 문서 전체 스캔은 명시적 enqueue CLI에서만 수행한다. 원문/권한은 PostgreSQL이다.
 
 ## 3. 인터페이스
@@ -31,6 +34,8 @@ API payload/응답 계약은 바뀌지 않는다. 오류는 허용 목록의 고
 - 벡터는 기존 VectorIndex.index와 immutable ID를 사용. CLI/worker 중복 실행은 같은 ID upsert로 수렴한다.
 - 새 벡터 record의 embedding_input_hash로 실제 입력이 같은 개정의 임베딩 값도 재사용한다.
   title/reference/heading/text 변경은 재계산, scope/페이지/ID만 다른 경우에는 새 metadata record에 기존 값을 연결한다.
+- Chroma에서 재사용한 ndarray와 새 임베딩 리스트는 upsert 직전에 모두 float 리스트로 통일한다.
+  부분 완료 후 재시도에서도 배치 순서에 따라 입력 형식이 달라지지 않는다.
 - Chroma 성공 후 PG 완료 기록 실패는 재처리로 복구한다. 오래된 벡터는 검색 후보에 포함되지 않는다.
 - 백업 JSON에 작업을 포함하지 않는다. 복원 후 enqueue --apply로 재구축한다. 실제 앱 기존 자료를 자동 소급 색인하지 않는다.
 - Docker 빌드에서 pinned 모델 다운로드/로컬 로딩 검증. 런타임은 /opt/models/e5-small, 다운로드 금지.

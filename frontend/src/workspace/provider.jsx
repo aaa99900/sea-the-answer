@@ -90,7 +90,7 @@ export function WorkspaceProvider({ children }) {
     workspace.routeChanged(pathname);
   }, [pathname, workspace]);
   useEffect(() => {
-    document.title = `해답 · ${workspace.state.loginOpen ? '관리자 로그인' : workspace.views.pageNames[workspace.state.page] || 'SEA THE ANSWER'}`;
+    document.title = `해답 · ${workspace.state.loginOpen ? '선원·관리자 로그인' : workspace.state.passwordOpen || workspace.state.user?.must_change_password ? '비밀번호 변경' : workspace.views.pageNames[workspace.state.page] || 'SEA THE ANSWER'}`;
   }, [workspace, revision]);
   return (
     <Context.Provider

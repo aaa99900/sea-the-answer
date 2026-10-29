@@ -18,7 +18,11 @@
 
 ## 전체 목록
 
-- [자동 색인 계획](plans/2026-10-29-automatic-vector-indexing.md): 완료 · [작업 계약](specs/rag-index-jobs.md): 구현됨 · [ADR 0018](adr/0018-durable-index-jobs.md): 채택.
+- [벡터 색인 복구·팀 브랜치 통합 검증](plans/2026-10-29-vector-index-repair-integration.md): 완료 (머지 커밋 대기).
+
+- [등록 PDF 검색 평가 (2026-10-29)](rag-evaluation-2026-10-29.md) · [질문 10개 JSON](rag-evaluation-questions.json): 읽기 전용 실제 등록 자료 평가, 부분 색인 결함과 검색 기준 기록.
+
+- [자동 색인 계획](plans/2026-10-29-automatic-vector-indexing.md): 완료 · [작업 계약](specs/rag-index-jobs.md): 구현됨 · [ADR 0021](adr/0021-durable-index-jobs.md): 채택.
 
 ### 기본 문서
 
@@ -26,14 +30,18 @@
 - [`data-model.md`](data-model.md) — PostgreSQL 앱 테이블 및 선택 해사 데이터 테이블·ERD, JSON 필드, 상태 전이, 백업 범위
 - [`user-guide.md`](user-guide.md) — 화면별 사용법, 역할·권한, CSV, 백업·복구, LAN·서버, 버전 교체, 문제 해결
 - [`changelog.md`](changelog.md) — 변경 이력, 검증 기록
+- [`retrieval-evaluation.md`](retrieval-evaluation.md) — 실제 문서 스냅샷의 해사 질문 평가셋·검색 지표·실행 방법
+- [`retrieval-evaluation-baseline.md`](retrieval-evaluation-baseline.md) — 2026-10-28 초기 검색 측정 결과와 재현 정보
+- [검색 지연 개선 결과](search-optimization-results.md) — 동일 질문의 순서·점수·처리 시간 비교
 
 ### specs — 구현 계약
 
+- [선원·관리자 인증](specs/authentication.md) — 구현됨
 - [업무 스킬 실행 계약](specs/workflow-skills.md): 여섯 스킬, 선택 문서·매핑·권한·초안·평가 범위.
 
 | 문서 | 상태 |
 |---|---|
-| [`specs/llm-provider.md`](specs/llm-provider.md) — Chat Completions 공통 설정·공급자 키 격리·인용 검증 | 구현됨 (실제 공급자 미검증) |
+| [`specs/llm-provider.md`](specs/llm-provider.md) — Chat Completions 공통 설정·공급자 키 격리·인용 검증·한국어 평가 | 구현됨 (공급자별 실검증은 변경 이력 참고) |
 | [`specs/api.md`](specs/api.md) — HTTP API, 인증·쓰기 보호, 문서 등록 payload | 구현됨 |
 | [`specs/integrated-answer.md`](specs/integrated-answer.md) — `/api/ask` 입력·출력, CII·기준 비교 계약 | 구현됨 |
 | [`specs/tools.md`](specs/tools.md) — 독립 PostgreSQL 조회·계산·조회 도우미 계약 | 구현됨 |
@@ -43,17 +51,21 @@
 
 - [Chroma 서버 이미지 분리](plans/2026-10-29-chroma-image.md): 완료.
 
-- [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, 현재 결정은 [ADR 0018](adr/0018-durable-index-jobs.md) (0016·0017 계승).
+- [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, 현재 결정은 [ADR 0021](adr/0021-durable-index-jobs.md) (0019·0020 계승).
 
+- [한국어 근거 답변과 실제 모델 검증](plans/2026-10-28-korean-llm-validation.md) — 완료 (Docker e2e·모델 연결 검증, 일반 한국어 품질은 후속)
+- [해사 질문 검색 평가](plans/2026-10-28-maritime-retrieval-evaluation.md) — 초기 평가 완료
+- [검색 토큰 재사용](plans/2026-10-28-search-token-reuse.md) — 로컬 구현·검증 완료
+
+- [인증·Ollama·CI](plans/2026-10-21-crew-admin-auth.md) — 보류 (#14 관리자 병합 대기, 구현·검증 완료)
 - [목차 청킹과 Kiwi BM25 개선](plans/2026-10-22-rag-chunking-kiwi.md): 완료.
-
 - [앱 업무 스킬 구현](plans/2026-10-15-app-workflow-skills.md): 진행 상태와 실제 검증.
 
 | 문서 | 상태 |
 |---|---|
 | [`plans/2026-10-15-bm25-debug.md`](plans/2026-10-15-bm25-debug.md) — 읽기 전용 BM25 디버그 CLI | 완료 |
 | [`plans/2026-10-14-bm25-retrieval.md`](plans/2026-10-14-bm25-retrieval.md) — 권한 적용 후 한영 BM25 문서 검색 | 완료 |
-| [`plans/2026-10-13-openai-compatible-chat.md`](plans/2026-10-13-openai-compatible-chat.md) — 모델 호출 전환·#11 검토 반영·CI 분리·후속 PR | 진행 중 |
+| [`plans/2026-10-13-openai-compatible-chat.md`](plans/2026-10-13-openai-compatible-chat.md) — 모델 호출 전환·인증·공급자 실검증, CI 분리 | 보류 (#14 관리자 병합 대기) |
 | [`plans/2026-10-13-rag-preprocessing.md`](plans/2026-10-13-rag-preprocessing.md) — Python 해사 문서 전처리·청킹 및 새 구조 통합 | 완료 |
 | [`plans/2026-10-08-team-module-integration.md`](plans/2026-10-08-team-module-integration.md) — RAG·LLM·Tool 팀 모듈 연결 로드맵 | 초안 |
 | [`plans/2026-10-08-tools-and-data-preparation-docs.md`](plans/2026-10-08-tools-and-data-preparation-docs.md) — 역할4 PR 문서·모듈 구조 정리 | 완료 |
@@ -63,8 +75,11 @@
 
 ### adr — 설계 결정
 
-- [0017 Chroma 전용 이미지](adr/0017-dedicated-chroma-image.md): 대체됨(0018). 전용 서버 분리는 유지.
+- [0020 Chroma 전용 이미지](adr/0020-dedicated-chroma-image.md): 대체됨(0021). 전용 서버 분리는 유지.
 
+- [0017 문서 분석 토큰의 제한된 메모리 재사용](adr/0017-bounded-chunk-token-reuse.md) — 제안·로컬 구현
+
+- [0016 개인 계정과 서버의 업무 접근 통제](adr/0016-crew-admin-authentication.md) — 채택
 - [0015 업무 스킬과 선택 LLM](adr/0015-optional-model-workflow-skills.md): 고정 실행기와 런타임 지침.
 
 추가 제안: [0013 - 제원 후보 별도 보존·MRV 참고 집약도 API](adr/0013-mrv-reference-intensity.md). 팀 PR #11에서 사용하는 0012와 번호를 구분합니다.
@@ -74,7 +89,7 @@
 | [0001](adr/0001-docs-directory.md) | 문서를 최상위 `docs/`에 모으고 AGENTS.md를 공통 지침으로 사용 | 채택 |
 | [0002](adr/0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 대체됨(0006) |
 | [0003](adr/0003-sqlite-fts5-local-storage.md) | 내장 SQLite + FTS5로 로컬 저장·검색 | 대체됨(0009) |
-| [0004](adr/0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 채택 |
+| [0004](adr/0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 대체됨(0016) |
 | [0005](adr/0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 | 채택 (일부 0006·0009로 대체) |
 | [0006](adr/0006-nextjs-entry-rewrites-to-api.md) | Next.js를 공개 진입점으로, `/api/*`는 rewrites로 내부 API에 전달 | 채택 (일부 0007로 대체) |
 | [0007](adr/0007-runtime-api-origin-via-proxy.md) | `/api/*` 전달 주소를 실행 시점에 결정(`proxy.js`) | 채택 |

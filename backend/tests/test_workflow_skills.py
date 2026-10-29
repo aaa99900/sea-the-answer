@@ -11,9 +11,9 @@ import pytest
 
 from api import main, workflow_skills as skills
 from api.errors import ApiError
-from rag_postgres_support import configure_api, isolated_workspace
+from rag_postgres_support import configure_api, isolated_workspace, login
 
-USER = {"id": "guest-1", "role": "guest"}
+USER = {"id": "crew-1", "role": "operator"}
 EVIDENCE = [
     {
         "id": "chunk-a",
@@ -235,10 +235,9 @@ def database(monkeypatch):
         yield store
 
 
-def client_headers():
+def client_headers(username="crew"):
     client = TestClient(main.app, base_url="http://localhost:5173")
-    data = client.get("/api/health").json()
-    return client, {"X-Haedap-Token": data["csrfToken"]}
+    return client, login(client, username)
 
 
 def save_doc(db, name, text, scope="all"):
@@ -272,6 +271,14 @@ def test_postgres_selected_document_scope_and_permission_before_ranking(database
     locked = save_doc(
         database, "skill-admin", "Fictionalquartz 관리자만 보는 문서입니다.", "admin"
     )
+    anonymous = TestClient(main.app, base_url="http://localhost:5173")
+    token = anonymous.get("/api/health").json()["csrfToken"]
+    assert anonymous.get("/api/skills").status_code == 401
+    assert anonymous.post(
+        "/api/skills/run",
+        headers={"X-Haedap-Token": token},
+        json=body(document_ids=[a]),
+    ).status_code == 401
     client, headers = client_headers()
     response = client.post(
         "/api/skills/run", headers=headers, json=body(document_ids=[a])
@@ -297,7 +304,7 @@ def test_postgres_selected_document_scope_and_permission_before_ranking(database
         client.post("/api/skills/run", json=body(document_ids=[a])).status_code == 403
     )  # CSRF still required
     direct = database.search(
-        {"role": "guest"}, "Fictionalquartz", "all", document_ids=[a]
+        USER, "Fictionalquartz", "all", document_ids=[a]
     )
     assert {e["document_id"] for e in direct} == {a} and b not in {
         e["document_id"] for e in direct
@@ -366,7 +373,7 @@ def test_postgres_report_is_preview_until_explicit_save_and_qa_is_owned(database
         and evaluated.json()["result"]["checks"][-1]["status"]
         == "manual_review_required"
     )
-    other, other_headers = client_headers()
+    other, other_headers = client_headers("admin")
     assert (
         other.post(
             "/api/skills/run",

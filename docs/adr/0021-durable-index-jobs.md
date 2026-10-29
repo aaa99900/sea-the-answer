@@ -1,9 +1,9 @@
-# 0018. PostgreSQL 작업 큐와 이미지에 포함한 E5 모델
+# 0021. PostgreSQL 작업 큐와 이미지에 포함한 E5 모델
 
 - 상태: 채택
 - 날짜: 2026-10-29
 - 결정자: 문서 저장 후 자동 색인·모델 이미지 포함 사용자 요청
-- 관련: [계약](../specs/rag-index-jobs.md), [이전 ADR](0017-dedicated-chroma-image.md)
+- 관련: [계약](../specs/rag-index-jobs.md), [이전 ADR](0020-dedicated-chroma-image.md)
 
 ## 배경
 
@@ -17,7 +17,7 @@
 새 migration만 추가하며 Redis/Celery는 사용하지 않는다.
 backend/worker 이미지 공통 모델 stage에 pinned E5를 다운로드·검증하고 /opt/models로 복사한다.
 기존 rag-models 볼륨은 삭제하지 않고 마운트를 해제한다. Chroma 전용 이미지·벡터 볼륨은 유지한다.
-0017의 나머지 검색·권한·CPU·길이·fallback·RRF 결정을 계승한다.
+0020의 나머지 검색·권한·CPU·길이·fallback·RRF 결정을 계승한다.
 
 ## 검토한 대안
 

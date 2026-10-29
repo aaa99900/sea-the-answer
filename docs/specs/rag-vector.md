@@ -2,7 +2,7 @@
 
 - 상태: 구현됨
 - 작성: Codex · 2026-10-27
-- 관련: [계획](../plans/2026-10-27-vector-hybrid.md), [현재 ADR 0018](../adr/0018-durable-index-jobs.md), [자동 색인](rag-index-jobs.md)
+- 관련: [계획](../plans/2026-10-27-vector-hybrid.md), [현재 ADR 0021](../adr/0021-durable-index-jobs.md), [자동 색인](rag-index-jobs.md)
 
 ## 1. 목적과 범위
 
