@@ -25,6 +25,7 @@
 
 | 번호 | 결정 | 상태 | 날짜 |
 |---|---|---|---|
+| [0017](0017-bounded-chunk-token-reuse.md) | 권한 인덱스는 매번 만들고 내용별 토큰만 크기 제한 메모리에서 재사용 | 제안·로컬 구현 | 2026-10-28 |
 | [0001](0001-docs-directory.md) | 문서를 최상위 `docs/`에 모으고 AGENTS.md를 공통 지침으로 사용 | 채택 | 2026-10-08 |
 | [0002](0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 대체됨(0006) | 2026-10-05 |
 | [0003](0003-sqlite-fts5-local-storage.md) | 내장 SQLite + FTS5로 로컬 저장·검색 | 대체됨(0009) | 2026-09-30 |

@@ -1,0 +1,255 @@
+{
+  "version": 1,
+  "created_on": "2026-10-28",
+  "seed_sha256": "c1153c2f7ad7cc3b7f583d3bae29a7a331111b8c9ac2ea01b535c8936753ec0c",
+  "label_status": "author-labelled pilot; independent maritime expert review pending",
+  "notes": "16 answerable and 4 corpus-unanswerable questions. Retrieval only; not LLM, routing, permission or vessel safety evaluation. Repository source snapshots are not assertions of current law.",
+  "cases": [
+    {
+      "id": "q01",
+      "category": "answerable",
+      "tag": "direct",
+      "question": "ECA 밖에서 사용하는 연료의 황 함유량 한도는 얼마야?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "imo-sulphur",
+          "quote": "0.50% m/m, 지정 해역 안에서는 0.10% m/m이다."
+        }
+      ]
+    },
+    {
+      "id": "q02",
+      "category": "answerable",
+      "tag": "paraphrase",
+      "question": "배출규제해역 안에서는 연료 황 함유량이 몇 퍼센트여야 해?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "imo-sulphur",
+          "quote": "지정 해역 안에서는 0.10% m/m이다."
+        }
+      ]
+    },
+    {
+      "id": "q03",
+      "category": "answerable",
+      "tag": "abbreviation",
+      "question": "CII 적용 대상은 DWT로 판단해, GT로 판단해?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "imo-cii",
+          "quote": "총톤수 5,000 GT 이상인 선박"
+        }
+      ]
+    },
+    {
+      "id": "q04",
+      "category": "answerable",
+      "tag": "direct",
+      "question": "CII가 D 등급으로 3년 연속이면 어떤 조치가 필요해?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "imo-cii",
+          "quote": "D 등급이 3년 연속이거나 E 등급이 1년인 선박"
+        }
+      ]
+    },
+    {
+      "id": "q05",
+      "category": "answerable",
+      "tag": "paraphrase",
+      "question": "E 등급을 한 번 받으면 CII 개선 계획을 내야 해?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "imo-cii",
+          "quote": "C 이상 달성을 위한 시정조치 계획을 제출해야 한다."
+        }
+      ]
+    },
+    {
+      "id": "q06",
+      "category": "answerable",
+      "tag": "sample",
+      "question": "가상 연료 전환 점검표에는 무엇을 기록하게 되어 있어?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "sample-fuel-checklist",
+          "quote": "전환 전후 시각, 위치, 사용 탱크를 기록"
+        }
+      ]
+    },
+    {
+      "id": "q07",
+      "category": "answerable",
+      "tag": "sample",
+      "question": "가상 계산 예제의 단순 탄소집약도 공식은 뭐야?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "sample-carbon",
+          "quote": "배출량에 1,000,000을 곱하고"
+        }
+      ]
+    },
+    {
+      "id": "q08",
+      "category": "answerable",
+      "tag": "abbreviation",
+      "question": "DWT와 GT는 같은 단위야?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "maritime-glossary",
+          "quote": "총톤수(GT)와 다른 지표"
+        }
+      ]
+    },
+    {
+      "id": "q09",
+      "category": "answerable",
+      "tag": "abbreviation",
+      "question": "Noon report가 무슨 뜻인지 알려줘.",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "maritime-glossary",
+          "quote": "Noon report(정오보고)"
+        }
+      ]
+    },
+    {
+      "id": "q10",
+      "category": "answerable",
+      "tag": "original-law",
+      "question": "해양환경관리법에서 기름오염방지설비 설치는 어떻게 정하고 있어?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "kr-marine-environment-management-act",
+          "quote": "기름오염방지설비”라 한다)를 해당 선박에 설치"
+        }
+      ]
+    },
+    {
+      "id": "q11",
+      "category": "answerable",
+      "tag": "original-law",
+      "question": "선박오염물질기록부는 얼마 동안 보존해야 해?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "kr-marine-environment-management-act",
+          "quote": "최종기재를 한 날부터 3년"
+        }
+      ]
+    },
+    {
+      "id": "q12",
+      "category": "answerable",
+      "tag": "original-english",
+      "question": "COLREG Rule 5 requires which means for keeping a proper look-out?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "uscg-navigation-rules-handbook",
+          "quote": "by sight and hearing",
+          "heading_contains": "p.19 · International"
+        }
+      ]
+    },
+    {
+      "id": "q13",
+      "category": "answerable",
+      "tag": "original-english",
+      "question": "What factors determine safe speed under International Rule 6?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "uscg-navigation-rules-handbook",
+          "quote": "the state of visibility",
+          "heading_contains": "p.21 · International"
+        }
+      ]
+    },
+    {
+      "id": "q14",
+      "category": "answerable",
+      "tag": "original-english",
+      "question": "Under COLREG International Rule 7, what should a vessel assume if there is doubt about risk of collision?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "uscg-navigation-rules-handbook",
+          "quote": "If there is any doubt such risk shall be deemed to exist.",
+          "heading_contains": "p.23 · International"
+        }
+      ]
+    },
+    {
+      "id": "q15",
+      "category": "answerable",
+      "tag": "original-english",
+      "question": "Under COLREG International Rule 8, should a succession of small course alterations be used to avoid collision?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "uscg-navigation-rules-handbook",
+          "quote": "a succession of small alterations of course",
+          "heading_contains": "p.25 · International"
+        }
+      ]
+    },
+    {
+      "id": "q16",
+      "category": "answerable",
+      "tag": "original-english",
+      "question": "Under COLREG International Rule 15, which vessel keeps out of the way in a crossing situation?",
+      "expected_behavior": "해당 문서의 인용 근거를 검색하고, 요약·가상 자료의 성격을 유지한다.",
+      "evidence": [
+        {
+          "document_id": "uscg-navigation-rules-handbook",
+          "quote": "the vessel which has the other on her own starboard side",
+          "heading_contains": "p.35 · International"
+        }
+      ]
+    },
+    {
+      "id": "q17",
+      "category": "unanswerable",
+      "tag": "missing-source",
+      "question": "우리 배 주기관 XZ-999의 고장코드 E742를 어떻게 수리해?",
+      "expected_behavior": "해당 기종 정비 매뉴얼이 없으므로 일반 검색 후보를 수리 절차로 확정하지 않고 매뉴얼을 요청한다.",
+      "evidence": []
+    },
+    {
+      "id": "q18",
+      "category": "unanswerable",
+      "tag": "missing-source",
+      "question": "내일 부산항 입항 시각의 실시간 풍속을 알려줘.",
+      "expected_behavior": "문서 스냅샷에 실시간 기상 정보가 없음을 알린다.",
+      "evidence": []
+    },
+    {
+      "id": "q19",
+      "category": "unanswerable",
+      "tag": "missing-source",
+      "question": "우리 선박의 2025년 검증된 공식 CII 등급을 알려줘.",
+      "expected_behavior": "일반 CII 설명과 개별 선박의 검증된 등급을 구분하고 선박과 검증 자료를 요청한다.",
+      "evidence": []
+    },
+    {
+      "id": "q20",
+      "category": "unanswerable",
+      "tag": "missing-source",
+      "question": "선장님 개인 휴대전화 번호 알려줘.",
+      "expected_behavior": "개인 연락처 자료가 없으므로 번호를 만들어 내지 않는다.",
+      "evidence": []
+    }
+  ],
+  "seed_hash_format": "canonical-json-v1"
+}
