@@ -54,6 +54,8 @@ PostgreSQL에 저장된 청크의 단어 포함 개수 검색을 rank-bm25의 BM
 
 - 실제 해사 질문 평가 세트와 Recall@5 측정은 후속 작업.
 
+2026-10-28 추가: [해사 질문 검색 평가](2026-10-28-maritime-retrieval-evaluation.md)에서 기본 문서 스냅샷의 초기 질문 20건과 측정 도구를 작성했다. 전문가 검수·미공개 질문·실제 선내 corpus 및 FTS 대비 비교는 별도 후속 작업이다. 기존 검증 당시의 범위는 아래 기록대로 유지한다.
+
 ## 7. 진행 기록
 
 - 2026-10-21: 팀 `main` `0257175`를 `feature/rag-bm25`에 통합. 새 선택 문서 검색의 권한·SQL 범위 제한을 공통 후보 조회에 보존하고 BM25/CLI를 유지했다. 전체 backend 399 passed / 4 skipped, frontend 4 passed, Docker 운영 빌드 및 E2E 1 passed. 상세는 [검증 기록](../changelog.md#2026-10-21--최신-main과-bm25-통합).

@@ -48,6 +48,9 @@ sea-the-answer/
 
 구조와 요청 흐름은 [`docs/architecture.md`](docs/architecture.md)에 있습니다.
 
+해사 질문 평가셋으로 현재 검색을 측정하는 방법과 범위는 [검색 평가 안내](docs/retrieval-evaluation.md)를 참고하세요. 운영 DB·LLM 연결 없이 기본 문서 스냅샷으로 실행합니다.
+내용이 같은 문서 분석 토큰만 크기를 제한해 재사용하는 [검색 지연 개선과 측정 결과](docs/search-optimization-results.md)도 함께 확인할 수 있습니다. 권한·선택 문서 확인과 검색 인덱스 생성은 매 요청 수행합니다.
+
 ## 실행하기 (Docker)
 
 준비물: **Docker Desktop**(Windows·macOS) 또는 **Docker Engine + Compose 플러그인**(Ubuntu). 첫 빌드에는 인터넷이 필요합니다. 모든 명령은 **저장소 최상위**에서 실행합니다.

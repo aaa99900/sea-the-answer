@@ -81,6 +81,8 @@ PR #18은 2026-10-22 병합됐다. 기존 Ollama 3B 실검증에서는 영문 �
 - 2026-10-28: 실제 Chrome → Next standalone → FastAPI → PostgreSQL → Ollama에서 가상 한국어 단문 답변·원문 모달·권한 제외·근거 부족 검증과, 없는 모델의 원문 발췌 전환을 각각 통과했다. 일반 한국어 품질 합격과는 구분한다. 사용자가 다른 서버 대신 이 PC에 Docker를 직접 설치·실행하도록 지시해 4단계를 추가했다.
 - 2026-10-28: Docker Desktop 4.97.0 사용자 설치 종료 코드 0, Docker CLI 29.9.2·Compose 5.6.1·Desktop CLI 4.97.0·WSL 3.0.3.0을 확인했다. WSL/VMP 활성화는 재부팅 대기다. 실제 시작은 45초 대기 후 실패했고 backend는 `Virtual Machine Platform not enabled`로 엔진을 중지했다. `wsl --status`도 `WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED`다. 설치 성공과 엔진 실행 성공을 구분하며 재부팅 전 컨테이너 검증을 완료로 표시하지 않는다. 검증 PostgreSQL과 임시 모델 프리셋은 정리했다.
 
+- 2026-10-29: [PR #20](https://github.com/dudco/sea-the-answer/pull/20)에 최신 main `7c0ba46`(검색 토큰 재사용·해사 검색 평가)을 반영했다. 문서 3곳의 양쪽 기록을 보존하고 backend/scripts 전체 533 통과·4 건너뜀, Docker production 빌드·e2e 8 통과 및 테스트 스택 정리를 확인했다. 상세 범위와 경고는 [변경 이력](../changelog.md)에 기록했다.
+
 ### Docker 검증 재현 순서
 
 2026-10-29 재부팅 완료를 확인했다. WSL 상태는 기본 버전 2로 정상이며 Docker Server 29.9.2(Linux/amd64)의 실제 응답과 Compose 구성 검사를 통과했다. 첫 가상 디스크/VM 초기화에 약 2분이 걸려 처음 45초 기동 확인은 시간 초과였고 이후 정상 기동했다. `haedap-korean-e2e-20261029` 프로젝트에서 실제 e2e 빌드·실행을 완료했다.
