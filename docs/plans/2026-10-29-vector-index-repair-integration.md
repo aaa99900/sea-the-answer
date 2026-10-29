@@ -3,7 +3,7 @@
 - 상태: 완료
 - 작성: Codex · 2026-10-29
 - 담당: 문서/RAG
-- 관련: [자동 색인 계약](../specs/rag-index-jobs.md), [평가](../rag-evaluation-2026-10-29.md)
+- 관련: [자동 색인 계약](../specs/rag-index-jobs.md), [평가 질문](../rag-evaluation-questions.json)
 
 ## 1. 배경과 목표
 

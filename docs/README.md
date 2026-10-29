@@ -20,7 +20,7 @@
 
 - [벡터 색인 복구·팀 브랜치 통합 검증](plans/2026-10-29-vector-index-repair-integration.md): 완료 (머지 커밋 대기).
 
-- [등록 PDF 검색 평가 (2026-10-29)](rag-evaluation-2026-10-29.md) · [질문 10개 JSON](rag-evaluation-questions.json): 읽기 전용 실제 등록 자료 평가, 부분 색인 결함과 검색 기준 기록.
+- [등록 PDF 검색 평가 질문 10개](rag-evaluation-questions.json): 문서·물리 페이지·조항 후보 기준의 재사용 가능한 평가 자료.
 
 - [자동 색인 계획](plans/2026-10-29-automatic-vector-indexing.md): 완료 · [작업 계약](specs/rag-index-jobs.md): 구현됨 · [ADR 0021](adr/0021-durable-index-jobs.md): 채택.
 
@@ -31,8 +31,6 @@
 - [`user-guide.md`](user-guide.md) — 화면별 사용법, 역할·권한, CSV, 백업·복구, LAN·서버, 버전 교체, 문제 해결
 - [`changelog.md`](changelog.md) — 변경 이력, 검증 기록
 - [`retrieval-evaluation.md`](retrieval-evaluation.md) — 실제 문서 스냅샷의 해사 질문 평가셋·검색 지표·실행 방법
-- [`retrieval-evaluation-baseline.md`](retrieval-evaluation-baseline.md) — 2026-10-28 초기 검색 측정 결과와 재현 정보
-- [검색 지연 개선 결과](search-optimization-results.md) — 동일 질문의 순서·점수·처리 시간 비교
 
 ### specs — 구현 계약
 
