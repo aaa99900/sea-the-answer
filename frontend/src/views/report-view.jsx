@@ -8,6 +8,7 @@ export function createReportViews(model, views) {
   const { contextControls } = views;
   const { statusName } = views;
   function reportsPage() {
+    const templatesLoading = !state.ready || state.connecting;
     const rows = state.reports.filter((r) =>
       (r.title + ' ' + r.type).toLowerCase().includes(state.reportQuery.toLowerCase()),
     );
@@ -32,8 +33,8 @@ export function createReportViews(model, views) {
                 <summary>{'운항 기록으로 초안 만들기'}</summary>
                 {contextControls()}
                 <div className={'actions wrap'}>
-                  {btn('Noon Report', 'templateNoon', '', 'ship')}
-                  {btn('MRV 검토 보고서', 'templateMrv', '', 'chart')}
+                  {btn('Noon Report', 'templateNoon', '', 'ship', { disabled: templatesLoading })}
+                  {btn('MRV 검토 보고서', 'templateMrv', '', 'chart', { disabled: templatesLoading })}
                   {btn('작성 중인 초안', 'editReport', 'ghost', 'edit')}
                   {btn('초안 JSON 가져오기', 'importDraft', 'ghost', 'database')}
                 </div>

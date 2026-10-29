@@ -4,6 +4,7 @@ import { test, expect } from '@playwright/test';
 async function mockWorkspace(page, admin = false) {
   const state = {
     admin, loggedIn: true, deleteError: false, deleteCalls: [], history: [], waitForAnswer: null,
+    waitForOperations: null, generationCalls: [],
     reports: [{ id: 'report-1', title: '삭제 검증 보고서', type: '규정 검토', text: '보존할 보고서 본문',
       sources: [], version: 3, status: 'draft', owner: 'crew_3edf36ec', body: {}, updatedAt: '2026-10-18' }],
   };
@@ -27,10 +28,24 @@ async function mockWorkspace(page, admin = false) {
       title: '검증 문서', reference: 'Part 1', kind: 'onboard', version: '1', active: true, currentRevision: true,
       reviewed_at: '2026-10-18', meta: { scope: 'all', status: 'active' },
       sections: [{ id: 'chunk-1', heading: '기본 조항', text: '검증 본문', page: 1 }] }] });
-    if (path === '/api/operations') return json({ ships: [{ id: 'ship-1', name: '검증 선박', type: 'Bulk carrier', dwt: 1000 }],
-      records: [{ id: 'record-1', ship: 'ship-1', date: '2026-09-25', fuel: 10, factor: 3.114, distance: 100,
-        speed: 10, fuelType: 'HFO', version: 1 }] });
+    if (path === '/api/operations') {
+      if (state.waitForOperations) await state.waitForOperations();
+      return json({ ships: [{ id: 'ship-1', name: '검증 선박', type: 'Bulk carrier', dwt: 1000 }],
+        records: [{ id: 'record-1', ship: 'ship-1', date: '2026-09-25', fuel: 10, factor: 3.114, distance: 100,
+          speed: 10, fuelType: 'HFO', version: 1 }] });
+    }
     if (path === '/api/reports') return json({ reports: state.reports });
+    if (path === '/api/reports/generate') {
+      const payload = request.postDataJSON();
+      state.generationCalls.push(payload);
+      const report = {
+        id: 'generated-report-' + state.generationCalls.length, title: '검증 선박 · Noon Report',
+        type: '일일 운항', text: '# Noon Report\n검증 선박의 운항 기록으로 생성한 초안입니다.',
+        sources: [], version: 1, status: 'draft', owner: user.id, body: payload, updatedAt: '2026-10-29',
+      };
+      state.reports.push(report);
+      return json({ report });
+    }
     if (path === '/api/reports/delete') {
       const payload = request.postDataJSON(); state.deleteCalls.push(payload);
       if (state.deleteError) return json({ error: { code: 'VERSION_CONFLICT', message: '보고서가 변경되었습니다. 다시 열어 확인해 주세요.' } }, 409);
@@ -115,6 +130,55 @@ test('late response cannot repopulate a question screen reset from the menu', as
   state.waitForAnswer = null;
   await ask(page, '새 질문');
   await expect(page.locator('.question-bubble')).toHaveText('새 질문');
+  expect(state.errors).toEqual([]);
+});
+
+test('report templates wait for login operation data before generating a draft', async ({ page }) => {
+  const state = await mockWorkspace(page);
+  state.reports = [];
+  await page.clock.install();
+  await page.goto('/reports');
+  await expect(page.locator('.connection')).toHaveText('서버 연결됨');
+  await action(page, 'logout').click();
+  await expect(page.locator('#authForm')).toBeVisible();
+  await expect(page.locator('#toasts')).toContainText('로그아웃했습니다.');
+
+  let releaseOperations, operationsStarted;
+  const operationsBarrier = new Promise(resolve => { releaseOperations = resolve; });
+  const operationsRequested = new Promise(resolve => { operationsStarted = resolve; });
+  state.waitForOperations = async () => {
+    operationsStarted();
+    await operationsBarrier;
+  };
+  await page.locator('#auth-username').fill('admin');
+  await page.locator('#auth-password').fill('Test-only-password');
+  await page.locator('#authForm').evaluate(form => form.requestSubmit());
+  await operationsRequested;
+  try {
+    // Expiring the real logout toast rerenders after health has authenticated
+    // the account, while refreshAll still waits for its operation data.
+    await page.clock.fastForward(5000);
+    await expect(page.locator('#toasts')).not.toContainText('로그아웃했습니다.');
+    await go(page, 'reports');
+    await expect(page).toHaveURL(/\/reports$/);
+    await expect(page.locator('.connection')).toHaveText('연결 확인');
+    await expect(action(page, 'templateNoon')).toBeDisabled();
+    await expect(action(page, 'templateMrv')).toBeDisabled();
+    expect(state.generationCalls).toEqual([]);
+  } finally {
+    state.waitForOperations = null;
+    releaseOperations();
+  }
+
+  await expect(page.locator('.connection')).toHaveText('서버 연결됨');
+  await expect(action(page, 'templateNoon')).toBeEnabled();
+  await expect(action(page, 'templateMrv')).toBeEnabled();
+  await action(page, 'templateNoon').click();
+  await expect(page).toHaveURL(/\/reports\/generated-report-1$/);
+  await expect(page.locator('#report-text')).toHaveValue('# Noon Report\n검증 선박의 운항 기록으로 생성한 초안입니다.');
+  expect(state.generationCalls).toEqual([{
+    template: 'noon', ship: 'ship-1', from: '2026-09-22', to: '2026-09-28',
+  }]);
   expect(state.errors).toEqual([]);
 });
 

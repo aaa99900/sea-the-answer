@@ -130,6 +130,8 @@ DB 스키마는 backend가 아니라 최상위 `migrations/`(dbmate)가 소유�
 
 개발자용 `scripts/debug_bm25.py`는 backend 기본 uv 의존성만 사용하는 읽기 전용 진단 도구다. `DocumentStore.search_candidates`의 기존 조회·권한·상태·kind 필터와 `rag_retrieval.query_tokens/chunk_tokens/retrieve`를 공유한다. API는 계속 score 없는 상위 5개를 반환하고, CLI만 점수·일치 토큰·미리보기를 출력한다. DB READ ONLY 트랜잭션에서 실행하며 초기화·저장·질문 이력·LLM 호출은 하지 않는다. 운영 이미지에는 스크립트를 포함하지 않고 실행할 때 읽기 전용 마운트한다. 기본 guest 또는 명시한 기존 활성 계정의 scope를 적용하며 DB 자격 증명을 가진 개발자 전용이다. [실행 방법](../README.md#bm25-개발자-디버그), [출력 계약](specs/api.md#개발자-진단-cli-계약-2026-10-15-확정).
 
+개발자용 `scripts/evaluate_llm.py`는 기본 문서에서 고정 근거를 골라 한국어 생성만 비교한다. 기본 원문 발췌는 네트워크 없이 실행하고, 명시적 `--mode llm`만 기존 `api/llm.py`의 실제 모델 호출·원문 인용 검증을 사용한다. DB·검색·권한·이력 저장 경로를 호출하지 않으며 서비스 런타임에도 포함하지 않는다. 결과의 의미적 정답성은 사람 검토로 남긴다. [평가 계약](specs/llm-provider.md#7-한국어-생성고정-근거-평가-계약-2026-10-28-확정), [실행 방법](../README.md#한국어-답변-고정-근거-평가).
+
 `frontend/tests/`는 CSV·PDF 유틸 단위 테스트(`npm test`), 최상위 `e2e/tests/`는 화면 → API → DB 전체 흐름 검증(Playwright)입니다.
 
 ## 4. 보안 경계

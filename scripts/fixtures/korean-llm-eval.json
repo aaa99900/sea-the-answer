@@ -1,0 +1,98 @@
+[
+  {
+    "id": "sulphur-limits",
+    "question": "제공 문서에 따르면 SOx ECA 안과 밖의 연료 황 함유량 한도는 각각 얼마인가요?",
+    "sources": [{"document_id": "imo-sulphur", "heading": "연료 황 함유량 한도 / Fuel sulphur limits", "anchor": "지정 해역 안에서는 0.10% m/m이다."}],
+    "expected": {"insufficient": false, "facts": ["ECA 밖 0.50% m/m, 안 0.10% m/m를 구별한다.", "요약 문서이며 개별 선박의 적합 판정으로 확대하지 않는다."]}
+  },
+  {
+    "id": "mediterranean-date",
+    "question": "제공 문서에 적힌 지중해 SOx ECA 강화 황 함유량 한도의 적용 시작일은 언제인가요?",
+    "sources": [{"document_id": "imo-sulphur", "heading": "해역별 시행 시점 / ECA dates", "anchor": "2025년 5월 1일부터 적용된다."}],
+    "expected": {"insufficient": false, "facts": ["2025년 5월 1일을 제시한다.", "다른 해역의 날짜를 섞지 않는다."]}
+  },
+  {
+    "id": "northern-eca-dates",
+    "question": "문서의 캐나다 북극해와 노르웨이해 지정 개정 발효일과 적용 시작일은 어떻게 다른가요?",
+    "sources": [{"document_id": "imo-sulphur", "heading": "해역별 시행 시점 / ECA dates", "anchor": "발효일을 2026년 3월 1일, 적용 시작일을 2027년 3월 1일로 구분한다."}],
+    "expected": {"insufficient": false, "facts": ["발효 2026년 3월 1일과 적용 2027년 3월 1일을 구분한다.", "실제 항로에는 경계·적용일·항만 요구사항 확인이 필요함을 보존한다."]}
+  },
+  {
+    "id": "cii-scope",
+    "question": "CII 적용 대상은 어떤 톤수 기준이며 DWT만으로 판단할 수 있나요? 제공된 요약 범위에서 설명해 주세요.",
+    "sources": [{"document_id": "imo-cii", "heading": "CII 적용 대상 / Scope", "anchor": "재화중량 DWT와 총톤수 GT는 다르므로 DWT 수치만으로 적용 여부를 판단할 수 없다."}],
+    "expected": {"insufficient": false, "facts": ["관련 선종 중 5,000 GT 이상이라는 문서 설명을 제시한다.", "DWT만으로 적용 여부를 판단하지 않는다."]}
+  },
+  {
+    "id": "cii-three-d-years",
+    "question": "제공된 CII 요약에서 D 등급이 몇 년 연속이면 어떤 시정조치가 필요하다고 하나요?",
+    "sources": [{"document_id": "imo-cii", "heading": "CII 등급과 시정조치 / Rating and corrective action", "anchor": "D 등급이 3년 연속이거나 E 등급이 1년인 선박은 C 이상 달성을 위한 시정조치 계획을 제출해야 한다."}],
+    "expected": {"insufficient": false, "facts": ["D 등급 3년 연속 시 C 이상 달성을 위한 시정조치 계획을 제출한다.", "검증된 연간 등급 이력과 SEEMP 확인을 전제로 한다."]}
+  },
+  {
+    "id": "cii-one-e-year",
+    "question": "CII E 등급이 1년이면 문서가 요구하는 조치는 무엇인가요?",
+    "sources": [{"document_id": "imo-cii", "heading": "CII 등급과 시정조치 / Rating and corrective action", "anchor": "E 등급이 1년인 선박은 C 이상 달성을 위한 시정조치 계획을 제출해야 한다."}],
+    "expected": {"insufficient": false, "facts": ["C 이상 달성을 위한 시정조치 계획 제출을 설명한다.", "E 등급도 3년 연속이어야 한다고 잘못 답하지 않는다."]}
+  },
+  {
+    "id": "cii-no-invented-rating",
+    "question": "이 요약 문서만으로 개별 선박의 공식 CII 등급을 산정해 알려 줄 수 있나요?",
+    "sources": [{"document_id": "imo-cii", "heading": "CII 등급과 시정조치 / Rating and corrective action", "anchor": "이 요약은 개별 선박의 공식 CII 등급을 산정하지 않는다."}],
+    "expected": {"insufficient": false, "facts": ["문서는 공식 CII 등급을 산정하지 않는다고 설명한다.", "임의의 A~E 등급이나 실제 선박 수치를 생성하지 않는다."]}
+  },
+  {
+    "id": "fuel-changeover-records",
+    "question": "가상 연료 전환 점검표에는 무엇을 기록하고 누구에게 검토를 요청하나요?",
+    "sources": [{"document_id": "sample-fuel-checklist", "heading": "연료 전환 기록 / Fuel changeover checklist", "anchor": "전환 전후 시각, 위치, 사용 탱크를 기록하고 연료 공급서류와 함께 기관 담당자에게 검토를 요청"}],
+    "expected": {"insufficient": false, "facts": ["전환 전후 시각·위치·사용 탱크를 기록한다.", "연료 공급서류와 함께 기관 담당자 검토를 요청하는 가상 흐름임을 밝힌다."]}
+  },
+  {
+    "id": "fuel-approved-procedure",
+    "question": "이 가상 점검표만 보고 실제 선박 장비를 조작해도 되나요? 문서의 한계를 설명해 주세요.",
+    "sources": [{"document_id": "sample-fuel-checklist", "heading": "연료 전환 기록 / Fuel changeover checklist", "anchor": "실제 장비 조작에는 해당 선박의 승인된 절차가 필요하다."}],
+    "expected": {"insufficient": false, "facts": ["실제 장비 조작에는 해당 선박의 승인된 절차가 필요하다.", "검색·보고서 연결 시험용 샘플임을 보존한다."]}
+  },
+  {
+    "id": "carbon-calculation-limits",
+    "question": "가상 문서에서 배출량은 어떻게 계산하며, 이 계산으로 공식 CII 등급까지 산정하나요?",
+    "sources": [{"document_id": "sample-carbon", "heading": "배출량과 단순 탄소집약도 / Emissions calculation", "anchor": "선종별 기준선·보정계수·제외 항차·등급 경계는 반영하지 않으므로 공식 CII 등급은 미산정이다."}],
+    "expected": {"insufficient": false, "facts": ["배출량은 연료 사용량에 사용자가 지정한 환산계수를 곱한다.", "기준선·보정계수·제외 항차·등급 경계를 반영하지 않아 공식 CII 등급은 미산정이다.", "기본 예시 숫자를 실제 선박 값으로 말하지 않는다."]}
+  },
+  {
+    "id": "gt-versus-dwt",
+    "question": "해사 용어집에서 총톤수 GT와 재화중량톤수 DWT는 어떻게 다른가요?",
+    "sources": [{"document_id": "maritime-glossary", "heading": "선박의 크기와 상태 / Tonnage, draft and stability", "anchor": "선박 내부 용적을 기준으로 정한 선박 크기 지표이다. 무게가 아니다."}],
+    "expected": {"insufficient": false, "facts": ["GT는 내부 용적 기준 크기 지표로 무게가 아니다.", "DWT는 적재 가능한 화물·연료·청수·선용품 등의 무게 합계다."]}
+  },
+  {
+    "id": "sidelight-colours",
+    "question": "제공 용어집에 따르면 선박의 우현과 좌현 현등 색깔은 각각 무엇인가요?",
+    "sources": [{"document_id": "maritime-glossary", "heading": "항행 상태와 항로 / Navigation terms", "anchor": "우현(starboard)은 녹색, 좌현(port)은 홍색 등이다"}],
+    "expected": {"insufficient": false, "facts": ["우현 녹색과 좌현 홍색을 혼동하지 않는다."]}
+  },
+  {
+    "id": "knot-nautical-mile",
+    "question": "노트는 어떤 속력이며 1해리는 몇 미터인지 제공 용어집을 바탕으로 설명해 주세요.",
+    "sources": [{"document_id": "maritime-glossary", "heading": "항행 상태와 항로 / Navigation terms", "anchor": "1해리(nautical mile)는 1,852미터이다."}],
+    "expected": {"insufficient": false, "facts": ["1노트는 한 시간에 1해리를 가는 속력이다.", "1해리는 1,852미터다."]}
+  },
+  {
+    "id": "english-lookout-korean-answer",
+    "question": "제공된 영문 국제 Rule 5에서 적절한 경계는 어떤 수단으로 언제 유지해야 하는지 한국어로 설명해 주세요. 인용은 영어 원문을 유지하세요.",
+    "sources": [{"document_id": "uscg-navigation-rules-handbook", "heading": "p.19 · International · Rule 4–5", "anchor": "Every vessel shall at all times maintain a proper look-out by sight and hearing"}],
+    "expected": {"insufficient": false, "facts": ["모든 선박이 항상 시각·청각 및 상황에 적절한 모든 이용 가능한 수단으로 경계를 유지한다.", "상황과 충돌 위험을 충분히 평가하기 위한 것임을 설명한다.", "답변 text는 한국어, quote는 영어 원문 그대로다."]}
+  },
+  {
+    "id": "unsupported-captain-name",
+    "question": "제공된 HAE-01 가상 점검표에 기록된 선장의 실명은 무엇인가요?",
+    "sources": [{"document_id": "sample-fuel-checklist", "heading": "연료 전환 기록 / Fuel changeover checklist", "anchor": "이 문서는 검색과 보고서 연결을 시험하기 위한 샘플이다."}],
+    "expected": {"insufficient": true, "facts": ["선장 이름이 제공되지 않아 insufficient=true와 빈 statements를 반환한다.", "기관 담당자라는 역할을 선장 이름으로 바꾸지 않는다."]}
+  },
+  {
+    "id": "unsupported-next-month-weather",
+    "question": "제공 문서를 근거로 다음 달 부산항의 매일 강수량을 알려 주세요.",
+    "sources": [{"document_id": "imo-sulphur", "heading": "연료 황 함유량 한도 / Fuel sulphur limits", "anchor": "이 자료는 공식 웹 안내의 한국어 요약"}],
+    "expected": {"insufficient": true, "facts": ["기상 근거가 없어 insufficient=true와 빈 statements를 반환한다.", "문서에 없는 강수량이나 날짜별 예보를 생성하지 않는다."]}
+  }
+]
