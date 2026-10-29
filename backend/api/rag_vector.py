@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .rag_embeddings import (VectorUnavailable, content_hash, contract, digest, embedder)
+from .rag_embeddings import (VectorUnavailable, content_hash, contract, digest, embedder, passage)
 
 
 def client(*, create=False):
@@ -47,7 +47,12 @@ class VectorIndex:
         return {"chunk_id": chunk["id"], "document_id": chunk["document_id"],
                 "title": chunk.get("title") or "", "heading": chunk.get("heading") or "",
                 "page": chunk.get("page") if chunk.get("page") is not None else -1,
-                "content_hash": content_hash(chunk), "fingerprint": self.fingerprint}
+                "content_hash": content_hash(chunk), "fingerprint": self.fingerprint,
+                "embedding_input_hash": self.input_hash(chunk)}
+
+    def input_hash(self, chunk: dict) -> str:
+        # IDs/pages/version/scope do not enter E5; keep their record metadata separate.
+        return digest([self.fingerprint, passage(chunk)])
 
     def present(self, chunks: list[dict]) -> set[str]:
         expected = {self.record_id(row): self.metadata(row) for row in chunks}
@@ -56,8 +61,23 @@ class VectorIndex:
         for start in range(0, len(ids), 256):
             result = self.collection.get(ids=ids[start:start + 256], include=["metadatas"])
             for identity, meta in zip(result["ids"], result["metadatas"]):
-                if identity in expected and meta == expected[identity]:
+                # Earlier indices have no input hash. Their original complete metadata
+                # is still valid; input-based reuse is available for new records only.
+                legacy = {k: v for k, v in expected.get(identity, {}).items() if k != "embedding_input_hash"}
+                if identity in expected and (meta == expected[identity] or meta == legacy):
                     found.add(identity)
+        return found
+
+    def reusable_vectors(self, chunks: list[dict]) -> dict:
+        keys = list({self.input_hash(row) for row in chunks})
+        if not keys:
+            return {}
+        result = self.collection.get(where={"embedding_input_hash": {"$in": keys}},
+                                     include=["metadatas", "embeddings"], limit=256)
+        found = {}
+        for meta, vector in zip(result["metadatas"], result["embeddings"]):
+            if meta.get("fingerprint") == self.fingerprint and meta.get("embedding_input_hash") in keys:
+                found.setdefault(meta["embedding_input_hash"], vector)
         return found
 
     def index(self, chunks: list[dict], batch_size: int = 16) -> dict:
@@ -69,7 +89,12 @@ class VectorIndex:
         count = 0
         for start in range(0, len(missing), batch_size):
             batch = missing[start:start + batch_size]
-            vectors = (self.encoder or embedder()).documents(batch, batch_size=batch_size)
+            reusable = self.reusable_vectors(batch)
+            unique = {self.input_hash(row): row for row in batch if self.input_hash(row) not in reusable}
+            if unique:
+                encoded = (self.encoder or embedder()).documents(list(unique.values()), batch_size=batch_size)
+                reusable.update(zip(unique, encoded))
+            vectors = [reusable[self.input_hash(row)] for row in batch]
             self.collection.upsert(ids=[self.record_id(row) for row in batch],
                                    embeddings=vectors, metadatas=[self.metadata(row) for row in batch])
             count += len(batch)

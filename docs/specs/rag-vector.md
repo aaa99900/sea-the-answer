@@ -2,7 +2,7 @@
 
 - 상태: 구현됨
 - 작성: Codex · 2026-10-27
-- 관련: [계획](../plans/2026-10-27-vector-hybrid.md), [ADR 0016](../adr/0016-local-vector-retrieval.md)
+- 관련: [계획](../plans/2026-10-27-vector-hybrid.md), [현재 ADR 0018](../adr/0018-durable-index-jobs.md), [자동 색인](rag-index-jobs.md)
 
 ## 1. 목적과 범위
 
@@ -13,9 +13,13 @@
 
 `HAEDAP_RETRIEVAL_MODE=bm25|vector|hybrid` 기본 bm25. `HAEDAP_RAG_CANDIDATES=30`,
 `HAEDAP_RRF_K=60`. 모델은 multilingual-e5-small의 고정 SHA revision을 사용한다.
-`HAEDAP_EMBED_MODEL_DIR`은 명시적 prepare 명령으로 검증한 로컬 디렉터리다.
+`HAEDAP_EMBED_MODEL_DIR`은 Docker에서는 빌드 시 검증한 `/opt/models/e5-small`, 호스트에서는 prepare로 준비한 경로다.
 `HAEDAP_CHROMA_HOST/PORT`가 있으면 서버, 없으면 `HAEDAP_CHROMA_PATH`의 단일 프로세스 저장소다.
 검색 시 다운로드·색인 생성·PostgreSQL 쓰기는 수행하지 않는다.
+
+Docker Chroma 서버는 공식 1.5.9 기반 `backend/Dockerfile.chroma` 전용 이미지다.
+UID/GID 10001과 `rag-vectors:/data/chroma`를 유지한다. Python/curl 없는 서버의 헬스체크는
+bash 내장 TCP로 `/api/v2/heartbeat` HTTP 200을 확인한다. backend는 CPU 임베딩과 Python 클라이언트를 유지한다.
 
 ## 3. 벡터 계약
 
@@ -26,6 +30,10 @@
 - 모델 ID·고정 revision·384차원·입력/분할 버전·실행 라이브러리 버전의 fingerprint를 collection에 기록한다.
 - record ID는 청크 ID+현재 내용 해시+fingerprint로 결정한다. 같은 내용 재실행은 건너뛰고 변경 내용은 새 record다.
   제목·참조·heading·본문·문서/청크 ID·페이지를 해시/메타데이터에 포함한다. 점수는 cosine 유사도다.
+- 새 record에는 `embedding_input_hash`(모델 fingerprint+실제 passage 입력)를 추가한다.
+  ID/개정/페이지가 달라도 title/reference/heading/text가 같으면 같은 collection의 벡터 값을 재사용한다.
+  이전 형식 record는 기존 전체 metadata 검증으로 검색 가능하며, input hash가 없으면 개정 간 재사용 후보로 쓰지 않는다.
+  동일 배치의 같은 입력도 한 번만 임베딩한다. 최대 256개 재사용 후보 조회에서 못 찾으면 정상 재계산한다.
 - API 검색 전에 현재 허용 후보 전부의 정확한 record ID 존재/metadata를 검사한다. 하나라도 빠지면
   부분 corpus를 정상 벡터 결과로 사용하지 않는다. Chroma query에 허용 record ID를 직접 전달한다.
 - 최종 결과는 DB 재조회로 활성·상태·권한·종류·선택 범위 및 내용 동일성을 재확인한다.
@@ -43,10 +51,11 @@ health.retrieval은 설정된 모드를 나타내며 색인 준비 상태/해당
 
 ## 5. CLI·동기화
 
-`scripts/rag_index.py prepare`만 네트워크 다운로드를 허용한다. `index` 기본 dry-run,
+Docker 빌드 또는 호스트 `scripts/rag_index.py prepare`에서만 모델 다운로드를 허용한다. `index` 기본 dry-run,
 `--apply`, `--limit`, `--batch-size`, `--document-id`, `--document-title`, `--username`, `--kind` 지원.
 후보는 기존 DebugStore READ ONLY 스냅샷에서 가져오며 관리자 역할은 기존 활성 계정을 확인한다.
-등록·개정 후 명시적으로 index를 다시 실행한다. 삭제·권한 변경은 DB 필터가 즉시 반영한다.
+등록·개정·동일 입력 저장 후 PG 작업 큐의 별도 worker가 자동 색인한다([작업 계약](rag-index-jobs.md)).
+기존 문서 초기 색인·모델 변경은 명시적 enqueue 또는 index를 실행한다. 삭제·권한 변경은 DB 필터가 즉시 반영한다.
 오래된 record는 자동 삭제하지 않는다(별도 재구축으로 정리). 색인 중 실패하면 완료 배치는 남고 재실행한다.
 `scripts/debug_retrieval.py`는 같은 허용 corpus로 BM25/vector/hybrid를 비교한다.
 rank·ID·문서명·페이지·heading·각 점수와 fallback을 출력하되 본문 preview는 기본 생략한다.

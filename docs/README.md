@@ -18,6 +18,8 @@
 
 ## 전체 목록
 
+- [자동 색인 계획](plans/2026-10-29-automatic-vector-indexing.md): 완료 · [작업 계약](specs/rag-index-jobs.md): 구현됨 · [ADR 0018](adr/0018-durable-index-jobs.md): 채택.
+
 ### 기본 문서
 
 - [`architecture.md`](architecture.md) — 실행 구조, 요청 흐름, 모듈 책임, 보안 경계, 교체 지점
@@ -39,7 +41,9 @@
 
 ### plans — 작업 계획
 
-- [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, [ADR 0016](adr/0016-local-vector-retrieval.md) 채택.
+- [Chroma 서버 이미지 분리](plans/2026-10-29-chroma-image.md): 완료.
+
+- [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, 현재 결정은 [ADR 0018](adr/0018-durable-index-jobs.md) (0016·0017 계승).
 
 - [목차 청킹과 Kiwi BM25 개선](plans/2026-10-22-rag-chunking-kiwi.md): 완료.
 
@@ -58,6 +62,8 @@
 | [`plans/2026-10-13-mrv-reference-intensity.md`](plans/2026-10-13-mrv-reference-intensity.md) — 공개 DWT 후보 연결·MRV 참고 집약도 | 완료 (로컬·미제출) |
 
 ### adr — 설계 결정
+
+- [0017 Chroma 전용 이미지](adr/0017-dedicated-chroma-image.md): 대체됨(0018). 전용 서버 분리는 유지.
 
 - [0015 업무 스킬과 선택 LLM](adr/0015-optional-model-workflow-skills.md): 고정 실행기와 런타임 지침.
 

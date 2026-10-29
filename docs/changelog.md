@@ -4,6 +4,80 @@
 
 ## 변경 이력
 
+### 2026-10-29 — 저장 후 자동 색인·이미지 내 E5 (1.4.0 유지)
+
+- 신규 `rag_index_jobs` migration으로 문서 저장과 같은 트랜잭션에 작업을 기록한다.
+  `documents.py`는 import와 enqueue 호출만 추가했다. 별도 `rag_worker`가 커밋된 작업만 처리하며
+  generation/claim token과 PG 세션 advisory lock으로 중복 worker·중단 복구·오래된 완료를 처리한다.
+  실패는 최대 5회 자동 재시도하며 상태·안전한 오류 코드·enqueue/retry CLI를 제공한다.
+- 기존 `VectorIndex.index`를 수동 CLI/worker가 공유한다. 새 record의 실제 입력 해시로 개정/페이지/ID만 다른
+  청크의 임베딩 값을 재사용하며 title/reference/heading/text 변경은 재계산한다. 이전 metadata 형식도 검색 호환된다.
+  검색 권한·활성·상태·kind·선택 문서·최종 DB 확인과 BM25 fallback/RRF 계약은 유지했다.
+- backend/worker 이미지의 모델 stage에서 pinned E5를 다운로드·검증하고 `/opt/models/e5-small`로 포함한다.
+  CPU 의존성과 고정 revision/384차원/정규화/긴 입력 규칙을 유지했고 새 의존성은 추가하지 않았다.
+  운영/개발 이미지가 모델 레이어를 공유하며 앱 코드 변경 후 재빌드에서 모델 단계 `CACHED`를 확인했다.
+  기존 `rag-models` 볼륨은 마운트만 해제하고 삭제하지 않는다. Chroma 전용 이미지는 유지했다.
+- Docker inspect 보고값: 이전 모델 없는 backend 2,802,092,996바이트(약 2.80GB),
+  모델 포함 backend 약 3.58GB, 전용 Chroma 826,147,540바이트(약 826MB).
+  이미지 내 모델 파일 합계 492,803,681바이트(약 493MB), 다운로드·검증 단계 95.2초(의존성 레이어 캐시 사용).
+  이미지 보고 크기는 전체 PC 추가 디스크 점유와 다르며 backend/worker 레이어는 공유된다.
+
+검증 (2026-10-29, 실제 앱 데이터 사용 없음):
+
+- `uv run --locked --project backend python .verification/bm25-db-tests.py`: 임시 PostgreSQL 17 클러스터에서
+  backend의 `python -m pytest -q -rs --tb=short` 실행. 최종 **456 passed, 4 skipped, 122.89초**.
+  네 건은 기존 해사 데이터셋의 `MARITIME_DATA_TEST_DATABASE_URL` 미설정(계산 2·조회 2)이며,
+  RAG PostgreSQL/작업 큐 테스트는 실행했다. 중간 신규 FK 정리 테스트의 삭제 순서를 기존 FK에 맞춰 고쳤다.
+- DB 없는 `test_rag_vector.py`: **23 passed, 6.74초**. 실제 임시 Chroma+모의 encoder로
+  입력 재사용·새 메타데이터·legacy 호환·순위·권한·fallback·CLI 회귀를 검증했다.
+- 운영 이미지 `docker run --rm --network none ...`: 실제 baked E5로 384차원·정규화·CPU(`torch.version.cuda is None`) 확인.
+  개발 이미지도 `./backend:/app:ro` 마운트와 network none에서 같은 모델 추론 통과.
+- `docker compose -p haedap-auto-index-check --profile e2e run --rm --no-deps
+  -e HAEDAP_CHROMA_HOST=chroma -v ./backend/tests:/app/verification:ro -v ./migrations:/migrations:ro
+  e2e-backend python -m verification.verify_auto_index`: 격리 e2e-db의 임시 schema와 Chroma HTTP 서버,
+  합성 문서 3개 청크에서 커밋 전 작업 비가시성→실제 worker→색인→벡터/하이브리드 정답 p.1 확인.
+  실제 HTTP 연결 실패 후 PG 원문 유지·retry 복구, 동일 입력 재시작·중복 방지,
+  두 별도 worker 프로세스의 개정 처리·삭제 후 후보 제외도 통과했다. 실제 모델 검증이며 모의 응답이 아니다.
+- Docker E2E: `docker compose -p haedap-auto-index-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`,
+  문서·운항·보고서·승인·백업 시나리오 통과. 종료 후 같은 격리 프로젝트 `down`으로 정리.
+- 실제 앱 컨테이너는 기존 상태(backend/frontend 7일, db 11일 실행)를 유지했다.
+  실제 PDF·앱 DB·질의 이력·.env 변경, 실제 데이터 전체 색인, 커밋·푸시·브랜치 머지 없음.
+
+한계: 대량 실제 문서 처리량/최대 RAM/검색 정확도는 이번 소량 합성 검증으로 보장하지 않는다.
+PG 세션이 살아 있는 정지 worker는 재시작이 필요하며 네트워크 단절 감지 지연이 있을 수 있다.
+오래된 Chroma record/모델 collection은 자동 삭제하지 않는다. 기존 문서·모델 변경·JSON 복원 후에는 명시적 enqueue가 필요하다.
+기존 형식 record는 입력 해시가 없어 개정 간 벡터 재사용 대상이 아니지만 현재 검색은 유지된다.
+
+### 2026-10-29 — Chroma 서버 전용 이미지 분리 (1.4.0 유지)
+
+- `compose.yaml`의 Chroma 서비스를 backend 이미지 재사용에서 `backend/Dockerfile.chroma`로 변경했다.
+  공식 `chromadb/chroma:1.5.9` 위에 기존 UID/GID 10001, `/data/chroma`와 HTTP 헬스체크만 추가했다.
+  공식 이미지에 Python/curl이 없으므로 bash 내장 TCP로 heartbeat의 HTTP 200을 검사한다.
+  Python/임베딩/PyTorch·E5·BM25·RRF 코드는 기존 backend에 유지하며 검색 기본값도 bm25로 유지했다.
+- 이미지 inspect 기준 기존 서버용 backend 이미지 2,808,942,616바이트(약 2.81GB), 새 서버 이미지
+  826,147,542바이트(약 826MB). backend 이미지 축소나 전체 PC 디스크 절감량을 뜻하지 않는다.
+  기존에는 이미지 레이어를 공유했고 이전 이미지·테스트 이미지는 삭제하지 않았다.
+- 기존 `rag-vectors` 볼륨명·마운트 루트 경로·내부 hostname/port·외부 포트 미공개를 유지했다.
+  현재 앱 컨테이너·PostgreSQL·사용자 PDF·`.env`는 변경하지 않았고 실제 서비스 전환/커밋/푸시는 하지 않았다.
+  [ADR 0017](adr/0017-dedicated-chroma-image.md)이 0016의 서버 이미지 선택을 대체하고 나머지 검색 결정을 계승한다.
+
+검증(2026-10-29, Windows Docker Desktop / Linux 컨테이너):
+
+- `docker compose -p haedap-chroma-split-check --profile vector build chroma`: 성공.
+  공식 멀티 아키텍처 이미지 manifest/`run --help` 확인 후 실제 amd64에서 실행 검증했다(arm64 실행 미검증).
+- 격리 테스트 볼륨에 **이전 backend 기반 이미지**의 PersistentClient 1.5.9로 합성 벡터 2개 저장 →
+  새 서버가 HTTP로 2개 조회·검색 → 추가 벡터 1개 쓰기 → 컨테이너 강제 재생성 후 3개 보존 확인.
+  새로 생성한 빈 볼륨과 이전 형식 볼륨 모두 UID/GID 10001로 쓰기 가능, SQLite 파일 소유권 유지.
+  허용 ID 제한 검색·RRF·미색인 BM25 fallback 통과. 실제 앱 DB는 사용하지 않았다.
+- 같은 전용 서버에 준비된 로컬 E5 모델로 공개 합성 청크 3개를 실제 임베딩·색인했다.
+  vector/hybrid 검색, 긴 문서 구간 임베딩·단위 벡터, 긴 질문 거부 확인. 모델 다운로드 없이 offline 실행.
+  이는 실제 모델 검증이며 위의 3차원 합성 encoder 호환성 테스트와 구분한다.
+- `uv run --locked --project backend pytest backend/tests/test_rag_vector.py backend/tests/test_rag_retrieval.py backend/tests/test_debug_bm25.py -q --tb=short`:
+  **91 passed (18.50초)**. 이 작업에서 Python 검색 코드/API를 수정하지 않았다.
+- `docker compose -p haedap-chroma-split-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`:
+  **1 passed (48.9초)**, 화면 시나리오 38.0초. 이후 같은 격리 프로젝트의 `--profile vector --profile e2e down`으로 정리했다.
+  호환성·모델 테스트는 별도 합성 데이터로 수행했으며 실제 앱 전체 문서의 검색 품질 재평가는 수행하지 않았다.
+
 ### 2026-10-27 — 선택적 로컬 벡터 검색과 RRF (1.4.0 유지)
 
 - `feature/rag-vector`의 dfb262f 기준. 사용자의 후속 지시에 따라 BM25 토큰 캐시 커밋 9a14ff1은 병합하지 않았다.

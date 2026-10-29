@@ -84,6 +84,32 @@ def test_missing_and_mismatched_metadata(index):
         ix.search("선급", [a])
 
 
+def test_reuse_embedding_input_across_revisions_but_keep_metadata(index):
+    ix, _ = index
+    calls = []
+    original = ix.encoder.documents
+    ix.encoder.documents = lambda rows, batch_size: calls.append(len(rows)) or original(rows, batch_size)
+    a = chunk("a")
+    ix.index([a, chunk("same-input")])
+    assert calls == [1]
+    revised = chunk("revision", page=25, version="2", meta={"scope": "admin"})
+    assert ix.index([revised])["indexed"] == 1
+    assert calls == [1]
+    assert ix.search("선급", [revised])[0]["page"] == 25
+    for field in ("title", "reference", "heading", "text"):
+        ix.index([{**revised, field: "different " + field}])
+    assert calls == [1, 1, 1, 1, 1]
+
+
+def test_legacy_vector_metadata_still_searchable(index):
+    ix, _ = index
+    a = chunk("legacy")
+    meta = {k: v for k, v in ix.metadata(a).items() if k != "embedding_input_hash"}
+    ix.collection.upsert(ids=[ix.record_id(a)], embeddings=Encoder().documents([a]), metadatas=[meta])
+    assert ix.index([a])["already_current"] == 1
+    assert ix.search("선급", [a])[0]["id"] == "legacy"
+
+
 def test_dispatch_default_and_fallback(monkeypatch, caplog):
     import api.rag_search as module
     a = chunk("a")

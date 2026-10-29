@@ -73,32 +73,41 @@ services:
       HAEDAP_RETRIEVAL_MODE: ${HAEDAP_RETRIEVAL_MODE:-bm25}
       HAEDAP_RAG_CANDIDATES: ${HAEDAP_RAG_CANDIDATES:-30}
       HAEDAP_RRF_K: ${HAEDAP_RRF_K:-60}
-      HAEDAP_EMBED_MODEL_DIR: /data/models/e5-small
+      HAEDAP_EMBED_MODEL_DIR: /opt/models/e5-small
       HAEDAP_CHROMA_HOST: chroma
       HAEDAP_CHROMA_PORT: "8000"
       HF_HUB_DISABLE_TELEMETRY: "1"
     volumes:
       - backups:/data/backups
-      - rag-models:/data/models
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
     # Not published: only reachable through the frontend's /api proxy.
 
-  # Optional internal vector index; never publishes a host port.
-  chroma:
-    profiles: [vector]
+  # Automatic indexing runs independently of the configured retrieval mode.
+  rag-worker:
     build: { context: ./backend, target: prod }
-    command: ["chroma", "run", "--host", "0.0.0.0", "--port", "8000", "--path", "/data/chroma"]
+    command: ["python", "-m", "api.rag_worker", "run"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-haedap}:${POSTGRES_PASSWORD:-haedap-local}@db:5432/${POSTGRES_DB:-haedap}
+      HAEDAP_CHROMA_HOST: chroma
+      HAEDAP_CHROMA_PORT: "8000"
+      HAEDAP_EMBED_MODEL_DIR: /opt/models/e5-small
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      chroma: { condition: service_healthy }
+    healthcheck:
+      disable: true
+    stop_grace_period: 60s
+    restart: unless-stopped
+
+  # Internal vector index; never publishes a host port.
+  chroma:
+    build: { context: ./backend, dockerfile: Dockerfile.chroma }
     environment:
       ANONYMIZED_TELEMETRY: "False"
     volumes:
       - rag-vectors:/data/chroma
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v2/heartbeat', timeout=2)"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
     restart: unless-stopped
 
   frontend:
@@ -169,5 +178,5 @@ services:
 volumes:
   db-data:
   backups:
-  rag-models:
+  # Legacy rag-models volume is intentionally not mounted or deleted.
   rag-vectors:

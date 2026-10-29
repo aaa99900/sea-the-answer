@@ -13,6 +13,7 @@ from ..errors import ApiError, require
 from ..rag_preprocessing import preprocess_sections
 from ..rag_search import configured_mode, retrieve
 from ..rag_embeddings import content_hash
+from ..rag_jobs import enqueue
 from ..validation import iso_date, sha256, stamp, text
 
 
@@ -122,6 +123,7 @@ class DocumentStore:
             if old_file:
                 self.run("INSERT INTO document_files VALUES(%s,%s,%s) ON CONFLICT(id) DO NOTHING",
                          (revision_id, old_file["name"], old_file["base64"]))
+        enqueue(self, revision_id)
         return {"id": revision_id, "status": "unchanged" if unchanged else "updated" if current else "created"}
 
     def delete_document(self, doc_id: str) -> dict:

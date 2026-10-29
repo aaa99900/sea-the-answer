@@ -1,6 +1,6 @@
 # 0016. PostgreSQL 원본과 분리한 로컬 E5·Chroma 검색
 
-- 상태: 채택
+- 상태: 대체됨(0017)
 - 날짜: 2026-10-27
 - 결정자: 문서/RAG 요청에 따른 구현
 - 관련: [명세](../specs/rag-vector.md), [계획](../plans/2026-10-27-vector-hybrid.md)

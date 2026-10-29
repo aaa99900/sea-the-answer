@@ -19,9 +19,13 @@
 
 선택 문서 ID는 권한·활성 개정본을 먼저 확인하고 SQL 조회 조건으로 제한한다. MRV 실행은 앱 선박의 명시 매핑·IMO 정체성을 검증한 뒤 기존 Python Tool을 호출한다. 일반 앱 경계를 통해 호출하므로 서버 Bearer를 브라우저에 전달하지 않는다. 보고서 초안 생성은 payload만 반환하며 별도 버튼으로 저장한다. 실행 기록은 기존 queries/query_owner/audit에 보관하고 새 스키마는 만들지 않는다.
 
-해답은 서비스 세 개(+ 시작 때 한 번 도는 마이그레이션)로 이루어진 웹 애플리케이션입니다. 사용자는 **Next.js 주소 하나**(기본 `http://localhost:5173`)로만 접속합니다. Next.js가 화면을 그리고, `/api/*` 요청은 `proxy.js`가 FastAPI 백엔드로 넘깁니다([ADR 0006](adr/0006-nextjs-entry-rewrites-to-api.md), [ADR 0007](adr/0007-runtime-api-origin-via-proxy.md)). 백엔드만 PostgreSQL에 접근합니다.
+해답은 frontend·backend·PostgreSQL·rag-worker·Chroma와 시작 시 실행하는 마이그레이션으로 구성됩니다.
+사용자는 **Next.js 주소 하나**(기본 `http://localhost:5173`)로만 접속합니다. Next.js가 화면을 그리고,
+`/api/*`를 FastAPI로 넘깁니다([ADR 0006](adr/0006-nextjs-entry-rewrites-to-api.md), [ADR 0007](adr/0007-runtime-api-origin-via-proxy.md)).
+백엔드와 내부 worker가 PostgreSQL에 접근합니다.
 
-`frontend/`(npm)와 `backend/`(uv)는 각각 독립된 패키지이고, 저장소 최상위의 `compose.yaml`이 셋을 함께 띄웁니다. 최상위 `e2e/`는 실행 중인 스택을 브라우저로 검증합니다([ADR 0009](adr/0009-split-packages-and-compose.md)).
+`frontend/`(npm)와 `backend/`(uv)는 독립 패키지이고 최상위 `compose.yaml`이 서비스를 함께 띄웁니다.
+최상위 `e2e/`는 스택을 브라우저로 검증합니다([ADR 0009](adr/0009-split-packages-and-compose.md)).
 
 ```mermaid
 flowchart LR
@@ -36,6 +40,9 @@ flowchart LR
     N -->|/api/* proxy.js<br/>X-Forwarded-Host| G
     G --> D
     G --> K
+    W[rag-worker · E5 CPU] --> D
+    W --> V[(chroma · rag-vectors)]
+    G --> V
   end
   G -. 선택: LLM_API_BASE_URL · OPENAI_MODEL 설정 .-> O[(OpenAI 호환 Chat Completions)]
   E[e2e<br/>Playwright] -. profile e2e .-> N
@@ -46,6 +53,8 @@ flowchart LR
 | `db` | `postgres:18-alpine` | 내부 5432 (개발 오버레이에서만 `127.0.0.1:5432` 공개) | 볼륨 `db-data` |
 | `migrate` | `amacneil/dbmate:2.36.0` | 없음 | 최상위 `migrations/` 마운트. `up` 후 종료([ADR 0010](adr/0010-dbmate-migrations.md)) |
 | `backend` | `backend/Dockerfile` (`prod`/`dev` 타깃) | 내부 8000 (개발 오버레이에서만 `127.0.0.1:8000` 공개) | 볼륨 `backups` → `/data/backups` |
+| `chroma` | `backend/Dockerfile.chroma` (공식 Chroma 1.5.9 기반) | 내부 8000, 호스트 공개 없음 | 볼륨 `rag-vectors` → `/data/chroma` |
+| `rag-worker` | backend와 같은 모델 포함 이미지 | 없음 | PG 작업 큐, 이미지 `/opt/models/e5-small` |
 | `frontend` | `frontend/Dockerfile` (`prod`=standalone, `dev`=`next dev`) | `${HAEDAP_BIND:-127.0.0.1}:${PORT:-5173}` | 없음 |
 | `e2e-*`, `e2e` | 같은 이미지·Dockerfile + `e2e/Dockerfile` | 공개 안 함 | DB·백업 모두 tmpfs (실행마다 빈 상태, `e2e-migrate`로 같은 마이그레이션 적용) |
 
@@ -209,11 +218,33 @@ flowchart LR
 `store/documents.py.search_candidates()`가 PostgreSQL에서 권한·활성 개정·상태·종류·선택 문서 범위를 확정한 뒤
 `rag_search.py`가 설정에 따라 기존 `rag_retrieval.py`(BM25), `rag_vector.py`(Chroma), `rag_hybrid.py`(RRF)를 호출한다.
 vector/hybrid 검색 후 같은 DB 후보 조회를 다시 실행해 원문·권한 변경 결과를 제거한다.
-저장/개정/전처리는 바뀌지 않으며 `/search`와 `/ask`가 같은 저장소 검색 경로를 사용한다.
+청킹/개정 규칙은 유지하고 저장 끝에 작업 enqueue만 추가한다. `/search`와 `/ask`는 같은 검색 경로를 사용한다.
 
 `rag_embeddings.py`는 고정 E5 모델 계약·명시적 준비·입력 길이 검증을 담당한다.
 `scripts/rag_index.py`는 DB 읽기 전용 스냅샷 → 파생 벡터 색인, `scripts/debug_retrieval.py`는 같은 후보의 세 방식 비교다.
-Chroma 서버는 Docker `vector` profile 내부 전용이고 모델/벡터는 각각 named volume에 보존한다.
+Chroma 서버는 Docker 내부 전용이며 자동 worker와 함께 기본 실행되고 `backend/Dockerfile.chroma`로 별도 빌드한다.
+공식 Chroma 1.5.9에 기존 UID/GID 10001·저장 경로와 bash HTTP 헬스체크만 추가한다.
+CPU PyTorch·E5 실행·Python 클라이언트는 backend/worker에 있다. 모델은 이미지 `/opt/models/e5-small`, 벡터는 named volume이다.
 PostgreSQL만 원본이므로 Chroma 결과의 본문을 신뢰하지 않고 현재 후보 행으로 결과를 구성한다.
 기본 BM25는 모델/Chroma를 로딩하지 않으며 캐시 커밋을 이 작업에 병합하지 않았다.
-상세 실패·부분 색인·동기화 정책은 [검색 계약](specs/rag-vector.md), 선택 이유는 [ADR 0016](adr/0016-local-vector-retrieval.md) 참고.
+상세 실패·부분 색인·동기화 정책은 [검색 계약](specs/rag-vector.md), 현재 선택 이유는 [ADR 0018](adr/0018-durable-index-jobs.md) 참고.
+
+### 자동 색인 경계
+
+`rag_jobs.enqueue`는 `save_document`와 같은 트랜잭션으로 작업을 기록한다.
+`rag_worker`는 전용 DB 세션에서 커밋된 작업을 획득하며 임베딩 동안 DB 트랜잭션을 열어두지 않는다.
+세션 advisory lock은 중복 worker를 막고, generation/claim token은 오래된 완료를 막는다.
+실패 정책·CLI 계약은 [rag-index-jobs](specs/rag-index-jobs.md)에 정의한다. 웹 응답은 색인을 기다리지 않는다.
+
+```mermaid
+flowchart LR
+  Save[문서 저장] --> Tx[PG 트랜잭션: 문서·청크·작업]
+  Tx --> Commit[커밋 후 HTTP 응답]
+  Commit --> Worker[별도 rag-worker]
+  Worker --> E5[이미지 내 E5 · CPU]
+  E5 --> Chroma[Chroma upsert]
+  Chroma --> Done[PG 작업 완료 · 세대 재확인]
+```
+
+worker는 모든 열람 범위의 활성 문서를 색인하는 서버 내부 작업자다. 검색의 사용자 권한 경계는 그대로 PG에서 확인한다.
+복원 JSON에는 작업/벡터를 넣지 않으며 복원 후 명시적 enqueue로 재구축한다.

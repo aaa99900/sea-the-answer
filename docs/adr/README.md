@@ -23,7 +23,8 @@
 
 ## 목록
 
-- [0016 로컬 E5·Chroma 검색](0016-local-vector-retrieval.md): 채택 (2026-10-27).
+- [0017 Chroma 전용 이미지](0017-dedicated-chroma-image.md): 대체됨(0018). 전용 서버 분리는 유지.
+- [0016 로컬 E5·Chroma 검색](0016-local-vector-retrieval.md): 대체됨(0017).
 
 | 번호 | 결정 | 상태 | 날짜 |
 |---|---|---|---|
@@ -43,3 +44,5 @@
 | [0014](0014-mindlogic-gateway-host.md) | 동국 AI Chat API 게이트웨이(Mindlogic) 호스트 계약 추가 | 제안 | 2026-10-14 |
 
 0002~0004는 이미 구현된 결정을 2026-10-08에 소급 기록한 것입니다. 날짜는 해당 결정이 들어간 버전의 날짜입니다.
+
+- [0018 PostgreSQL 작업 큐와 이미지 모델](0018-durable-index-jobs.md) — 채택 (0017 대체)
