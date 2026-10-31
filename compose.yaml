@@ -74,7 +74,6 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-haedap}:${POSTGRES_PASSWORD:-haedap-local}@db:5432/${POSTGRES_DB:-haedap}
       # Extra public hostnames/IPs users open (LAN, server domain). localhost is always allowed.
       HAEDAP_ALLOWED_HOSTS: ${HAEDAP_ALLOWED_HOSTS:-}
-      HAEDAP_RETRIEVAL_MODE: ${HAEDAP_RETRIEVAL_MODE:-bm25}
       HAEDAP_RAG_CANDIDATES: ${HAEDAP_RAG_CANDIDATES:-30}
       HAEDAP_RRF_K: ${HAEDAP_RRF_K:-60}
       HAEDAP_EMBED_MODEL_DIR: /opt/models/e5-small
@@ -88,7 +87,7 @@ services:
     restart: unless-stopped
     # Not published: only reachable through the frontend's /api proxy.
 
-  # Automatic indexing runs independently of the configured retrieval mode.
+  # Automatic indexing runs after document commits, independently of searches.
   rag-worker:
     build: { context: ./backend, target: prod }
     command: ["python", "-m", "api.rag_worker", "run"]

@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 from .. import config
-from ..rag_search import configured_mode
 from ..store import TOOL_DEFINITIONS
 from ..web import security
 
 
 def health(ctx):
     user = ctx.user
-    mode = configured_mode()
-    retrieval = {"vector": "vector-e5", "hybrid": "hybrid-rrf"}.get(mode, "bm25-ko-en")
-    return {"ok": True, "storage": "postgresql", "retrieval": retrieval, "llmConfigured": config.llm_configured(),
+    return {"ok": True, "storage": "postgresql", "retrieval": "hybrid-rrf", "llmConfigured": config.llm_configured(),
             "csrfToken": security.csrf_token, "user": user, "setupRequired": False,
             "documents": len(ctx.db.allowed_document_ids(user)) if user["role"] != "guest" and not user.get("must_change_password") else 0,
             "version": config.VERSION, "authenticated": user["role"] in ("admin", "operator", "viewer"),

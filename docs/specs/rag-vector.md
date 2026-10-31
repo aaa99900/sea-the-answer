@@ -7,11 +7,11 @@
 ## 1. 목적과 범위
 
 기존 검색/답변의 evidence 필드와 Top-5 계약을 유지한다. 원문·권한은 PostgreSQL 기준이다.
-임베딩 모델·Chroma·RRF는 독립 모듈이며 기본 bm25 경로는 무거운 의존성을 초기화하지 않는다.
+웹 검색은 BM25·벡터 후보를 RRF로 결합한다. 개발자 CLI의 명시적 bm25 경로는 무거운 의존성을 초기화하지 않는다.
 
 ## 2. 설정과 입력
 
-`HAEDAP_RETRIEVAL_MODE=bm25|vector|hybrid` 기본 bm25. `HAEDAP_RAG_CANDIDATES=30`,
+웹 검색·답변은 항상 hybrid 정책을 사용한다. CLI만 명시적 bm25/vector/hybrid 비교를 지원한다. `HAEDAP_RAG_CANDIDATES=30`,
 `HAEDAP_RRF_K=60`. 모델은 multilingual-e5-small의 고정 SHA revision을 사용한다.
 `HAEDAP_EMBED_MODEL_DIR`은 Docker에서는 빌드 시 검증한 `/opt/models/e5-small`, 호스트에서는 prepare로 준비한 경로다.
 `HAEDAP_CHROMA_HOST/PORT`가 있으면 서버, 없으면 `HAEDAP_CHROMA_PATH`의 단일 프로세스 저장소다.
@@ -47,7 +47,7 @@ RRF = 각 목록의 1/(k+rank) 합. rank는 1부터, 같은 목록의 중복 청
 준비 안 된 모델·색인 누락·불일치·Chroma 장애·잘못된 설정은 전체 BM25 fallback한다.
 경고 로그는 requested/effective mode와 안전한 reason 코드만 담고 질문·본문·환경값은 출력하지 않는다.
 HTTP 응답 형식은 유지하고 개발자 CLI는 effective mode와 fallback 사유를 명시한다.
-health.retrieval은 설정된 모드를 나타내며 색인 준비 상태/해당 요청의 성공 보장은 아니다.
+health.retrieval은 `hybrid-rrf` 정책을 나타내며 색인 준비 상태/해당 요청의 성공 보장은 아니다.
 
 ## 5. CLI·동기화
 

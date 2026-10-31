@@ -11,7 +11,7 @@ from psycopg.types.json import Jsonb
 
 from ..errors import ApiError, require
 from ..rag_preprocessing import preprocess_sections
-from ..rag_search import configured_mode, retrieve
+from ..rag_search import retrieve
 from ..rag_embeddings import content_hash
 from ..rag_jobs import enqueue
 from ..validation import iso_date, sha256, stamp, text
@@ -196,11 +196,11 @@ class DocumentStore:
         # Filter before either retriever so inaccessible chunks cannot affect ranking.
         # Keep scores internal; /search and /ask retain their evidence contract.
         results = retrieve(question, candidates, top_k=5)
-        if configured_mode() != "bm25":
-            # Re-read current PG state after potentially slow embedding/remote IO.
-            current = {row["id"]: row for row in self.search_candidates(user, kind, document_ids)}
-            results = [current[row["id"]] for row in results if row["id"] in current
-                       and content_hash(row) == content_hash(current[row["id"]])]
+        # Re-read current PG state after potentially slow embedding/remote IO,
+        # including requests that fell back to BM25.
+        current = {row["id"]: row for row in self.search_candidates(user, kind, document_ids)}
+        results = [current[row["id"]] for row in results if row["id"] in current
+                   and content_hash(row) == content_hash(current[row["id"]])]
         return [{key: value for key, value in row.items() if key != "score"}
                 for row in results]
 

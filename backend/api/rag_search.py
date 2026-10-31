@@ -1,4 +1,4 @@
-"""Search-mode boundary; unchanged BM25 remains the default and safe fallback."""
+"""Hybrid web retrieval, explicit CLI comparison modes and safe BM25 fallback."""
 from __future__ import annotations
 
 import logging
@@ -11,15 +11,11 @@ from .rag_retrieval import retrieve as bm25
 logger = logging.getLogger(__name__)
 
 
-def configured_mode() -> str:
-    return os.getenv("HAEDAP_RETRIEVAL_MODE", "bm25").lower()
-
-
 def search(query: str, chunks: list[dict], top_k: int = 5, *, mode: str | None = None,
            vector_index=None) -> dict:
     if type(top_k) is not int or top_k < 1:
         raise ValueError("top_k must be a positive integer")
-    requested = mode if mode is not None else configured_mode()
+    requested = mode if mode is not None else "hybrid"
     report = {"requested_mode": requested if requested in {"bm25", "vector", "hybrid"} else "invalid",
               "effective_mode": requested, "fallback_reason": None}
     if requested == "bm25":
@@ -52,4 +48,5 @@ def search(query: str, chunks: list[dict], top_k: int = 5, *, mode: str | None =
 
 
 def retrieve(query: str, chunks: list[dict], top_k: int = 5) -> list[dict]:
-    return search(query, chunks, top_k)["results"]
+    """Web entry point; comparison modes are available only through search()."""
+    return search(query, chunks, top_k, mode="hybrid")["results"]

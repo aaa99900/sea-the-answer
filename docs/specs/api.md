@@ -89,10 +89,10 @@ DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 �
 
 #### 기존 API 검색 계약
 
-2026-10-14 확정: `POST /api/search`의 `{question, filter}` 및 `{evidence: [...]}`, `/api/ask`의 evidence 형식은 유지한다. 질문은 기존처럼 비어 있지 않은 최대 2,000자 문자열이며 `filter`는 `all|imo|manual`이다. `GET /api/health.retrieval`은 `bm25-ko-en`을 반환한다.
+`POST /api/search`의 `{question, filter}` 및 `{evidence: [...]}`, `/api/ask`의 evidence 형식은 유지한다. 질문은 기존처럼 비어 있지 않은 최대 2,000자 문자열이며 `filter`는 `all|imo|manual`이다. `GET /api/health.retrieval`은 `hybrid-rrf` 정책을 반환한다.
 
 - `DocumentStore.search`가 PostgreSQL에서 현재 개정(`active=true`) 청크를 읽고, 문서 상태·사용자 scope·종류 필터를 적용한 뒤에만 검색 모듈에 전달한다. 제한된 청크는 BM25 통계에도 포함하지 않는다.
-- 업무 스킬의 선택 문서 검색은 `document_ids`의 활성·열람 권한을 검증하고 SQL에서 해당 ID로 후보를 제한한 뒤 같은 BM25를 적용한다. 선택하지 않은 문서는 BM25 통계에도 포함하지 않는다. CLI의 기본 전체 후보 조회도 공통 `search_candidates`를 사용한다.
+- 업무 스킬의 선택 문서 검색은 `document_ids`의 활성·열람 권한을 검증하고 SQL에서 해당 ID로 후보를 제한한 뒤 같은 하이브리드 검색을 적용한다. 선택하지 않은 문서는 BM25 통계·벡터 후보에도 포함하지 않는다. CLI의 기본 전체 후보 조회도 공통 `search_candidates`를 사용한다.
 - `api/rag_retrieval.py`의 `retrieve(query, chunks, top_k=5)`는 원본 청크 필드와 숫자 `score`를 가진 사본 목록을 반환한다. `DocumentStore`는 내부 점수만 제거하여 기존 API 응답을 유지한다. 문서 ID·제목·페이지·heading·본문은 변경하지 않는다.
 - corpus는 `title`, `reference`, `heading`, `text`를 같은 비중으로 결합한다. Unicode NFKC 정규화·소문자화 후 한국어 구간을 Kiwi(`cong`)로 분석한다. 명사·수사·동사/형용사 어간·일반 부사·어근과 부정어 `않`을 남기고 조사·어미·접사 등을 제외한다. 인위적인 한글 2글자 분할은 하지 않는다. 영숫자와 소수·조항 번호(`0.50`, `901.1`, `5d`)는 정규식으로 보존한다. 원문·인용은 변경하지 않는다.
 - `api/rag_vocabulary.py`에 Kiwi 사용자 단어(선급·평형수 등), 제한된 해사 한영 별칭(중량 갑판화물/heavy deck cargo 등), 불용어를 둔다. 질문과 corpus에 같은 토큰화·불용어 규칙을 적용한다. 부정어, 수치, 단위, 적용·기준·검사 같은 도메인 단어는 불용어에서 제외한다. 사전 별칭은 검색 보조이며 규제상 동등성을 보장하지 않는다.
@@ -102,7 +102,7 @@ DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 �
 - 검색 모듈은 빈 질의·빈 corpus·토큰 없는 corpus에 빈 목록을 반환한다. `top_k`는 양의 정수여야 한다. 외부 API의 기존 빈 질문 검증은 그대로 유지한다.
 - 매 요청 허용 청크로 메모리 인덱스를 만들며 검색 변경에는 DB 재등록·재청킹이 필요 없다. Kiwi 분석기·고정 별칭과 내용 기반 문서 분석 토큰을 프로세스 내 재사용한다. 문서 토큰은 title/reference/heading/text 전체의 SHA-256을 키로 최대 2,048항목·계산 객체 크기 합 16MiB의 LRU에 보관하고 반환 시 목록을 복사한다. 원문 문자열·사용자 질의·권한·검색 결과·BM25 인덱스는 요청 간 캐시하지 않는다. 현재 DB 후보로 통계를 매번 다시 만들며 삭제·개정·권한·선택 범위 변경을 우회하지 않는다. 내용 변경·캐시 퇴출·프로세스 재시작 후 첫 분석 비용은 남는다. 어휘/분석 코드 변경 시 프로세스를 재시작한다. 토큰에도 민감한 단어가 남을 수 있고 크기 한도는 전체 RSS 상한이 아님은 [ADR 0017](../adr/0017-bounded-chunk-token-reuse.md)에 명시한다. 의미 검색·벡터 검색은 포함하지 않는다.
 
-선택적 벡터/RRF 경로는 별도 [계약](rag-vector.md)을 따른다. 위 토큰 캐시 설명은 BM25 경로에 한정된다.
+웹의 벡터/RRF 결합과 fallback은 별도 [계약](rag-vector.md)을 따른다. 위 토큰화·점수·캐시 설명은 BM25 구성 요소에 한정된다.
 
 ## 4. 문서 등록 payload (`document.save`)
 
@@ -207,11 +207,11 @@ CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest
 
 - 백업은 SHA-256 체크섬으로 우발적 손상만 검사하며, 서명 기반 진위 확인은 하지 않습니다. 가져오기는 형식 v2만 허용합니다.
 - 목록 API는 페이징 없이 전체를 반환합니다(캡스톤 데모 규모).
-## 선택적 검색 모드 (응답 필드 유지)
+## 웹 하이브리드 검색 (응답 필드 유지)
 
-기본 BM25 외에 설정으로 vector/hybrid를 선택할 수 있다. `/search`와 답변 흐름의 evidence 필드/최종 Top-5는 유지한다.
-`health.retrieval`은 기본 `bm25-ko-en`, 설정에 따라 `vector-e5` 또는 `hybrid-rrf`다.
-이는 설정된 모드이지 모델·색인의 준비 보증이 아니다. 요청별 fallback은 안전한 서버 경고/개발자 CLI에 표시한다.
+웹은 BM25·벡터 후보를 RRF로 결합한다. `/search`와 답변 흐름의 evidence 필드/최종 Top-5는 유지한다.
+`health.retrieval`은 `hybrid-rrf` 정책이며 모델·색인의 준비 보증이 아니다.
+준비 실패 시 BM25 fallback하며 안전한 서버 경고/개발자 CLI에 표시한다. 방식별 비교는 개발자 CLI에서 수행한다.
 구체적인 준비·권한·색인 누락·RRF 동작은 [rag-vector.md](rag-vector.md)를 따른다.
 
 ### 보고서 삭제 (2026-10-18)

@@ -137,7 +137,7 @@ def test_dispatch_default_and_fallback(monkeypatch, caplog):
     a = chunk("a")
     calls = []
     monkeypatch.setattr(module, "bm25", lambda q, c, k: calls.append((q, c, k)) or [{**a, "score": 3}])
-    assert search("선급", [a])["effective_mode"] == "bm25"
+    assert search("선급", [a], mode="bm25")["effective_mode"] == "bm25"
     class Failed:
         def search(self, *args):
             raise RuntimeError("secret body and DSN")
@@ -165,9 +165,48 @@ def test_hybrid_uses_sufficient_candidates(monkeypatch):
     assert result["results"][0]["score"] == pytest.approx(1 / 61 + 1 / 62)
 
 
-def test_store_final_current_db_recheck(monkeypatch):
+@pytest.mark.parametrize("legacy_mode", [None, "bm25", "vector", "hybrid"])
+def test_web_hybrid_ignores_legacy_environment(monkeypatch, legacy_mode):
+    import api.rag_search as module
+    import api.store.documents as documents
+    if legacy_mode is None:
+        monkeypatch.delenv("HAEDAP_RETRIEVAL_MODE", raising=False)
+    else:
+        monkeypatch.setenv("HAEDAP_RETRIEVAL_MODE", legacy_mode)
+    rows = [chunk(str(i)) for i in range(7)]
+    sizes = []
+    def lexical(q, candidates, k):
+        assert candidates == rows
+        sizes.append(k)
+        return [{**row, "score": 100 - i} for i, row in enumerate(rows)]
+    class V:
+        def search(self, q, candidates, k):
+            assert candidates == rows
+            sizes.append(k)
+            return [{**row, "score": .9} for row in reversed(rows)]
+    monkeypatch.setattr(module, "bm25", lexical)
+    monkeypatch.setattr("api.rag_vector.VectorIndex", V)
+    report = module.search("query", rows)
+    assert report["requested_mode"] == report["effective_mode"] == "hybrid"
+    assert report["fallback_reason"] is None
+    expected = rrf([lexical("query", rows, 30), V().search("query", rows, 30)])
+    assert report["results"] == expected
+    store = documents.DocumentStore()
+    monkeypatch.setattr(store, "search_candidates", lambda *args: rows)
+    evidence = store.search({"role": "operator"}, "query")
+    assert len(evidence) == 5
+    assert [row["id"] for row in evidence] == [row["id"] for row in expected]
+    assert all("score" not in row for row in evidence)
+    assert set(sizes) == {30}
+
+
+@pytest.mark.parametrize("legacy_mode", [None, "bm25", "vector"])
+def test_store_final_current_db_recheck(monkeypatch, legacy_mode):
     import api.store.documents as module
-    monkeypatch.setenv("HAEDAP_RETRIEVAL_MODE", "vector")
+    if legacy_mode is None:
+        monkeypatch.delenv("HAEDAP_RETRIEVAL_MODE", raising=False)
+    else:
+        monkeypatch.setenv("HAEDAP_RETRIEVAL_MODE", legacy_mode)
     a, b = chunk("a"), chunk("b")
     snapshots = iter([[a, b], [{**b, "text": "changed"}]])
     store = module.DocumentStore()
@@ -184,6 +223,32 @@ def test_compare_no_body(monkeypatch):
     report = compare("선급", [a])
     assert "PRIVATE-BODY" not in json.dumps(report)
     assert set(report["methods"]) == {"bm25", "vector", "hybrid"}
+
+
+@pytest.mark.parametrize("reason", [None, "model_not_prepared", "index_incomplete_or_stale", "vector_backend_failure"])
+def test_compare_explicit_modes_and_fallback(monkeypatch, caplog, reason):
+    from scripts.debug_retrieval import compare
+    import api.rag_search as module
+    monkeypatch.setenv("HAEDAP_RETRIEVAL_MODE", "bm25")
+    a, b = chunk("a"), chunk("b")
+    monkeypatch.setattr(module, "bm25", lambda *args: [{**a, "score": 3}, {**b, "score": 1}])
+    class V:
+        def search(self, *args):
+            if reason:
+                raise VectorUnavailable(reason)
+            return [{**b, "score": .9}, {**a, "score": .1}]
+    methods = compare("선급", [a, b], vector_index=V())["methods"]
+    assert methods["bm25"]["effective_mode"] == "bm25"
+    assert methods["bm25"]["fallback_reason"] is None
+    for mode in ("vector", "hybrid"):
+        assert methods[mode]["requested_mode"] == mode
+        assert methods[mode]["effective_mode"] == ("bm25" if reason else mode)
+        assert methods[mode]["fallback_reason"] == reason
+    if reason:
+        assert f"reason={reason}" in caplog.text
+    else:
+        assert methods["vector"]["results"][0]["id"] == "b"
+        assert methods["hybrid"]["results"][0]["score"] == pytest.approx(1 / 61 + 1 / 62)
 
 
 def test_cli_readonly_load(monkeypatch):

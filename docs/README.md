@@ -47,6 +47,8 @@
 
 ### plans — 작업 계획
 
+- [웹 하이브리드 검색 통일](plans/2026-10-29-web-hybrid-search.md): 완료.
+
 - [Chroma 서버 이미지 분리](plans/2026-10-29-chroma-image.md): 완료.
 
 - [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, 현재 결정은 [ADR 0021](adr/0021-durable-index-jobs.md) (0019·0020 계승).

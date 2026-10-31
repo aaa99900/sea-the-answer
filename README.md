@@ -15,7 +15,7 @@
 
 업무 기능은 개인 계정으로 로그인한 뒤 사용합니다. 일반 선원은 문서·운항 조회와 자기 보고서 업무를, 관리자는 계정 발급과 원본 자료 변경·승인·백업을 수행합니다. 공용 기본 비밀번호는 없으며 최초 관리자 설정과 기존 버전 전환은 [계정 운영 안내](docs/user-guide.md#2-역할과-승인)를 따릅니다.
 
-**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크를 기본 BM25로 정렬하며 분석 토큰을 제한된 메모리 캐시에 재사용합니다. 저장 후 worker의 자동 색인이 완료되면 로컬 E5 벡터/RRF 하이브리드를 선택할 수 있습니다. Docker 이미지에 고정 E5 모델이 포함되며, 기존 문서는 명시적 초기 색인이 필요합니다. 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 동국 AI Chat 실제 호출은 2026-10-14에 검증했고 로컬 Ollama 실제 검증 결과는 [변경 이력](docs/changelog.md)에 기록합니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
+**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크의 BM25·로컬 E5 벡터 결과를 RRF로 결합하며, 모델·색인 준비 실패 시 BM25로 대체합니다. BM25 분석 토큰은 제한된 메모리 캐시에 재사용합니다. Docker 이미지에 고정 E5 모델이 포함되며, 저장 후 worker가 자동 색인하고 기존 문서는 명시적 초기 색인이 필요합니다. 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 동국 AI Chat 실제 호출은 2026-10-14에 검증했고 로컬 Ollama 실제 검증 결과는 [변경 이력](docs/changelog.md)에 기록합니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
 
 ## 프로젝트 구조
 
@@ -271,12 +271,12 @@ uv run --locked --project backend python -m scripts.load_data --data-dir data/ma
 
 적재기는 기본 미리보기에서는 DB에 연결하지 않으며 `--apply`에서만 migration 이력을 확인하고 이미 생성된 빈 해사 테이블에 CSV를 넣습니다. DDL은 실행하지 않습니다. `MARITIME_DATA_API_TOKEN`을 설정하면 같은 backend에 `/api/maritime-data/*`가 마운트됩니다(서버 전용 Bearer 토큰 필요, 화면 어댑터는 아직 없음). 별도 해사 DB를 선택한 경우에는 해당 DB에도 기본 init과 해사 마이그레이션이 필요합니다. 자세한 설정·검증·기존 스키마 채택 및 선박 연결은 [사용 안내 10절](docs/user-guide.md#10-해사-데이터-tool-선택), 호출 형식은 [API 명세](docs/specs/tools.md), 이번 변경 범위는 [ADR 0011 제안](docs/adr/0011-tools-runtime-and-data-preparation.md)을 보세요.
 
-## 로컬 벡터·하이브리드 검색 (선택)
+## 로컬 벡터·하이브리드 검색
 
-기본 검색은 여전히 BM25입니다. `intfloat/multilingual-e5-small`(고정 revision, 384차원,
+웹 검색은 BM25·벡터 결과를 RRF로 결합합니다. `intfloat/multilingual-e5-small`(고정 revision, 384차원,
 CPU, 약 1.18억 파라미터)은 Docker 빌드 시 다운로드·검증해 이미지에 포함합니다.
 문서 저장과 함께 PostgreSQL에 작업을 기록하고 `rag-worker`가 커밋 후 자동 색인합니다.
-검색 모드와 무관하게 실행되며 기존 문서 전체를 소급해서 자동 색인하지는 않습니다.
+검색 요청과 독립적으로 실행되며 기존 문서 전체를 소급해서 자동 색인하지는 않습니다.
 모델 파일 약 0.5GB 외에 PyTorch 등 설치 공간과 실행 RAM이 필요합니다. 개발 PC는 여유 RAM
 2~4GB 이상부터 검증하세요(동시 요청·청크 길이·프로세스 수에 따라 증가, 보장 최소값 아님).
 문서 본문은 외부 임베딩 API로 보내지 않습니다. 모델 다운로드만 인터넷을 사용합니다.
@@ -317,11 +317,8 @@ docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python sc
 docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --username "관리자아이디" --apply --batch-size 16
 ```
 
-전체 색인 확인 후 `.env`의 `HAEDAP_RETRIEVAL_MODE=hybrid`(또는 `vector`)를 설정하고,
-사용자가 적용할 시점에 `docker compose up -d --no-deps backend`를 실행합니다.
-BM25로 돌아갈 때는 `bm25`로 바꾸고 같은 명령으로 backend를 재생성합니다.
-`docker compose restart`만으로는 바뀐 환경변수가 적용되지 않습니다.
-현재 요청에 허용된 청크 중 하나라도 미색인/오래됨이면 BM25로 돌아갑니다.
+웹 검색은 하이브리드 Top-5를 사용하고, 방식별 비교는 위 개발자 CLI에서 합니다.
+모델 미준비·Chroma 장애 또는 현재 요청에 허용된 청크 중 하나라도 미색인/오래됨이면 BM25로 대체합니다.
 `docker compose logs backend`의 `rag_fallback` 또는 비교 CLI의 `effective_mode`/`fallback_reason`으로 확인합니다.
 
 호스트에서 작업할 때는 `uv sync --locked --project backend` 후

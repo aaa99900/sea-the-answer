@@ -4,6 +4,20 @@
 
 ## 변경 이력
 
+### 2026-10-29 — 웹 하이브리드 검색 통일
+
+- 웹 검색·답변은 BM25·벡터 후보의 RRF Top-5를 사용한다. CLI의 세 방식 비교와 BM25 fallback은 유지하며,
+  health는 `hybrid-rrf` 정책을 표시한다. fallback 후에도 현재 DB의 권한·내용을 재확인한다.
+- `uv run --locked --project backend pytest backend/tests/test_rag_vector.py backend/tests/test_debug_bm25.py -q --tb=short`: **58 통과**.
+- `uv run --locked --project backend python .verification/bm25-db-tests.py`: 임시 PostgreSQL 17에서
+  backend 전체 `python -m pytest -q -rs --tb=short`, **591 통과·4 건너뜀(105.95초)**.
+  건너뛴 기존 해사 실데이터 테스트 4건은 `MARITIME_DATA_TEST_DATABASE_URL` 미설정이다.
+  실제 임시 Chroma·모의 임베딩으로 환경변수 없음/기존 값 잔존, API hybrid 호출·개정·권한·인용·fallback을 검증했다.
+- `docker compose -p haedap-web-hybrid-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`:
+  **8 통과(1.2분)**. 이 스택은 벡터 색인이 없어 BM25 fallback으로 화면을 검증한다. 같은 프로젝트 `down` 및 임시 DB 종료 완료.
+  개발 Compose `config --quiet`와 `git diff --check` 통과. 실제 E5 검색 품질·실제 앱 데이터 평가는 수행하지 않았다.
+  개인 `.env`·실제 앱·PDF·벡터 색인은 변경하지 않았다. [계획](plans/2026-10-29-web-hybrid-search.md).
+
 ### 2026-10-29 — 경우 토큰 유지·일회성 RAG 보고서 정리
 
 - 요청에 따라 `경우`를 불용어에서 제거했다. Kiwi가 추출한 해당 토큰을 질문·청크 양쪽에 유지한다.

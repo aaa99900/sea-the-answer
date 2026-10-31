@@ -98,7 +98,7 @@ sequenceDiagram
   UI->>API: question, task, context{ship,from,to}, criterion
   API->>WS: 사용자·CSRF 확인 후 호출
   WS->>DB: search() — 적용 중 문서의 청크 중 열람 가능한 것
-  WS->>WS: 권한·상태·종류 필터 → 기본 BM25 / 선택 벡터·RRF → 상위 5
+  WS->>WS: 권한·상태·종류 필터 → BM25·벡터 RRF 결합 → 상위 5 (준비 실패 시 BM25)
   alt mode=llm 이고 모델 설정됨
     WS->>WS: 외부 LLM → 인용 구절이 원문에 있는지 검사
   else
@@ -217,11 +217,11 @@ flowchart LR
 독립 Tool 라우트는 서버 전용 Bearer 토큰을 요구합니다. 기존 화면의 실행 패널은 이 토큰을 받지 않고 일반 앱의 `/api/skills/run`을 호출합니다. 서버가 앱 ID의 명시 매핑과 IMO 정체성을 확인한 뒤 계산 함수를 직접 실행하고 queries/query_owner/audit에 기록합니다. 접근 범위는 기존 앱의 로그인·역할 기반 운항 조회 정책을 따르며 사용자별 선박 ACL은 추가하지 않았습니다. 공식 CII 등급은 생성하지 않으며, 독립 Tool `/ask`의 실제 LLM 호출은 계속 비활성입니다.
 
 `tools.api.create_app()`은 테스트·역할4 도구용 독립 앱으로 남아 있습니다. 마이그레이션은 앱과 해사 DDL을 소유하고 loader는 DDL을 실행하지 않습니다. 기존 단일 스키마 채택·rollback 제한과 앱 복구 시 선박 연결 정책은 [데이터 모델](data-model.md#9-postgresql-해사-데이터-tool-선택)에 정의합니다. 입출력은 [API 명세](specs/tools.md), 데이터 확보는 [운영 안내](user-guide.md#10-해사-데이터-tool-선택)를 참고하세요.
-## 선택적 로컬 벡터/RRF 검색 경계
+## 로컬 벡터/RRF 검색 경계
 
 `store/documents.py.search_candidates()`가 PostgreSQL에서 권한·활성 개정·상태·종류·선택 문서 범위를 확정한 뒤
-`rag_search.py`가 설정에 따라 기존 `rag_retrieval.py`(BM25), `rag_vector.py`(Chroma), `rag_hybrid.py`(RRF)를 호출한다.
-vector/hybrid 검색 후 같은 DB 후보 조회를 다시 실행해 원문·권한 변경 결과를 제거한다.
+`rag_search.py`가 `rag_retrieval.py`(BM25)와 `rag_vector.py`(Chroma)의 후보를 `rag_hybrid.py`(RRF)로 결합한다.
+검색 후에는 BM25 fallback을 포함해 같은 DB 후보 조회를 다시 실행하고 원문·권한 변경 결과를 제거한다.
 청킹/개정 규칙은 유지하고 저장 끝에 작업 enqueue만 추가한다. `/search`와 `/ask`는 같은 검색 경로를 사용한다.
 
 `rag_embeddings.py`는 고정 E5 모델 계약·명시적 준비·입력 길이 검증을 담당한다.
@@ -230,7 +230,7 @@ Chroma 서버는 Docker 내부 전용이며 자동 worker와 함께 기본 실�
 공식 Chroma 1.5.9에 기존 UID/GID 10001·저장 경로와 bash HTTP 헬스체크만 추가한다.
 CPU PyTorch·E5 실행·Python 클라이언트는 backend/worker에 있다. 모델은 이미지 `/opt/models/e5-small`, 벡터는 named volume이다.
 PostgreSQL만 원본이므로 Chroma 결과의 본문을 신뢰하지 않고 현재 후보 행으로 결과를 구성한다.
-기본 BM25는 E5/Chroma를 로딩하지 않으며 upstream/main의 제한된 분석 토큰 캐시를 사용한다.
+BM25는 제한된 분석 토큰 캐시를 사용한다. CLI에서 명시적으로 BM25만 실행하면 E5/Chroma를 로딩하지 않는다.
 상세 실패·부분 색인·동기화 정책은 [검색 계약](specs/rag-vector.md), 현재 선택 이유는 [ADR 0021](adr/0021-durable-index-jobs.md) 참고.
 
 ### 자동 색인 경계
