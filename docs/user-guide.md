@@ -412,7 +412,9 @@ Docker 기본 실행에 Chroma와 `rag-worker`가 포함됩니다. 기존 문서
   모델은 공개 모델이므로 기본 사용에 HF 토큰은 필수가 아닙니다. 비밀 토큰을 명령/문서에 붙이지 마세요.
 - vector/hybrid인데 CLI에 `effective_mode=bm25`라면 `fallback_reason`을 확인하세요.
   `model_not_prepared`: 호스트는 prepare, Docker는 이미지 재빌드/모델 경로 확인, `index_not_ready`: 해당 모델 collection 없음,
-  `index_incomplete_or_stale`: 현재 허용 청크 재색인 필요, `vector_backend_failure`: Chroma/모델/설정 점검.
+  `no_ready_documents`: 현재 문서의 완료 확인 정보가 없음(verify 또는 색인 필요),
+  `index_verification_failed`/`index_result_incomplete`/`index_result_stale`: 전체 verify 후 손상된 문서 복구,
+  `vector_backend_failure`: Chroma/모델/설정 점검 후 verify.
   모델·벡터 없이 첫 검색을 시도해도 자동 다운로드나 색인은 하지 않습니다.
 
 검색 결과 점수는 답변의 신뢰도가 아닙니다. 벡터는 관련 없는 질문에도 결과를 반환할 수 있고,
@@ -452,7 +454,11 @@ Compose는 60초 이후 강제 종료합니다. 완료되지 않은 작업은 �
 Chroma 장애 시 저장된 원문은 유지됩니다. 성공한 배치는 남고 재시도 때 건너뜁니다.
 대기 중 문서 개정/삭제는 실행 전·배치 사이·완료 전에 확인하며, 새 저장의 generation을 이전 작업이 완료 처리하지 못합니다.
 이전 벡터가 잠시 또는 계속 남아도 현재 PostgreSQL 권한·활성·종류·선택 문서 필터 밖에서는 반환하지 않습니다.
-현재 검색 범위에 미색인 청크가 하나라도 있으면 기존 전체 BM25 fallback 정책이 적용됩니다.
+미준비 문서는 BM25에는 참여하고 벡터에서만 제외됩니다. 준비된 문서가 있으면 부분 하이브리드를 사용합니다.
+비교 CLI의 `coverage`에서 준비·제외 건수와 사유를 확인하세요. 준비 문서가 없거나 장애·손상이 검출되면 전체 BM25 fallback합니다.
+완료 확인 정보는 문서 내용·모델·collection UUID와 연결되어 collection 재생성 후에는 다시 검증해야 합니다.
+검색 중에는 반환 record만 검사합니다. 반환되지 않은 record 손상까지 확인하려면 README의 `verify` 명령을 사용하세요.
+부분 하이브리드는 준비 문서만 두 검색에 참여하므로 준비 전후 순위가 달라질 수 있습니다.
 
 ### 모델 볼륨에서 이미지 모델로 이전
 

@@ -248,6 +248,8 @@ flowchart LR
 
 `store/documents.py.search_candidates()`가 PostgreSQL에서 권한·활성 개정·상태·종류·선택 문서 범위를 확정한 뒤
 `rag_search.py`가 `rag_retrieval.py`(BM25)와 `rag_vector.py`(Chroma)의 후보를 `rag_hybrid.py`(RRF)로 결합한다.
+`rag_readiness.py`는 문서 snapshot·모델·collection UUID에 연결된 완료 확인 정보를 일괄 조회한다.
+BM25는 전체 허용 후보, 벡터는 준비된 허용 문서만 참여한다. 전체 record 검증은 worker/명시적 CLI에서 수행한다.
 검색 후에는 BM25 fallback을 포함해 같은 DB 후보 조회를 다시 실행하고 원문·권한 변경 결과를 제거한다.
 청킹/개정 규칙은 유지하고 저장 끝에 작업 enqueue만 추가한다. `/search`와 `/ask`는 같은 검색 경로를 사용한다.
 

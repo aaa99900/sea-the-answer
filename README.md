@@ -343,15 +343,22 @@ docker compose logs -f rag-worker
 docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --dry-run
 # 먼저 제한된 문서로 검증. 전체 준비 시 필터/limit를 빼고 실행.
 docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --document-title "Part-5D" --limit 20 --apply
-# 같은 제한 corpus에서 각 방식 비교 (본문은 출력 안 함)
-docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/debug_retrieval.py "heavy deck cargo" --document-title "Part-5D" --limit 20 --top-k 5
+# 전체 문서가 준비되어야 벡터 검색에 참여. 위 --limit은 배치 처리 점검용.
+# 기존 벡터 전체 검증 후 완료 확인 정보 등록 (재임베딩·PG 쓰기 없음)
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py verify --document-title "Part-5D" --apply
+# 문서별 세 방식 비교 (본문은 출력 안 함)
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/debug_retrieval.py "heavy deck cargo" --document-title "Part-5D" --top-k 5
 # 모든 사용자 범위를 준비하려면 실제 활성 관리자 계정 지정. PostgreSQL에는 쓰지 않음.
 docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --username "관리자아이디" --apply --batch-size 16
 ```
 
 웹 검색은 하이브리드 Top-5를 사용하고, 방식별 비교는 위 개발자 CLI에서 합니다.
-모델 미준비·Chroma 장애 또는 현재 요청에 허용된 청크 중 하나라도 미색인/오래됨이면 BM25로 대체합니다.
+BM25는 허용된 전체 문서, 벡터는 현재 개정·모델·내용의 검증이 완료된 문서만 참여합니다.
+준비 문서가 없거나 모델 미준비·Chroma 장애·검출된 손상이 있으면 BM25로 대체합니다.
 `docker compose logs backend`의 `rag_fallback` 또는 비교 CLI의 `effective_mode`/`fallback_reason`으로 확인합니다.
+비교 CLI의 `coverage.status`는 `full`/`partial`/`fallback`을 구분하고 허용·준비·제외 건수와 사유를 보여 줍니다.
+기존 벡터는 `verify --apply`로 확인 정보를 준비하세요. 손상이 보고되면 같은 문서의 `index --apply` 또는 worker enqueue로 복구합니다.
+`verify`만 실행하면 읽기 전용 검사입니다. 검색은 전체 record를 감사하지 않으므로 저장소 변경·장애 후에는 이 검사를 실행하세요.
 
 호스트에서 작업할 때는 `uv sync --locked --project backend` 후
 `uv run --locked --project backend python scripts/rag_index.py prepare`로 모델을 준비하고

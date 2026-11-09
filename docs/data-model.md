@@ -59,7 +59,7 @@ erDiagram
 | `chunks` | `id`(=`{revision}-{n}`), `document_id`, `position`, `heading`, `text` | 절을 900자씩 분할 |
 | `chunk_pages` | `id`(청크 ID), `page` | PDF 물리 페이지 번호(없으면 NULL → "페이지 미지정") |
 
-검색(`Workspace.search`): 현재 개정·문서 상태·열람 범위·종류 필터를 통과한 청크를 `api/rag_retrieval.py`에 전달하고 BM25 상위 5개를 반환합니다. 요청마다 메모리에 인덱스를 만들며 DB에는 점수나 별도 검색 인덱스를 저장하지 않습니다. 기존 청크의 재등록·재청킹·스키마 변경은 필요 없습니다. 토큰화와 점수 규칙은 [검색 계약](specs/api.md#문서-검색-bm25)을 따릅니다.
+검색(`Workspace.search`): 현재 개정·문서 상태·열람 범위·종류 필터를 통과한 청크를 `api/rag_search.py`에 전달하고 BM25·준비된 문서의 벡터 결과를 RRF로 결합해 상위 5개를 반환합니다. BM25 인덱스는 요청마다 메모리에 만들며 PostgreSQL에는 검색 점수를 저장하지 않습니다. 벡터/준비 정보는 아래 파생 Chroma 구조에 저장합니다. 토큰화와 점수 규칙은 [검색 계약](specs/api.md#문서-검색-bm25), 결합·fallback은 [벡터 계약](specs/rag-vector.md)을 따릅니다.
 
 ### `document_meta` / `document_files`
 
@@ -353,6 +353,11 @@ CSV loader는 DDL을 실행하지 않습니다. 마이그레이션이 적용되�
 새 Chroma metadata의 `embedding_input_hash`는 모델 계약+실제 입력 해시다. 개정 ID/페이지만 달라져도
 같은 입력의 벡터 값을 재사용하고 record의 문서·페이지는 현재 값으로 유지한다. 기존 metadata도 검색 호환성을 유지한다.
 DB를 복원한 뒤 원본 청크에서 재색인할 수 있다. 상세 스키마와 일관성 계약은 [rag-vector](specs/rag-vector.md)를 따른다.
+
+`haedap-ready-<fingerprint 앞 32자>`는 ANN 검색에 쓰지 않는 파생 확인 정보 collection이다.
+키는 version·document_id(개정 ID)·정렬한 전체 청크 snapshot·fingerprint·벡터 collection UUID·청크 수의 해시다.
+metadata는 이 필드와 state(`ready`/`invalid`)만 담고 본문은 저장하지 않는다. 고정 1차원 값은 Chroma 저장 형식용이다.
+검색은 현재 PG snapshot과 정확히 맞는 ready만 사용한다. jobs.done과 독립적이며 PG 테이블 변경은 없다.
 
 `20261029000000_rag_index_jobs.sql`은 원본 문서/청크 컬럼을 바꾸지 않고 작업 테이블을 추가한다.
 

@@ -7,17 +7,18 @@ import os
 from .rag_embeddings import VectorUnavailable
 from .rag_hybrid import rrf
 from .rag_retrieval import retrieve as bm25
+from .rag_readiness import coverage
 
 logger = logging.getLogger(__name__)
 
 
 def search(query: str, chunks: list[dict], top_k: int = 5, *, mode: str | None = None,
-           vector_index=None) -> dict:
+           vector_index=None, complete_chunks=None) -> dict:
     if type(top_k) is not int or top_k < 1:
         raise ValueError("top_k must be a positive integer")
     requested = mode if mode is not None else "hybrid"
     report = {"requested_mode": requested if requested in {"bm25", "vector", "hybrid"} else "invalid",
-              "effective_mode": requested, "fallback_reason": None}
+              "effective_mode": requested, "fallback_reason": None, "coverage": coverage(chunks)}
     if requested == "bm25":
         return {**report, "results": bm25(query, chunks, top_k)}
     if not chunks or not query.strip():
@@ -35,13 +36,18 @@ def search(query: str, chunks: list[dict], top_k: int = 5, *, mode: str | None =
         if vector_index is None:
             from .rag_vector import VectorIndex
             vector_index = VectorIndex()
-        vectors = vector_index.search(query, chunks, count)
+        vectors = vector_index.search(query, chunks, count, diagnostics=report["coverage"],
+                                      complete_chunks=complete_chunks)
+        if report["coverage"]["status"] == "partial":
+            logger.info("rag_partial requested=%s ready_documents=%s allowed_documents=%s",
+                        requested, report["coverage"]["ready_documents"], report["coverage"]["allowed_documents"])
         results = vectors[:top_k] if requested == "vector" else rrf(
             [bm25(query, chunks, count), vectors], top_k=top_k, k=k)
         return {**report, "results": results}
     except Exception as exc:
         # Third-party error messages may contain payloads, paths, credentials.
         reason = str(exc) if isinstance(exc, VectorUnavailable) else "vector_backend_failure"
+        report["coverage"]["status"] = "fallback"
         logger.warning("rag_fallback requested=%s effective=bm25 reason=%s", report["requested_mode"], reason)
         return {**report, "effective_mode": "bm25", "fallback_reason": reason,
                 "results": bm25(query, chunks, top_k)}

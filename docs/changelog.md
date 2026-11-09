@@ -2,6 +2,17 @@
 
 버전을 올리거나 검증을 수행하면 이 파일에 기록합니다. 검증은 **실제로 수행한 것만** 날짜·환경과 함께 적고, 수행하지 않은 범위는 따로 적습니다.
 
+## 2026-11-09 — 문서별 벡터 준비 상태와 부분 하이브리드 검색 (로컬·미출시)
+
+- [계획](plans/2026-11-05-vector-readiness.md)·[ADR 0022](adr/0022-document-vector-readiness.md)에 따라 문서 개정 ID·전체 청크 snapshot·모델 fingerprint·벡터 collection UUID에 연결된 완료 확인 정보를 Chroma에 저장한다. 기존 작업 done만으로 준비를 판단하지 않는다. PG 스키마·문서 저장 API·UI·BM25/RRF 공식·모델은 변경하지 않았다.
+- 검색의 전체 `present()`를 문서별 일괄 확인으로 교체했다. BM25는 전체 허용 후보, 벡터는 준비 문서만 참여한다. 기존 권한·활성 개정·상태·종류·선택 필터와 최종 PG 재확인을 유지한다. 검출된 손상·전체 장애·준비 문서 없음은 BM25 fallback하며, 비교 CLI는 full/partial/fallback과 허용·준비·제외 건수/사유를 표시한다.
+- worker는 최종 문서·작업 잠금과 generation/claim/내용 재확인 후 전체 record 검증을 거쳐 확인 정보를 기록한다. 수동 index/verify도 같은 검증을 사용한다. index의 부분 `--limit`은 문서 전체를 완료로 표시하지 않는다. 비교 CLI의 `--limit`은 같은 허용 DB snapshot의 전체 문서로 준비를 확인하되 선택한 청크만 검색한다. verify는 과거 완료 확인이 없는 대기 문서를 손상으로 표시하지 않는다.
+- `uv run --project backend python .verification/bm25-db-tests.py`로 별도 임시 PostgreSQL 17 클러스터에서 전체 backend **861 passed / 4 skipped**, 161.44초. 건너뛴 4건은 별도 해사 실데이터 DB가 필요한 기존 검사이며 실제 앱 DB를 연결하지 않았다. RAG 단위·임시 Chroma·PG 작업/권한/개정·CLI 회귀는 실행했다.
+- 같은 합성 corpus 1,000청크/10문서에서 record metadata get은 1,000건/4회 → 10건/1회, 준비 확인 구간은 86.73ms → 20.59ms(로컬 1회 측정). 별도 collection 조회도 필요하다. 전체 검색 시간·실제 서버 부하·정확도 개선 수치가 아니다.
+- Docker E2E **19 passed (1.4분), 종료 코드 0**. `docker compose --env-file .env.example -f compose.yaml -f .verification/readiness-cached-compose.yaml -p haedap-readiness-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`로 별도 tmpfs DB/비공개 테스트 스택을 사용했다. 임시 override는 이전 검증 이미지의 동일한 고정 모델/잠긴 의존성을 재사용하고 현재 `api/`를 COPY했다. 새 기본 이미지의 모델 다운로드가 장시간 대기해 해당 빌드는 중단했으며, 새 기본 이미지로의 전체 재다운로드 빌드 완료는 미검증이다. 프로젝트 Dockerfile/Compose는 바꾸지 않았다.
+- 같은 임시 override의 `e2e-backend`에서 `python tests/verify_auto_index.py`를 실행했다(테스트와 migrations 읽기 전용 마운트, `HAEDAP_CHROMA_HOST=chroma`, 별도 `e2e-db` 스키마). 이미지의 실제 CPU E5를 오프라인으로 사용해 커밋 후 색인·Chroma 장애/재시도·worker 재시작/동시 실행·개정·부분 hybrid·수동 완료 확인·부분 검색 범위를 검증했다. pytest의 결정적 모의 임베딩 검증과 구분한다. 최종 `down --volumes`는 해당 테스트 프로젝트에만 실행해 컨테이너·네트워크·합성 벡터 볼륨을 정리했다.
+- PG 전체 후보 읽기·내용 해시·허용 ID 전달 비용은 남는다. 반환되지 않은 record의 임의 손상은 명시적 verify가 필요하며, 부분 참여에서는 준비 문서만 두 검색에 참여해 순위가 달라질 수 있다. 실제 등록 PDF 정답률·대량 부하·장기 운영은 이번 검증 범위가 아니다. 실제 앱 DB·PDF·벡터·질의 이력은 변경하지 않고 커밋·푸시·머지는 수행하지 않았다.
+
 ## 2026-11-04 — 최신 팀 main과 항구 질의 통합 (로컬·미출시)
 
 - PR #21·#22 병합 후 `b96c84e` 기준으로 로컬 작업을 통합했다. 기존 소스를 ZIP/stash로 보존하고 문서 3곳의 충돌을 두 내용 모두 유지해 해결했다. 팀 검색·모델 호출·표/차트와 기본 의존성/Compose는 그대로 유지했다.

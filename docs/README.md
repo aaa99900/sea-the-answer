@@ -18,11 +18,13 @@
 
 ## 전체 목록
 
+- [문서별 벡터 준비 상태](plans/2026-11-05-vector-readiness.md): 완료 · [ADR 0022](adr/0022-document-vector-readiness.md): 채택.
+
 - [벡터 색인 복구·팀 브랜치 통합 검증](plans/2026-10-29-vector-index-repair-integration.md): 완료 (머지 커밋 대기).
 
 - [등록 PDF 검색 평가 질문 10개](rag-evaluation-questions.json): 문서·물리 페이지·조항 후보 기준의 재사용 가능한 평가 자료.
 
-- [자동 색인 계획](plans/2026-10-29-automatic-vector-indexing.md): 완료 · [작업 계약](specs/rag-index-jobs.md): 구현됨 · [ADR 0021](adr/0021-durable-index-jobs.md): 채택.
+- [자동 색인 계획](plans/2026-10-29-automatic-vector-indexing.md): 완료 · [작업 계약](specs/rag-index-jobs.md): 구현됨 · [ADR 0021](adr/0021-durable-index-jobs.md): 대체됨(0022).
 
 ### 기본 문서
 
@@ -57,7 +59,7 @@
 
 - [Chroma 서버 이미지 분리](plans/2026-10-29-chroma-image.md): 완료.
 
-- [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, 현재 결정은 [ADR 0021](adr/0021-durable-index-jobs.md) (0019·0020 계승).
+- [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, 현재 결정은 [ADR 0022](adr/0022-document-vector-readiness.md) (0019~0021 계승).
 - [MRV 선박·항구 참조 연결 시범](plans/2026-11-04-port-reference-linkage.md) — 완료: 기존 질문창·다중 항구·실데이터·오프라인 배포·main 통합 검증, 운영 입항 판정 아님.
 
 - [한국어 근거 답변과 실제 모델 검증](plans/2026-10-28-korean-llm-validation.md) — 완료 (Docker e2e·모델 연결 검증, 일반 한국어 품질은 후속)
