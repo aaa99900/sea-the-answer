@@ -6,7 +6,7 @@
 
 ## 자연어 업무 실행 JSON (2026-11-06)
 
-새 SQL 테이블이나 migration 없이 기존 `queries.response.workflow`에 검증 범위·되묻기·실행 결과·산술 비교·부모 응답 ID를 저장한다. `query_owner`로 후속/이력 열람을 제한한다. scope에는 선박 id/name/version/IMO, 연도/기간, MRV 매핑, 선택 문서 ID와 원래 질문을 보존하며 이력의 숫자를 다음 질문 답변으로 재사용하지 않는다. 출처 원본·MRV·선박/운항 기록은 조회만 한다. 정확한 필드와 상태는 [통합 답변 계약](specs/integrated-answer.md#자연어-업무-실행-확장-2026-11-06-구현됨)에 둔다. 기존 JSON 백업에 질문/소유자 자료가 포함되며 별도 백업 형식을 추가하지 않는다.
+새 SQL 테이블이나 migration 없이 기존 `queries.response.workflow`에 검증 범위·되묻기·실행 결과·산술 비교·부모 응답 ID를 저장한다. `query_owner`로 후속/이력 열람을 제한한다. scope에는 선박 id/name/version/IMO, 연도/기간, MRV 매핑, 선택 문서 ID와 원래 질문, 운항 표·차트의 presentation_question을 보존하며 이력의 숫자를 다음 질문 답변으로 재사용하지 않는다. 출처 원본·MRV·선박/운항 기록은 조회만 한다. 정확한 필드와 상태는 [통합 답변 계약](specs/integrated-answer.md#자연어-업무-실행-확장-2026-11-06-구현됨)에 둔다. 기존 JSON 백업에 질문/소유자 자료가 포함되며 별도 백업 형식을 추가하지 않는다.
 
 ## 외부 선석 참조 snapshot (2026-11-04)
 

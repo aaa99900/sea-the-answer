@@ -213,8 +213,6 @@ export function createWorkspace() {
     state.user = null;
     state.ready = false;
     state.ship = '';
-    state.queryShipExplicit = false;
-    state.queryPeriodExplicit = false;
     state.answerModePreference = '';
     state.mode = 'extractive';
     state.compare = [];
@@ -232,7 +230,6 @@ export function createWorkspace() {
     state.reports = r.reports;
     if (!state.ships.some((s) => s.id === state.ship)) {
       state.ship = state.ships[0]?.id || '';
-      state.queryShipExplicit = false;
     }
     state.compare = state.compare.filter((id) => state.ships.some((s) => s.id === id));
     if (!state.compare.length) state.compare = state.ships.slice(0, 2).map((s) => s.id);
@@ -393,8 +390,14 @@ export function createWorkspace() {
     if (!q || state.busy) return;
     if (!state.ready) throw Error('서버 연결을 먼저 확인해 주세요.');
     const displayShip = state.ship;
-    const selectedShip = state.queryShipExplicit || state.task !== 'auto' ? state.ship : '';
     const parent = parentAnswerId ? state.turns.find(t => t.id === parentAnswerId)?.answer : state.answer;
+    const scope=parent?.workflow?.scope;
+    const selectedShip=state.task!=='auto' ? state.ship : scope
+      ? (scope.ships?.length===1 ? scope.ships[0].id : '')
+      : parent?.navigation?.ship?.id || parent?.operations?.ship?.id || '';
+    const period=state.task!=='auto' ? {start:state.from,end:state.to}
+      : scope?.periods?.length===1 ? scope.periods[0]
+      : parent?.operations ? {start:parent.operations.from,end:parent.operations.to} : null;
     const workflowParent = parent?.workflow &&
       (parent.workflow.scope.action==='selected_document' || !selectedShip || (parent.workflow.scope.ships.length ? parent.workflow.scope.ships.some(s=>s.id===selectedShip) : !selectedShip))
       ? parent.id : undefined;
@@ -418,7 +421,7 @@ export function createWorkspace() {
       ...(workflowInput ? {workflowInput} : {}),
       context: {
         ship: selectedShip,
-        ...(state.queryPeriodExplicit || state.task !== 'auto' ? {from: state.from, to: state.to} : {}),
+        ...(period ? {from:period.start,to:period.end} : {}),
         ...(previousQueryId ? { previousQueryId } : {}),
       },
       criterion: state.criterion,
@@ -436,7 +439,6 @@ export function createWorkspace() {
       const resolvedShip = answer.navigation?.ship?.id || answer.workflow?.scope?.ships?.[0]?.id;
       if (resolvedShip && state.ship === displayShip && state.ships.some(s => s.id === resolvedShip)) {
         state.ship = resolvedShip;
-        state.queryShipExplicit = true;
       }
       state.answer = answer;
       state.conversationId = answer.conversationId || answer.id;
@@ -1389,11 +1391,6 @@ export function createWorkspace() {
       navigate('chat');
     },
     retryQuestion: () => ask(state.pendingQuestion || state.question),
-    useQuestionContext: () => {
-      state.queryShipExplicit = Boolean(state.ship);
-      state.queryPeriodExplicit = true;
-      render();
-    },
     history: showHistory,
     historyAnswer: openConversation,
     deleteConversation,
@@ -1673,8 +1670,9 @@ export function createWorkspace() {
       return;
     }
     if (el.dataset.question) {
+      if(el.dataset.parentAnswer && (state.busy || state.answer?.id!==el.dataset.parentAnswer))return;
       state.question = el.dataset.question;
-      run(() => ask(el.dataset.question));
+      run(() => ask(el.dataset.question,undefined,el.dataset.parentAnswer));
       return;
     }
     const fn = actions[el.dataset.action];
@@ -1868,10 +1866,7 @@ export function createWorkspace() {
       if (['from', 'to'].includes(k) && (!state.from || !state.to || state.from > state.to)) {
         state[k] = old;
         toast('시작일과 종료일을 확인해 주세요.');
-      } else if (['from', 'to'].includes(k)) {
-        state.queryPeriodExplicit = true;
       }
-      if (k === 'ship') state.queryShipExplicit = Boolean(state.ship);
       if (k === 'mode' && ['llm','extractive'].includes(t.value)) state.answerModePreference = t.value;
       if (['ship', 'from', 'to'].includes(k)) state.criterion = null;
       if (['ship', 'from', 'to', 'filter', 'language', 'mode', 'task'].includes(k)) {

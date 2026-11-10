@@ -5,6 +5,7 @@ import styles from './navigation-answer.module.css';
 import { NavigationReadiness, OperationalChecks } from './navigation-readiness';
 import { NavigationContext, HistoricalChecks } from './navigation-context';
 import OfficialGuidance from './navigation-guidance';
+import {useWorkspace} from '../workspace/provider';
 
 function link(value) {
   try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.href : undefined; }
@@ -19,6 +20,8 @@ function shipQuery(ship, port='') {
   return `${ship?.name || ''} ${imo ? 'IMO '+imo : ''} 선박이 ${port ? port+'에' : ''} 입항 가능한지 공개 자료로 비교해줘`;
 }
 export default function NavigationAnswer({ answer }) {
+  const {workspace}=useWorkspace();
+  const current=workspace.state.answer?.id===answer.id;
   const nav = answer.navigation, en = answer.language === 'en';
   if (!nav) return null;
   if (nav.kind==='catalog-status') return <CatalogStatus value={nav} />;
@@ -32,8 +35,10 @@ export default function NavigationAnswer({ answer }) {
       {nav.excluded_unknown_count>0 && <><br /><UiText>{en?'Excluded due to unknown numeric limits: ':'수치 제한 미확인으로 필터에서 제외: '}</UiText>{nav.excluded_unknown_count}</>}
       {nav.previous_query_id && <><br /><UiText>{en?'Previous target/conditions retained; current sources queried again.':'이전 대상·조건을 연결하고 현재 자료를 다시 조회했습니다.'}</UiText></>}
     </p>}
-    {nav.ship_options?.length > 0 && <div className="actions wrap mt">
-      {nav.ship_options.map(s=><button type="button" className="btn ghost sm" key={s.id} data-question={shipQuery(s)}>{s.name}{s.imo ? ' · '+s.imo : ''}</button>)}
+    {current && nav.ship_options?.length > 0 && <div className="actions wrap mt">
+      {nav.ship_options.slice(0,8).map(s=><button type="button" className="btn ghost sm" key={s.id}
+        disabled={workspace.state.busy} data-parent-answer={answer.id}
+        data-question={s.imo ? `IMO ${String(s.imo).replace(/^IMO\s*/i,'')}` : s.name}>{s.name}{s.imo ? ' · '+s.imo : ''}</button>)}
     </div>}
     {results.length > 0 && <>
       <p className="notice warning mt"><UiText>{en?'Partial reported-value comparison only. Berth approval, current verified draught and approach conditions remain unassessed.':'일부 신고값과 공개 수치의 비교입니다. 현재 실측 흘수·선석 승인·접근 항로 등은 추가 확인이 필요합니다.'}</UiText></p>
@@ -73,8 +78,9 @@ export default function NavigationAnswer({ answer }) {
         <small>{s.attribution}{s.license_url && <> · <a href={link(s.license_url)} target="_blank" rel="noreferrer"><UiText>{"이용 조건"}</UiText></a></>}</small>
       </p>)}</details>
     </>}
-    {nav.ship && nav.port_options?.length>0 && ['unsupported_port','unsupported_berth','needs_port'].includes(nav.status) && <div className="actions wrap mt">
-      {nav.port_options.map(p=><button type="button" className="btn ghost sm" key={p.port_id} data-question={shipQuery(nav.ship,p.name)}>{p.name}<UiText>{en?' reference':' 자료로 조회'}</UiText></button>)}
+    {current && nav.ship && nav.port_options?.length>0 && ['unsupported_port','unsupported_berth','needs_port'].includes(nav.status) && <div className="actions wrap mt">
+      {nav.port_options.map(p=><button type="button" className="btn ghost sm" key={p.port_id} disabled={workspace.state.busy}
+        data-parent-answer={answer.id} data-question={shipQuery(nav.ship,p.name)}>{p.name}<UiText>{en?' reference':' 자료로 조회'}</UiText></button>)}
     </div>}
   </UiControl>;
 }

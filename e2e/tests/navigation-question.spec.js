@@ -55,7 +55,8 @@ async function setup(page) {
     return json({ documents: [], reports: [], history: [], skills: [] });
   });
   await page.goto('/chat');
-  await expect(page.locator('#ship')).toHaveValue('sample');
+  await expect(page.locator('#question')).toBeVisible();
+  await expect(page.locator('.query-context')).toHaveCount(0);
   return state;
 }
 async function ask(page, question) {
@@ -71,7 +72,7 @@ test('question alone compares available ports and exact IMO aligns the existing 
   await expect(answer).toContainText('VIKING CINDERELLA');
   await expect(answer.locator('table').first()).toContainText('Gothenburg');
   await expect(answer.locator('table').first()).toContainText('Helsinki');
-  await expect(page.locator('#ship')).toHaveValue('real-ship');
+  expect(state.calls[0].body.question).toContain('IMO 8719188');
   await expect(page.locator('.answer')).not.toContainText('문서 근거가 부족합니다');
   await expect(page.locator('.answer')).not.toContainText('CO₂');
   await answer.getByText('Helsinki · 선석별 근거·부족 항목 (1)', { exact: true }).click();
@@ -125,29 +126,24 @@ test('followup sends only the displayed ship answer ID and shows applied referen
   await expect(page.locator('[data-navigation-conditions]')).toContainText('8 / 4');
   await expect(page.locator('[data-navigation-conditions]')).toContainText('미확인으로 필터에서 제외: 1');
   await expect(page.locator('[data-navigation-conditions]')).toContainText('현재 자료를 다시 조회');
-  await page.locator('.query-context > summary').click();
-  await expect(page.locator('#ship')).toBeVisible();
-  await page.locator('#ship').selectOption('another');
-  await ask(page, '그럼 예테보리는?');
+  await ask(page, 'IMO 9074729 선박이 예테보리에 입항 가능한지 확인해줘');
   await expect.poll(() => state.calls.length).toBe(3);
-  expect(state.calls[2].body.context.previousQueryId).toBeUndefined();
+  expect(state.calls[2].body.question).toContain('IMO 9074729');
   await expect(page.locator('[data-answer-id="nav-3"]')).toBeVisible();
   await expect(page.locator('[data-answer-id="nav-1"]')).toBeVisible();
   expect(state.errors).toEqual([]);
 });
 
-test('a context change while a response is pending discards the previous ship answer', async ({ page }) => {
+test('starting a new question while navigation is pending discards the late answer', async ({ page }) => {
   const state = await setup(page);
   let release; state.delay = new Promise(resolve => { release = resolve; });
   await ask(page, 'IMO 8719188 선박이 입항 가능한 항구는?');
   await expect.poll(() => state.calls.length).toBe(1);
-  await page.locator('.query-context > summary').click();
-  await expect(page.locator('#ship')).toBeVisible();
-  await page.locator('#ship').selectOption('another');
+  await page.getByRole('button',{name:'새 질문',exact:true}).click();
   const pendingResponse = page.waitForResponse('**/api/ask');
   release(); state.delay = null;
   await pendingResponse;
-  await expect(page.locator('#ship')).toHaveValue('another');
+  await expect(page.locator('#question')).toHaveValue('');
   await expect(page.locator('[data-navigation-answer]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '질문 보내기', exact: true })).toBeEnabled();
   expect(state.errors).toEqual([]);

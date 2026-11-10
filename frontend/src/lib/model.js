@@ -99,8 +99,6 @@ export function createModel() {
     docBack: 'docs',
     docView: 'text',
     ship: '',
-    queryShipExplicit: false,
-    queryPeriodExplicit: false,
     from: '2026-09-22',
     to: '2026-09-28',
     tab: 'overview',

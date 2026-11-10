@@ -1,4 +1,13 @@
 {
+  "후보 더 보기": "Show more choices",
+  "아래 질문창에 답하면 이어서 조회합니다.": "Reply in the question box to continue.",
+  "현재 질문의 후보": "Choices for the current question",
+  "후보 일부만 표시했습니다. 원하는 이름이나 제목을 질문창에 적어 주세요.": "Only some choices are shown. Type the desired name or title in the question box.",
+  "이름으로 답하거나 후보를 누르세요. 여러 대상은 이름을 함께 적어 주세요.": "Reply with a name or choose an option. Type names together for multiple targets.",
+  "참고값으로 확인": "Use reference values",
+  "진행하지 않기": "Do not proceed",
+  "우리 배의 연료 추이를 보여줘": "Show our ship's fuel trend",
+  "지난달 운항 실적을 요약해줘": "Summarize last month's operations",
   "답변 방식": "Answer mode",
   "원문 발췌": "Source excerpts",
   "시각 미확인·미래 시각 기록은 최신 자료로 보지 않습니다.": "Records with unknown or future timestamps are not treated as current.",

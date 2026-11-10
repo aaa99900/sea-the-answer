@@ -12,52 +12,56 @@ export default function QuestionWorkflow({answer}) {
 }
 function Workflow({answer}) {
   const {workspace}=useWorkspace(), flow=answer.workflow, scope=flow.scope;
-  const [ship,setShip]=useState(''),[second,setSecond]=useState(''),[years,setYears]=useState('');
-  const [start,setStart]=useState(''),[end,setEnd]=useState(''),[docs,setDocs]=useState([]),[ack,setAck]=useState(false),[error,setError]=useState('');
+  const [error,setError]=useState('');
+  const [visibleChoices,setVisibleChoices]=useState(8);
   const missing=flow.missing || [];
-  async function submit(event) {
-    event.preventDefault();event.stopPropagation();setError('');
-    const reply={};
-    if(missing.includes('ships'))reply.ships=[ship,second].filter(Boolean);
-    if(missing.includes('years'))reply.years=years.split(/[,\s]+/).filter(Boolean).map(Number);
-    if(missing.includes('periods'))reply.periods=[{start,end}];
-    if(missing.includes('document_ids'))reply.document_ids=docs;
-    if(missing.includes('reference_ack'))reply.reference_ack=ack;
-    try { await workspace.ask('조건을 보완해서 다시 실행해줘',reply,answer.id); }
+  const field=flow.clarification===null ? null : flow.clarification?.field || missing[0];
+  const current=workspace.state.answer?.id===answer.id;
+  const documents=scope.document_ids.map(id=>{
+    const doc=workspace.state.docs.find(d=>d.id===id) || workspace.state.turns.flatMap(t=>t.answer?.workflow?.options?.documents || []).find(d=>d.id===id);
+    return doc ? [doc.title,doc.version && `v${doc.version}`].filter(Boolean).join(' · ') : id;
+  });
+  const choices=field==='ships' ? (flow.options?.ships || []).map(s=>({
+    id:s.id,label:[s.name,s.imo && `IMO ${String(s.imo).replace(/^IMO\s*/i,'')}`,s.type,s.sample?'가상 예시':''].filter(Boolean).join(' · '),
+    question:s.name,input:{ships:[s.id]},
+  })) : field==='document_ids' ? (flow.options?.documents || []).map(d=>({
+    id:d.id,label:[d.title,d.version && `v${d.version}`,d.reference].filter(Boolean).join(' · '),
+    question:d.title,input:{document_ids:[d.id]},
+  })) : field==='reference_ack' ? [
+    {id:'accept',label:'참고값으로 확인',question:'참고값으로 계산해줘',input:{reference_ack:true}},
+    {id:'decline',label:'진행하지 않기',question:'아니요',input:{reference_ack:false}},
+  ] : [];
+  async function choose(choice) {
+    if(workspace.state.busy || workspace.state.answer?.id!==answer.id)return;
+    setError('');
+    try { await workspace.ask(choice.question,choice.input,answer.id); }
     catch(e){setError(e.message);}
   }
   return <section className="mt" data-question-workflow>
     <h3><UiText>{"해석한 실행 범위"}</UiText></h3>
-    <p><UiText>{scope.action==='selected_document' ? `선택 문서 ${scope.document_ids.length}개` : scope.ships?.map(s=>s.name).join(' / ') || '선박 미지정'}</UiText>
+    <p><UiText>{scope.action==='selected_document' ? `선택 문서 ${scope.document_ids.length}개` : scope.ships?.map(s=>s.name+(s.imo ? ` · IMO ${String(s.imo).replace(/^IMO\s*/i,'')}` : '')).join(' / ') || '선박 미지정'}</UiText>
+      {documents.length>0 && <> · {documents.join(' / ')}</>}
       {['mrv_reference','combined'].includes(scope.action) && scope.years?.length>0 && <><UiText>{"· MRV 연도"}</UiText>{scope.years.join(', ')}</>}
       {scope.periods?.map((p,i)=><React.Fragment key={i}> · {p.start}~{p.end}</React.Fragment>)}</p>
     <p className="small muted"><UiText>{flow.routing.method==='llm'?'AI 작업 선택·서버 범위 검증':'규칙 기반 조건 해석'}</UiText>
       {flow.routing.fallback && ' · 모델 제안을 사용할 수 없어 규칙/추가 확인으로 처리'}
       {flow.previous_query_id && ' · 이전 범위를 연결해 현재 자료로 재조회'}</p>
-    {missing.length>0 && <>
-      <p className="small"><UiText>{'아래 질문창에 답하면 이어서 조회합니다. 직접 선택하는 방식도 사용할 수 있습니다.'}</UiText></p>
-      <details className="card pad mt" data-workflow-input>
-      <summary><UiText>{'직접 선택해서 입력 (선택)'}</UiText></summary>
-      <form onSubmit={submit} onInput={e=>e.stopPropagation()} onChange={e=>e.stopPropagation()}>
-      <h3><UiText>{"추가로 필요한 조건"}</UiText></h3>
-      {missing.includes('ships') && <div className="controls">
-        <label className="field"><UiText>{"조회 선박"}</UiText><UiControl as="select" aria-label="업무 조회 선박" required value={ship} onChange={e=>setShip(e.target.value)}>
-          <option value=""><UiText>{"선박 선택"}</UiText></option>{flow.options.ships.map(s=><option key={s.id} value={s.id}>{s.name} {s.imo}</option>)}
-        </UiControl></label>
-        <label className="field"><UiText>{"비교 선박 (선택)"}</UiText><UiControl as="select" aria-label="업무 비교 선박" value={second} onChange={e=>setSecond(e.target.value)}>
-          <option value=""><UiText>{"추가하지 않음"}</UiText></option>{flow.options.ships.filter(s=>s.id!==ship).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-        </UiControl></label></div>}
-      {missing.includes('years') && <label className="field"><UiText>{"MRV 보고연도 (최대 3개)"}</UiText><UiControl as="input" aria-label="업무 보고연도" required placeholder="2024, 2025" value={years} onChange={e=>setYears(e.target.value)} /></label>}
-      {missing.includes('periods') && <div className="controls"><label className="field"><UiText>{"시작일"}</UiText><UiControl as="input" aria-label="업무 시작일" type="date" required value={start} onChange={e=>setStart(e.target.value)} /></label>
-        <label className="field"><UiText>{"종료일"}</UiText><UiControl as="input" aria-label="업무 종료일" type="date" required value={end} onChange={e=>setEnd(e.target.value)} /></label></div>}
-      {missing.includes('document_ids') && <label className="field"><UiText>{"사용할 문서 (최대 5개)"}</UiText><UiControl as="select" aria-label="업무 선택 문서" multiple required value={docs} onChange={e=>setDocs([...e.target.selectedOptions].map(v=>v.value))}>
-        {flow.options.documents.map(d=><option key={d.id} value={d.id}>{d.title}</option>)}
-      </UiControl></label>}
-      {missing.includes('reference_ack') && <label><UiControl as="input" aria-label="MRV 참고값 동의" type="checkbox" required checked={ack} onChange={e=>setAck(e.target.checked)} /><UiText>{"MRV 기반 참고 탄소집약도 계산에 동의합니다. 공식 CII·등급이 아닙니다."}</UiText></label>}
-      <p className="small"><UiText>{"자연어로 선박·연도·기간을 답해도 됩니다. 아래 입력은 현재 되묻기에만 적용합니다."}</UiText></p>
-      <button className="btn primary" disabled={workspace.state.busy} type="submit"><UiText>{"조건 적용 후 조회"}</UiText></button>
+    {missing.length>0 && field && current && <div className="mt" data-workflow-clarification>
+      <p className="small"><UiText>{'아래 질문창에 답하면 이어서 조회합니다.'}</UiText></p>
+      {choices.length>0 && <>
+        <UiControl as="div" role="group" aria-label="현재 질문의 후보" className="actions wrap mt">
+          {choices.slice(0,visibleChoices).map(c=><button type="button" className="btn ghost sm" key={c.id}
+            data-workflow-choice={c.id} disabled={workspace.state.busy} onClick={()=>choose(c)}
+            style={{whiteSpace:'normal',textAlign:'left',overflowWrap:'anywhere'}}>
+            <UiText>{c.label}</UiText>{choices.filter(v=>v.label===c.label).length>1 && <small> · {c.id}</small>}
+          </button>)}
+        </UiControl>
+        {choices.length>visibleChoices && <button type="button" className="btn ghost sm mt" disabled={workspace.state.busy}
+          onClick={()=>setVisibleChoices(v=>v+8)}><UiText>{'후보 더 보기'}</UiText></button>}
+        {field!=='reference_ack' && <p className="small muted"><UiText>{'이름으로 답하거나 후보를 누르세요. 여러 대상은 이름을 함께 적어 주세요.'}</UiText></p>}
+      </>}
       {error && <p role="alert">{error}</p>}
-    </form></details></>}
+    </div>}
     {flow.results?.map((row,i)=><section className="card pad mt" key={i} data-workflow-result>
       {row.kind==='mrv_reference' && <h3>{row.label}</h3>}
       <p className="small"><UiText>{row.kind==='mrv_reference'?'실제 MRV 연간 자료·참고 계산':'앱 일별 운항 기록'}</UiText> · <UiText>{statuses[row.status] || row.status}</UiText></p>

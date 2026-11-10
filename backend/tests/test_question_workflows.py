@@ -27,6 +27,10 @@ class DB:
         if sql.startswith('INSERT INTO query_owner '):self.owners[args[0]]=args[1]
     def audit(self,*args):pass
     def can_read_document(self,user,identifier):return identifier in self.allowed
+    def allowed_document_ids(self,user):return self.allowed
+    def compare_criterion(self,user,criterion,summary):
+        from api.store.answers import AnswerStore
+        return AnswerStore.compare_criterion(self,user,criterion,summary)
     def documents(self,user):return [{'id':i,'title':i} for i in sorted(self.allowed)]
     def operation_summary(self,scope):
         self.calls.append(deepcopy(scope));ship=next(s for s in self.fleet if s['id']==scope['ship'])
@@ -157,7 +161,7 @@ def test_role_or_ship_changes_while_tools_run_rolls_back_save(monkeypatch):
 
 def test_document_and_presentation_routes_do_not_invoke_new_planner():
     db=DB()
-    for q in ['선박 안전 규정을 알려줘','헬싱키 입항 절차를 문서만 사용해서 알려줘','연료 추이를 차트로 보여줘','연료 황 함유량 기준을 알려줘']:
+    for q in ['선박 안전 규정을 알려줘','헬싱키 입항 절차를 문서만 사용해서 알려줘','연료 황 함유량 기준을 알려줘']:
         assert ask(db,q,mode='llm') is None
 
 

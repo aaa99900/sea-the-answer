@@ -35,10 +35,9 @@ test('clarification submits only current parent and shows blocked years without 
     {kind:'mrv_reference',label:'해답호 · 2025',status:'blocked',result:{reference_only:true,reference_dwt_intensity:null,blockers:['NO_ELIGIBLE_ANNUAL_RECORD']}}]
  },{status:'partial',notice:'참고값과 계산 불가 사유를 확인하세요.'}));
  await ask(page,'우리 배의 MRV 참고 탄소집약도를 계산해줘');
- await page.getByText('직접 선택해서 입력 (선택)',{exact:true}).click();
- await page.getByLabel('업무 보고연도').fill('2024,2025');await page.getByRole('button',{name:'조건 적용 후 조회'}).click();
+ await ask(page,'2024년과 2025년');
  await expect(page.locator('[data-workflow-result]')).toHaveCount(2);
- expect(state.calls[1].workflowInput).toEqual({years:[2024,2025]});
+ expect(state.calls[1].workflowInput).toBeUndefined();
  expect(state.calls[1].context.previousQueryId).toBe(first);
  await expect(page.locator(`[data-answer-id="${second}"] [data-question-workflow]`)).toContainText('계산 불가');
  await expect(page.locator(`[data-answer-id="${second}"] [data-question-workflow]`)).toContainText('공식 CII·등급은 산출하지 않습니다.');
@@ -53,9 +52,7 @@ test('selected-document clarification works even when operation ship is selected
   answer('44444444-4444-4444-8444-444444444444',{scope:{...docScope,document_ids:['doc-a']},previous_query_id:id},
     {status:'completed',statements:[{text:'선택한 문서의 확인 문구',chunkId:'c',quote:'선택한 문서의 근거입니다.'}],evidence:[{id:'c',document_id:'doc-a',title:'선박 안전 문서',version:'1',text:'선택한 문서의 근거입니다.'}]}));
  await ask(page,'선택한 문서만 사용해서 요약해줘');
- await page.getByText('직접 선택해서 입력 (선택)',{exact:true}).click();
- await page.getByLabel('업무 선택 문서').selectOption('doc-a');
- await page.getByRole('button',{name:'조건 적용 후 조회'}).click();
+ await page.locator('[data-workflow-choice="doc-a"]').click();
  await expect(page.locator('main')).toContainText('선택한 문서의 확인 문구');
  expect(state.calls[1].workflowInput.document_ids).toEqual(['doc-a']);expect(state.calls[1].context.previousQueryId).toBe(id);
  expect(state.errors).toEqual([]);
@@ -94,17 +91,97 @@ test('question box alone fills missing ship and period without opening tool form
  },{status:'completed',notice:'조회 완료'}));
  await ask(page,'우리 배 연료 사용량을 알려줘');
  expect(state.calls[0].context.ship).toBe('');expect(state.calls[0].context.from).toBeUndefined();
- await expect(page.getByLabel('업무 조회 선박')).not.toBeVisible();
+ await expect(page.locator('[data-question-workflow] select')).toHaveCount(0);
  await ask(page,'해답호');
  expect(state.calls[1].context.previousQueryId).toBe(first);
- await expect(page.getByLabel('업무 시작일').last()).not.toBeVisible();
+ await expect(page.locator('[data-question-workflow] input')).toHaveCount(0);
  await ask(page,'2025년 1월');
  expect(state.calls[2].context.previousQueryId).toBe(second);
  expect(state.calls.every(c=>c.workflowInput===undefined)).toBe(true);
  await expect(page.locator('[data-workflow-result]')).toContainText('2.000000');
  await expect(page.locator('.chat-turn')).toHaveCount(3);
  await page.setViewportSize({width:390,height:844});
+ await expect.poll(()=>page.locator('.sidebar').evaluate(e=>e.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await page.screenshot({path:testInfo.outputPath('conversation-mobile.png'),fullPage:true});
+ expect(state.errors).toEqual([]);
+});
+
+test('only current document candidates are shown and duplicate titles retain distinct versions',async({page},testInfo)=>{
+ const first='bbbbbbb1-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ const docScope={...scope,action:'selected_document',ships:[],document_ids:[]};
+ const state=await setup(page,(body,n)=>n===1?answer(first,{
+  scope:docScope,missing:['document_ids'],clarification:{field:'document_ids',question:'어느 문서인가요?'},
+  options:{ships:[],documents:[{id:'doc-a',title:'기관 점검 문서',version:'1',reference:'초판'},
+    {id:'doc-b',title:'기관 점검 문서',version:'2',reference:'개정판'}]}
+ }):answer('bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbbb',{
+  scope:{...docScope,document_ids:['doc-b']},results:[]
+ },{status:'insufficient_evidence',notice:'선택 문서에 근거가 없습니다.'}));
+ await expect(page.locator('.query-context')).toHaveCount(0);
+ await ask(page,'선택한 문서에서 연료 전환 절차를 알려줘');
+ await expect(page.locator('[data-workflow-clarification] input,[data-workflow-clarification] select')).toHaveCount(0);
+ await expect(page.locator('[data-workflow-choice]')).toHaveCount(2);
+ await expect(page.locator('[data-workflow-choice="doc-b"]')).toContainText('v2');
+ await page.setViewportSize({width:390,height:844});
+ await expect.poll(()=>page.locator('.sidebar').evaluate(e=>e.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:testInfo.outputPath('document-candidates-mobile.png'),fullPage:true});
+ await page.locator('[data-workflow-choice="doc-b"]').click();
+ await expect.poll(()=>state.calls.length).toBe(2);
+ expect(state.calls[1].workflowInput).toEqual({document_ids:['doc-b']});
+ expect(state.calls[1].context.previousQueryId).toBe(first);
+ await expect(page.locator('[data-workflow-choice]')).toHaveCount(0);
+ expect(state.errors).toEqual([]);
+});
+
+test('reference value confirmation is explicit and decline never requests calculation',async({page})=>{
+ const first='ccccccc1-cccc-4ccc-8ccc-cccccccccccc';
+ const state=await setup(page,(body,n)=>n===1?answer(first,{
+  scope:{...scope,years:[2024],reference_ack:false},missing:['reference_ack'],
+  clarification:{field:'reference_ack',question:'참고값으로 확인할까요?'}
+ }):answer('ccccccc2-cccc-4ccc-8ccc-cccccccccccc',{
+  scope:{...scope,years:[2024],reference_ack:false},missing:['reference_ack'],clarification:null
+ },{notice:'계산을 진행하지 않았습니다.'}));
+ await ask(page,'우리 배의 공식 CII를 계산해줘');
+ expect(state.calls.length).toBe(1);
+ await expect(page.getByRole('checkbox')).toHaveCount(0);
+ await page.getByRole('button',{name:'진행하지 않기',exact:true}).click();
+ await expect.poll(()=>state.calls.length).toBe(2);
+ expect(state.calls[1].workflowInput).toEqual({reference_ack:false});
+ expect(state.calls[1].context.previousQueryId).toBe(first);
+ await expect(page.locator('[data-workflow-result]')).toHaveCount(0);
+ await expect(page.locator('[data-workflow-choice]')).toHaveCount(0);
+ expect(state.errors).toEqual([]);
+});
+
+test('new questions remove obsolete ship candidates instead of permitting a stale choice',async({page})=>{
+ const state=await setup(page,()=>answer('ddddddd1-dddd-4ddd-8ddd-dddddddddddd',{
+  scope:{...scope,ships:[]},missing:['ships','years'],options:{ships:[ship],documents:[]},
+  clarification:{field:'ships',question:'어느 선박인가요?'}
+ }));
+ await ask(page,'MRV 참고값 계산해줘');
+ await expect(page.locator('[data-workflow-choice="ship-a"]')).toBeVisible();
+ await page.getByRole('button',{name:'새 질문',exact:true}).click();
+ await expect(page.locator('[data-workflow-choice]')).toHaveCount(0);
+ expect(state.calls.length).toBe(1);
+ expect(state.errors).toEqual([]);
+});
+
+test('more choices keeps later revisions with the same title reachable',async({page})=>{
+ const first='eeeeeee1-eeee-4eee-8eee-eeeeeeeeeeee';
+ const docScope={...scope,action:'selected_document',ships:[],document_ids:[]};
+ const state=await setup(page,(body,n)=>n===1?answer(first,{
+  scope:docScope,missing:['document_ids'],options:{ships:[],documents:Array.from({length:9},(_,i)=>({
+   id:`revision-${i+1}`,title:'기관 매뉴얼',version:String(i+1)
+  }))}
+ }):answer('eeeeeee2-eeee-4eee-8eee-eeeeeeeeeeee',{
+  scope:{...docScope,document_ids:['revision-9']}
+ },{status:'insufficient_evidence'}));
+ await ask(page,'선택한 문서에서 점검 항목 알려줘');
+ await expect(page.locator('[data-workflow-choice]')).toHaveCount(8);
+ await page.getByRole('button',{name:'후보 더 보기',exact:true}).click();
+ await page.locator('[data-workflow-choice="revision-9"]').click();
+ await expect.poll(()=>state.calls.length).toBe(2);
+ expect(state.calls[1].workflowInput).toEqual({document_ids:['revision-9']});
  expect(state.errors).toEqual([]);
 });

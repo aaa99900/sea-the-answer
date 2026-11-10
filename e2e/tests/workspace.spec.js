@@ -197,15 +197,15 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     const ship = operations.ships.find(item => operations.records.some(row => row.ship === item.id));
     const rows = operations.records.filter(row => row.ship === ship.id).sort((a, b) => a.date.localeCompare(b.date));
     expect(rows.length).toBeGreaterThan(0);
-    await page.locator('.query-context > summary').click();
-    await expect(page.locator('.query-context #ship')).toBeVisible();
-    await page.locator('.query-context #ship').selectOption(ship.id);
-    await page.locator('.query-context #from').fill(rows[0].date);
-    await page.locator('.query-context #to').fill(rows.at(-1).date);
-    // Confirm the visible defaults too: unchanged controls are not a user scope
-    // until explicitly applied in the conversation-first question screen.
-    await page.getByRole('button',{name:'이 선박·기간을 질문에 사용',exact:true}).click();
-    await page.locator('#question').fill('선택 선박의 일별 CO₂ 배출량을 막대그래프로 보여줘');
+    await expect(page.locator('.query-context')).toHaveCount(0);
+    await page.locator('#question').fill('일별 CO₂ 배출량을 막대그래프로 보여줘');
+    const initialChartResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/ask' && r.request().method()==='POST');
+    await submit('#askForm');
+    expect((await (await initialChartResponse).json()).workflow.clarification.field).toBe('ships');
+    const shipChoiceResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/ask' && r.request().method()==='POST');
+    await page.locator(`[data-workflow-choice="${ship.id}"]`).click();
+    expect((await (await shipChoiceResponse).json()).workflow.clarification.field).toBe('periods');
+    await page.locator('#question').fill(`${rows[0].date}부터 ${rows.at(-1).date}까지`);
     const chartResponse = page.waitForResponse(
       response => new URL(response.url()).pathname === '/api/ask' && response.request().method() === 'POST',
       { timeout: 60_000 },
@@ -218,6 +218,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect(presentation.chartType).toBe('bar');
     expect(presentation.source).toBe('operations');
     expect(operationAnswer.operations.ship.id).toBe(ship.id);
+    expect(operationAnswer.compliance.status).toBe('unknown');
     expect(presentation.points).toHaveLength(rows.length);
     for (const point of presentation.points) {
       const record = rows.find(row => row.date === point.label);
@@ -502,11 +503,14 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
   await test.step('Skills: selected documents and checklist stay within scope without a model', async () => {
     await go('chat');
     await expect(page.locator('[data-nav=skills]')).toHaveCount(0);
-    const panel = page.locator('[data-workflow=documents]');
-    await panel.locator('summary').first().click();
+    await expect(page.locator('[data-workflow=documents]')).toHaveCount(0);
     const docs = (await api('/api/documents')).data.documents.filter(d => d.active);
     const source = docs.find(d => d.sections.some(s => s.text.includes('연료'))) || docs[0];
     const question = source.sections[0].text.slice(0, 80);
+    await page.goto('/documents/' + encodeURIComponent(source.id));
+    const panel=page.locator('[data-workflow=document]');
+    await panel.locator('summary').first().click();
+    await panel.getByLabel('실행할 기능').selectOption('selected-document-answer');
     const selectedDocument = panel.locator(`[data-document-id="${source.id}"]`);
     await selectedDocument.check();
     await panel.getByLabel('질문 또는 작업 목적').fill('선택 상태 유지 확인');

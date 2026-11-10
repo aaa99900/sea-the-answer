@@ -96,7 +96,7 @@ test('automatic first ship and default dates are not silently sent as question s
   assert.equal(t.requests[0].context.from,undefined);
   assert.equal(t.requests[0].context.to,undefined);
   t.pending.shift().resolve({id:'q1',workflow:{scope:{action:'operations_summary',ships:[{id:'named'}]}}});await first;
-  assert.equal(w.state.ship,'named');assert.equal(w.state.queryShipExplicit,true);
+  assert.equal(w.state.ship,'named');
   const second=w.ask('지난달');
   assert.equal(t.requests[1].context.ship,'named');
   assert.equal(t.requests[1].context.previousQueryId,'q1');
@@ -104,11 +104,18 @@ test('automatic first ship and default dates are not silently sent as question s
   t.pending.shift().resolve({id:'q2'});await second;w.dispose();
 });
 
-test('directly confirmed context remains usable without overriding natural-language validation',async()=>{
+test('operation page controls do not become hidden question conditions',async()=>{
   const t=setup(),w=t.workspace;w.state.ship='chosen';
-  w.state.queryShipExplicit=true;w.state.queryPeriodExplicit=true;
   const request=w.ask('운항 실적을 요약해줘');
-  assert.deepEqual(t.requests[0].context,{ship:'chosen',from:w.state.from,to:w.state.to});
+  assert.deepEqual(t.requests[0].context,{ship:''});
+  t.pending.shift().resolve({id:'q'});await request;w.dispose();
+});
+
+test('only the current conversational scope supplies a ship and period to follow-ups',async()=>{
+  const t=setup(),w=t.workspace;w.state.ship='unrelated';
+  w.state.answer={id:'parent',workflow:{scope:{action:'operations_summary',ships:[{id:'named'}],periods:[{start:'2025-01-01',end:'2025-01-31'}]}}};
+  const request=w.ask('2월은?');
+  assert.deepEqual(t.requests[0].context,{ship:'named',from:'2025-01-01',to:'2025-01-31',previousQueryId:'parent'});
   t.pending.shift().resolve({id:'q'});await request;w.dispose();
 });
 

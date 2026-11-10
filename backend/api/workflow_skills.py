@@ -136,9 +136,9 @@ def period(body):
     return {"ship": body.context.ship, "from": start.isoformat(), "to": end.isoformat()}
 
 
-def operation_result(db, body):
+def operation_result(db, body, *, summary=None):
     scope = period(body)
-    raw = db.operation_summary(scope)
+    raw = db.operation_summary(scope) if summary is None else summary
     if body.skill == "report-draft" and body.template == "noon" and raw["rows"]:
         day = raw["rows"][-1]["date"]
         raw = db.operation_summary({"ship": scope["ship"], "from": day, "to": day})

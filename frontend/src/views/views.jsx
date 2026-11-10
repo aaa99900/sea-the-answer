@@ -12,7 +12,7 @@ export function createMainViews(model, views) {
   const noop = () => {};
   const { state, canWrite, isAdmin } = model;
   const { esc, I, btn, badge, n, options, head, notice, empty, docKind, safeUrl } = helpers;
-  const { operationsPage, contextControls } = views;
+  const { operationsPage } = views;
   const { reportsPage, editorPage } = views;
   const { authPage, adminPage, operationAnswer, roleName } = views;
   const pageNames = {
@@ -85,7 +85,7 @@ export function createMainViews(model, views) {
             {I('send')}
           </UiControl>
         </div>
-      </form><SkillsPanel group="documents" /></>
+      </form></>
     );
   }
   function answerView(a) {
@@ -152,7 +152,7 @@ export function createMainViews(model, views) {
               'warning',
             )
           : ''}</UiText>
-        {operationAnswer(a)}
+        {!a.workflow && operationAnswer(a)}
         {a.skill && <><h3>{a.skill.name}</h3><SkillResult answer={a} /></>}
         {a.toolRuns.map((t, __index) => (
           <React.Fragment key={__index}>
@@ -203,29 +203,9 @@ export function createMainViews(model, views) {
           </div>
         </div>
       ),
-      context = (
-        <details
-          className={'query-context'}
-        >
-          <summary>
-            <UiText>{'운항 분석 대상 '}</UiText>
-            <UiText>{state.queryShipExplicit && state.ships.find((s) => s.id === state.ship)?.name
-              ? '· ' + state.ships.find((s) => s.id === state.ship).name
-              : '· 질문으로 지정 (직접 선택 가능)'}</UiText>
-          </summary>
-          {contextControls(true)}
-          <p className="small muted"><UiText>{'선박과 기간은 질문에 적어도 됩니다. 직접 고른 조건만 질문에 적용합니다.'}</UiText></p>
-          {btn('이 선박·기간을 질문에 사용', 'useQuestionContext', 'ghost sm')}
-          {state.criterion ? (
-            <p className={'small muted'}>
-              <UiText>{'비교 기준이 설정됨 '}</UiText>
-              {btn('기준 해제', 'clearCriterion', 'ghost sm')}
-            </p>
-          ) : (
-            ''
-          )}
-        </details>
-      );
+      context = state.criterion ? <p className="small muted">
+        <UiText>{'비교 기준이 설정됨 '}</UiText>{btn('기준 해제', 'clearCriterion', 'ghost sm')}
+      </p> : null;
     if (!state.turns.length && !state.busy && !state.askError)
       return (
         <>
@@ -245,8 +225,8 @@ export function createMainViews(model, views) {
               <div className={'grid3'}>
                 {[
                   ['file', '연료 황 함유량 기준을 알려줘', '문서 검색 · 근거 확인'],
-                  ['chart', '선택한 선박의 연료 추이를 분석해줘', '운항 조회 · 지표 확인'],
-                  ['edit', '선택한 기간의 Noon 보고서를 준비해줘', '기록 조회 · 보고서 연결'],
+                  ['chart', '우리 배의 연료 추이를 보여줘', '운항 조회 · 지표 확인'],
+                  ['edit', '지난달 운항 실적을 요약해줘', '기록 조회 · 보고서 연결'],
                 ].map(([i, q, sub], __index) => (
                   <React.Fragment key={__index}>
                     {

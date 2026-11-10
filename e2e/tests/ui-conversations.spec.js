@@ -29,9 +29,8 @@ test('six UI requirements: language, transcript, source, history and deletion', 
   await expect(page.locator('.query-controls select')).toHaveCount(2);
   await expect(page.getByLabel('답변 방식',{exact:true})).toHaveValue('llm');
   await expect(page.getByLabel('검색 범위',{exact:true})).toHaveValue('all');
-  const summary=page.locator('.query-context summary');
-  expect(await summary.evaluate(e=>getComputedStyle(e,'::before').content)).toBe('"+"');
-  await summary.click();expect(await summary.evaluate(e=>getComputedStyle(e,'::before').content)).toBe('"−"');
+  await expect(page.locator('.query-context')).toHaveCount(0);
+  await expect(page.locator('.composer select')).toHaveCount(2);
   await page.locator('#question').fill('입력 중 질문');
   await page.locator('.language-button').click();await page.getByRole('button',{name:'English',exact:true}).click();
   await expect(page.locator('[data-nav="docs"]')).toHaveText('Documents');
