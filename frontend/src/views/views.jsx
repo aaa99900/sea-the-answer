@@ -152,7 +152,7 @@ export function createMainViews(model, views) {
               'warning',
             )
           : ''}</UiText>
-        {!a.workflow && operationAnswer(a)}
+        {operationAnswer(a)}
         {a.skill && <><h3>{a.skill.name}</h3><SkillResult answer={a} /></>}
         {a.toolRuns.map((t, __index) => (
           <React.Fragment key={__index}>
