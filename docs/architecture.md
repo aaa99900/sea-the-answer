@@ -50,6 +50,12 @@
 
 ## 1. 한눈에 보기
 
+### 질문창의 조건 보완과 AIS 자료 현황
+
+웹의 `queryShipExplicit`/`queryPeriodExplicit`은 현재 브라우저에서 명시한 선택만 `/api/ask`로 전달한다. 기본 첫 선박·날짜를 질문 범위로 확정하지 않는다. `question_intent.slot_reply`는 등록 명칭·기간·연결 어미로 제한한 짧은 응답을 판별하고, `question_workflows`가 현재 소유자와 같은 대화의 부모 범위·문서 권한을 검증한다. `workflow.clarification`의 다음 질문을 주 안내로 쓰며 기존 선택 양식은 접힌 보조 입력이다.
+
+`navigation_query`는 AIS 자료 보유·수집 현황 질문을 기존 문서 검색보다 먼저 처리한다. `navigation_service.load_snapshot`과 기존 `catalog_summary`를 재사용하고, `NavigationAnswer`가 수집본 건수·출처·노후화 및 요청 선박의 정확한 IMO 포함 여부를 표시한다. 모델이나 문서 유사도로 데이터 등록 여부를 추정하지 않는다. 관리자 반입과 실시간 수신은 별도이며 런타임 외부 수집·새 DB 테이블은 추가하지 않는다. [응답 계약](specs/integrated-answer.md#질문창-중심-조건-보완-2026-11-10-구현됨).
+
 ### 업무 스킬 실행
 
 기존 질문·문서·운항·보고서 화면의 재사용 SkillsPanel → 일반 앱 API `/api/skills/run` → `api/workflow_skills.py`의 고정 handler로 실행한다. 지침은 Docker에 이미 복사되는 `knowledge/skills/<id>/SKILL.md`에 있다. 모델은 지침·원문에 기반한 설명에만 선택적으로 쓰며, 식별자·기간·SQL·권한·수치를 생성하지 않는다. 여섯 기능의 기본 실행에는 LLM이 필요 없다. 독립 업무 스킬 메뉴는 없으며 이전 /skills는 /chat으로 이동한다. 문서 상세는 현재 활성 문서, 운항·보고서는 공통 선박·기간, 응답 평가는 현재 답변 ID로 초기화한다. 패널을 펼칠 때만 카탈로그를 요청한다. [계약](specs/workflow-skills.md), [ADR 0015](adr/0015-optional-model-workflow-skills.md).

@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 
 async function setup(page) {
-  const state = { calls: [], errors: [], delay: null, needsShip: false, unsupported: false, filtered: false };
+  const state = { calls: [], errors: [], delay: null, needsShip: false, unsupported: false, filtered: false, catalogStatus:false };
   page.on('pageerror', e => state.errors.push(e.message));
   const ship = { id: 'real-ship', name: 'VIKING CINDERELLA', imo: '8719188', dwt: 4228, type: 'Passenger ship', version: 1 };
   await page.route('**/api/**', async route => {
@@ -24,7 +24,14 @@ async function setup(page) {
         ship: state.needsShip ? null : ship, context: { imo_number: ship.imo },
         ship_options: state.needsShip ? [ship] : [], port_options: [{ port_id: 'WPI:28190', name: 'Helsinki' }],
         results: [], ports: [] };
-      if (!state.needsShip && !state.unsupported) {
+      if (state.catalogStatus) {
+        Object.assign(nav,{kind:'catalog-status',status:'available',ship:null,catalog:{
+          ais_observation_count:307,ais_unique_vessels:307,generated_at:'2026-11-06T01:43:00Z',
+          ais_source_counts:{ais:307},sources:[{...source,id:'ais',url:'https://www.digitraffic.fi/en/marine-traffic/',retrieved_at:'2026-11-06T01:43:00Z'}],
+          freshness:{assessed_at:'2026-11-10T01:00:00Z',ais_capture_issue:'AIS_CAPTURE_STALE',ais_record_age_counts:{AIS_RECORD_STALE:307}}
+        }});
+      }
+      if (!state.catalogStatus && !state.needsShip && !state.unsupported) {
         nav.ports = ['Gothenburg', 'Helsinki'].map((name, i) => ({ port_id: 'port-'+i, name,
           berth_count: 1, partial_reference_check: 1, published_reference_exceeded: 0, insufficient_data: 0 }));
         nav.results = nav.ports.map(p => ({ ...p, port_name: p.name, assessed_at: '2026-11-04T02:00:00Z',
@@ -42,7 +49,7 @@ async function setup(page) {
         }
       }
       return json({ id: 'nav-'+state.calls.length, question: body.question, language: 'ko', generation: 'tool',
-        status: nav.results.length ? 'reference_found' : 'needs_input', notice: state.unsupported ? '요청한 항구 자료가 없습니다.' : '일부 공개 수치 비교입니다. 실제 입항 허가 판정은 아닙니다.',
+        status: state.catalogStatus ? 'completed' : nav.results.length ? 'reference_found' : 'needs_input', notice: state.catalogStatus ? '연결된 AIS 수집본에 307개 기록, 307척이 있습니다. 실시간 수신 여부를 뜻하지 않습니다.' : state.unsupported ? '요청한 항구 자료가 없습니다.' : '일부 공개 수치 비교입니다. 실제 입항 허가 판정은 아닙니다.',
         warnings: ['NAVIGATION_REFERENCE_ONLY'], statements: [], evidence: [], toolRuns: [], reportSuggested: false, navigation: nav });
     }
     return json({ documents: [], reports: [], history: [], skills: [] });
@@ -82,10 +89,27 @@ test('question alone compares available ports and exact IMO aligns the existing 
   await expect(page.locator('[data-answer-id="nav-2"] [data-navigation-answer]')).toBeVisible();
   await expect(answer).toBeVisible();
   await expect(page.locator('.chat-turn')).toHaveCount(2);
-  expect(state.calls[0].body.context.ship).toBe('sample');
+  expect(state.calls[0].body.context.ship).toBe('');
   expect(state.calls[1].body.context.ship).toBe('real-ship');
   expect(state.calls[1].body.context.previousQueryId).toBe('nav-1');
   expect(state.calls.every(c => c.headers.authorization === undefined && c.headers['x-haedap-token'] === 'nav-csrf')).toBe(true);
+  expect(state.errors).toEqual([]);
+});
+
+test('AIS data existence question shows actual catalog facts and stale snapshot warning',async({page},testInfo)=>{
+  const state=await setup(page);state.catalogStatus=true;
+  await ask(page,'AIS 관련 데이터 있어?');
+  const answer=page.locator('[data-answer-id="nav-1"]');
+  await expect(answer).toContainText('AIS 자료 현황');
+  await expect(answer).toContainText('연결된 AIS 수집본');
+  await expect(answer).toContainText('307');
+  await expect(answer).toContainText('AIS 수집 자료가 24시간 기준을 지남');
+  await expect(answer).toContainText('실시간 AIS 수신·현재 위치·입항 가능 여부를 뜻하지 않습니다.');
+  await expect(answer.getByRole('link',{name:'Fintraffic AIS'})).toHaveAttribute('href','https://www.digitraffic.fi/en/marine-traffic/');
+  await expect(answer).not.toContainText('문서 근거가 부족합니다');
+  await expect(answer).not.toContainText('항구 참조 비교');
+  expect(state.calls[0].body.context.ship).toBe('');
+  await page.screenshot({path:testInfo.outputPath('ais-status.png'),fullPage:true});
   expect(state.errors).toEqual([]);
 });
 

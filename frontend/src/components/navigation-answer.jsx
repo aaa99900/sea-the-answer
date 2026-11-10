@@ -21,6 +21,7 @@ function shipQuery(ship, port='') {
 export default function NavigationAnswer({ answer }) {
   const nav = answer.navigation, en = answer.language === 'en';
   if (!nav) return null;
+  if (nav.kind==='catalog-status') return <CatalogStatus value={nav} />;
   const results = Array.isArray(nav.results) ? nav.results : [];
   const sources = [...new Map(results.flatMap(r=>r.sources || []).map(s=>[s.id+':'+s.sha256,s])).values()];
   return <UiControl as="section" className={styles.root} data-navigation-answer aria-label={en?'Port reference answer':'항구 참조 답변'}>
@@ -75,5 +76,37 @@ export default function NavigationAnswer({ answer }) {
     {nav.ship && nav.port_options?.length>0 && ['unsupported_port','unsupported_berth','needs_port'].includes(nav.status) && <div className="actions wrap mt">
       {nav.port_options.map(p=><button type="button" className="btn ghost sm" key={p.port_id} data-question={shipQuery(nav.ship,p.name)}>{p.name}<UiText>{en?' reference':' 자료로 조회'}</UiText></button>)}
     </div>}
+  </UiControl>;
+}
+
+function CatalogStatus({value}) {
+  const catalog=value.catalog, check=value.ship_check;
+  const shipStates={needs_ship:'어느 선박인지 이름이나 IMO 번호를 알려 주세요.',sample_ship:'가상 선박의 실제 AIS 포함 여부는 확인하지 않습니다.',
+    invalid_imo:'등록 선박의 유효한 IMO 번호를 먼저 확인해야 합니다.',found:'이 수집본에 해당 IMO의 AIS 기록이 있습니다.',
+    not_in_snapshot:'이 수집본에 해당 IMO의 AIS 기록이 없습니다. 다른 시점·지역의 자료까지 없다는 뜻은 아닙니다.'};
+  return <UiControl as="section" className={styles.root} data-navigation-answer aria-label="AIS 자료 현황">
+    {catalog && <>
+      <h3><UiText>{'연결된 AIS 수집본'}</UiText></h3>
+      <dl className="skill-metrics">
+        <div><dt><UiText>{'관측 기록'}</UiText></dt><dd>{catalog.ais_observation_count}</dd></div>
+        <div><dt><UiText>{'고유 선박'}</UiText></dt><dd>{catalog.ais_unique_vessels}</dd></div>
+        <div><dt><UiText>{'수집본 생성 시각'}</UiText></dt><dd>{referenceTime(catalog.generated_at)}</dd></div>
+        <div><dt><UiText>{'현황 확인 시각'}</UiText></dt><dd>{referenceTime(catalog.freshness?.assessed_at)}</dd></div>
+      </dl>
+      <p className="notice warning"><UiText>{'저장된 수집본 현황입니다. 실시간 AIS 수신·현재 위치·입항 가능 여부를 뜻하지 않습니다.'}</UiText></p>
+      <p><UiText>{'24시간 이내 기록'}</UiText>: {catalog.freshness?.ais_record_age_counts?.within_age_window || 0}
+        {' · '}<UiText>{'24시간 경과 기록'}</UiText>: {catalog.freshness?.ais_record_age_counts?.AIS_RECORD_STALE || 0}</p>
+      {Object.entries(catalog.freshness?.ais_record_age_counts || {}).filter(([key])=>!['within_age_window','AIS_RECORD_STALE'].includes(key)).length>0 &&
+        <p className="notice warning"><UiText>{'시각 미확인·미래 시각 기록은 최신 자료로 보지 않습니다.'}</UiText></p>}
+      {catalog.freshness?.ais_capture_issue && <p className="notice warning">{referenceReason(catalog.freshness.ais_capture_issue)}</p>}
+      <h3><UiText>{'AIS 출처와 수집 시각'}</UiText></h3>
+      <ul>{catalog.sources.filter(s=>s.id==='ais' || s.id==='ais_no').map(s=><li key={s.id}>
+        <a href={link(s.url)} target="_blank" rel="noreferrer">{sourceNames[s.id] || s.id}</a>
+        {' · '}{referenceTime(s.retrieved_at)}{' · '}{catalog.ais_source_counts?.[s.id] || 0}<UiText>{'개 기록'}</UiText>
+      </li>)}</ul>
+      <p className="small muted"><UiText>{'확보한 지역·시점의 공개 자료만 포함하며 전 세계 선박 전체를 보장하지 않습니다.'}</UiText></p>
+    </>}
+    {check && <p className="notice mt">{value.ship?.name && <strong>{value.ship.name}{' · '}</strong>}
+      <UiText>{shipStates[check.status] || check.status}</UiText>{check.observation_count!=null && <> ({check.observation_count})</>}</p>}
   </UiControl>;
 }

@@ -55,6 +55,10 @@ export function createMainViews(model, views) {
         ></UiControl>
         <div className={'composer-bottom'}>
           <div className={'query-controls'}>
+            <UiControl as="select" aria-label="답변 방식" data-field="mode" value={state.mode} onChange={noop}>
+              {state.health?.llmConfigured && <option value="llm"><UiText>{'AI 답변'}</UiText></option>}
+              <option value="extractive"><UiText>{'원문 발췌'}</UiText></option>
+            </UiControl>
             <UiControl as="select"
               aria-label={'검색 범위'}
               data-field={'filter'}
@@ -99,7 +103,7 @@ export function createMainViews(model, views) {
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}</UiText>
           </h2>
-          {badge(a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
         <p className={'small muted'}>{a.notice}</p>
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
@@ -205,11 +209,13 @@ export function createMainViews(model, views) {
         >
           <summary>
             <UiText>{'운항 분석 대상 '}</UiText>
-            <UiText>{state.ships.find((s) => s.id === state.ship)?.name
+            <UiText>{state.queryShipExplicit && state.ships.find((s) => s.id === state.ship)?.name
               ? '· ' + state.ships.find((s) => s.id === state.ship).name
-              : '선택'}</UiText>
+              : '· 질문으로 지정 (직접 선택 가능)'}</UiText>
           </summary>
           {contextControls(true)}
+          <p className="small muted"><UiText>{'선박과 기간은 질문에 적어도 됩니다. 직접 고른 조건만 질문에 적용합니다.'}</UiText></p>
+          {btn('이 선박·기간을 질문에 사용', 'useQuestionContext', 'ghost sm')}
           {state.criterion ? (
             <p className={'small muted'}>
               <UiText>{'비교 기준이 설정됨 '}</UiText>

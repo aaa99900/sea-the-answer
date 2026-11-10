@@ -26,13 +26,16 @@ test('six UI requirements: language, transcript, source, history and deletion', 
   await page.goto('/chat');
   await expect(page.locator('.composer')).toBeVisible();
   await expect(page.locator('.local-note')).toHaveCount(0);
-  await expect(page.locator('.query-controls select')).toHaveCount(1);
+  await expect(page.locator('.query-controls select')).toHaveCount(2);
+  await expect(page.getByLabel('답변 방식',{exact:true})).toHaveValue('llm');
+  await expect(page.getByLabel('검색 범위',{exact:true})).toHaveValue('all');
   const summary=page.locator('.query-context summary');
   expect(await summary.evaluate(e=>getComputedStyle(e,'::before').content)).toBe('"+"');
   await summary.click();expect(await summary.evaluate(e=>getComputedStyle(e,'::before').content)).toBe('"−"');
   await page.locator('#question').fill('입력 중 질문');
   await page.locator('.language-button').click();await page.getByRole('button',{name:'English',exact:true}).click();
   await expect(page.locator('[data-nav="docs"]')).toHaveText('Documents');
+  await expect(page.getByLabel('Answer mode',{exact:true})).toHaveValue('llm');
   await expect(page.locator('#question')).toHaveValue('입력 중 질문');
   await expect(page.locator('.brand-title-en')).toHaveText('SEATHE ANSWER');
   await expect(page.locator('.brand-title-en br')).toHaveCount(1);
@@ -51,7 +54,7 @@ test('six UI requirements: language, transcript, source, history and deletion', 
   await expect(page.locator('.chat-turn')).toHaveCount(2);
   await expect.poll(()=>page.evaluate(()=>Math.abs(document.documentElement.scrollHeight-innerHeight-scrollY))).toBeLessThan(3);
   if (process.env.CAPSTONE_UI_SCREENSHOTS) await page.screenshot({path:process.env.CAPSTONE_UI_SCREENSHOTS+'/desktop.png',fullPage:true});
-  expect(requests.map(r=>[r.question,r.language,r.mode,r.task])).toEqual([['첫 질문','auto','extractive','auto'],['둘째 질문','auto','extractive','auto']]);
+  expect(requests.map(r=>[r.question,r.language,r.mode,r.task])).toEqual([['첫 질문','auto','llm','auto'],['둘째 질문','auto','llm','auto']]);
   expect(requests[1].conversationId).toBe('q1');
   await expect(page.locator('.chat-turn').first().locator('.answer > p').nth(1)).toContainText('문서');
   const gap=await page.locator('.chat-turn').first().evaluate(e=>e.querySelector('.answer').getBoundingClientRect().top-e.querySelector('.question-bubble').getBoundingClientRect().bottom);

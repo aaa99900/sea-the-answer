@@ -202,6 +202,9 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     await page.locator('.query-context #ship').selectOption(ship.id);
     await page.locator('.query-context #from').fill(rows[0].date);
     await page.locator('.query-context #to').fill(rows.at(-1).date);
+    // Confirm the visible defaults too: unchanged controls are not a user scope
+    // until explicitly applied in the conversation-first question screen.
+    await page.getByRole('button',{name:'이 선박·기간을 질문에 사용',exact:true}).click();
     await page.locator('#question').fill('선택 선박의 일별 CO₂ 배출량을 막대그래프로 보여줘');
     const chartResponse = page.waitForResponse(
       response => new URL(response.url()).pathname === '/api/ask' && response.request().method() === 'POST',

@@ -34,7 +34,11 @@ function Workflow({answer}) {
     <p className="small muted"><UiText>{flow.routing.method==='llm'?'AI 작업 선택·서버 범위 검증':'규칙 기반 조건 해석'}</UiText>
       {flow.routing.fallback && ' · 모델 제안을 사용할 수 없어 규칙/추가 확인으로 처리'}
       {flow.previous_query_id && ' · 이전 범위를 연결해 현재 자료로 재조회'}</p>
-    {missing.length>0 && <form className="card pad mt" onSubmit={submit} onInput={e=>e.stopPropagation()} onChange={e=>e.stopPropagation()}>
+    {missing.length>0 && <>
+      <p className="small"><UiText>{'아래 질문창에 답하면 이어서 조회합니다. 직접 선택하는 방식도 사용할 수 있습니다.'}</UiText></p>
+      <details className="card pad mt" data-workflow-input>
+      <summary><UiText>{'직접 선택해서 입력 (선택)'}</UiText></summary>
+      <form onSubmit={submit} onInput={e=>e.stopPropagation()} onChange={e=>e.stopPropagation()}>
       <h3><UiText>{"추가로 필요한 조건"}</UiText></h3>
       {missing.includes('ships') && <div className="controls">
         <label className="field"><UiText>{"조회 선박"}</UiText><UiControl as="select" aria-label="업무 조회 선박" required value={ship} onChange={e=>setShip(e.target.value)}>
@@ -53,7 +57,7 @@ function Workflow({answer}) {
       <p className="small"><UiText>{"자연어로 선박·연도·기간을 답해도 됩니다. 아래 입력은 현재 되묻기에만 적용합니다."}</UiText></p>
       <button className="btn primary" disabled={workspace.state.busy} type="submit"><UiText>{"조건 적용 후 조회"}</UiText></button>
       {error && <p role="alert">{error}</p>}
-    </form>}
+    </form></details></>}
     {flow.results?.map((row,i)=><section className="card pad mt" key={i} data-workflow-result>
       {row.kind==='mrv_reference' && <h3>{row.label}</h3>}
       <p className="small"><UiText>{row.kind==='mrv_reference'?'실제 MRV 연간 자료·참고 계산':'앱 일별 운항 기록'}</UiText> · <UiText>{statuses[row.status] || row.status}</UiText></p>

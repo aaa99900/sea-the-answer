@@ -17,10 +17,12 @@ function load(file, imports, browser) {
     id=>imports[id] || {}, module, module.exports, browser.window, browser.document, browser.raf, browser.cancel);
   return module.exports;
 }
-function setup() {
+function setup({llmConfigured=false}={}) {
   const pending=[], requests=[], routes=[], scrolls=[];
-  const browser={window:{scrollTo:(...args)=>scrolls.push(args)},document:{querySelector:()=>null}};
-  const api={ask:body=>{requests.push(body);return new Promise((resolve,reject)=>pending.push({resolve,reject}));}};
+  const browser={window:{scrollTo:(...args)=>scrolls.push(args),location:{pathname:'/chat'}},document:{querySelector:()=>null}};
+  const api={health:async()=>({authenticated:true,llmConfigured,user:{id:'u1',role:'admin'}}),
+    documents:async()=>({documents:[]}),operations:async()=>({ships:[],records:[]}),reports:async()=>({reports:[]}),
+    ask:body=>{requests.push(body);return new Promise((resolve,reject)=>pending.push({resolve,reject}));}};
   const {createWorkspace}=load('../src/workspace/controller.jsx', {
     react:React, '../lib/model':{createModel}, '../lib/api':{createApiClient:()=>api},
     '../views':{createViews:()=>({})},
@@ -29,7 +31,11 @@ function setup() {
   workspace.attach({push:(...args)=>routes.push(args)});
   workspace.state.ready=true;workspace.state.user={id:'u1',role:'admin'};
   const click=dataset=>workspace.events.onClick({target:{closest:()=>({dataset})}});
-  return {workspace, pending, requests, routes, scrolls, browser, click};
+  const reconnect=()=>new Promise(resolve=>{
+    const stop=workspace.subscribe(()=>{if(!workspace.state.connecting){stop();resolve();}});
+    click({action:'reconnect'});
+  });
+  return {workspace, pending, requests, routes, scrolls, browser, click, reconnect};
 }
 test('sending and completing a follow-up preserves the conversation without scrolling to the top',async()=>{
   const t=setup(),w=t.workspace;
@@ -46,6 +52,21 @@ test('sending and completing a follow-up preserves the conversation without scro
   assert.equal(t.scrolls.length,0);
   assert.equal(w.state.chatScrollRequest.phase,'complete');
   w.dispose();
+});
+
+test('configured AI is actually sent by default and explicit excerpt preference survives reconnect',async()=>{
+  const t=setup({llmConfigured:true}),w=t.workspace;
+  await w.start();assert.equal(w.state.mode,'llm');
+  const first=w.ask('질문');assert.equal(t.requests[0].mode,'llm');
+  t.pending.shift().resolve({id:'ai'});await first;
+  w.events.onChange({target:{dataset:{field:'mode'},value:'extractive'}});
+  await t.reconnect();assert.equal(w.state.mode,'extractive');
+  const second=w.ask('원문으로 확인');assert.equal(t.requests[1].mode,'extractive');
+  t.pending.shift().resolve({id:'source'});await second;w.dispose();
+});
+
+test('no model configuration keeps normal questions in excerpt mode',async()=>{
+  const t=setup(),w=t.workspace;await w.start();assert.equal(w.state.mode,'extractive');w.dispose();
 });
 test('chat tab starts a new conversation and discards a late response and its scroll request',async()=>{
   const t=setup(),w=t.workspace;
@@ -65,6 +86,39 @@ test('failed question keeps its text and requests the bottom error view',async()
   assert.equal(w.state.pendingQuestion,'retry me');assert.equal(w.state.askError,'temporary failure');
   assert.equal(w.state.chatScrollRequest.phase,'complete');assert.equal(t.scrolls.length,0);
   w.dispose();
+});
+
+test('automatic first ship and default dates are not silently sent as question scope',async()=>{
+  const t=setup(),w=t.workspace;
+  w.state.ships=[{id:'first'},{id:'named'}];w.state.ship='first';
+  const first=w.ask('연료 얼마나 썼어?');
+  assert.equal(t.requests[0].context.ship,'');
+  assert.equal(t.requests[0].context.from,undefined);
+  assert.equal(t.requests[0].context.to,undefined);
+  t.pending.shift().resolve({id:'q1',workflow:{scope:{action:'operations_summary',ships:[{id:'named'}]}}});await first;
+  assert.equal(w.state.ship,'named');assert.equal(w.state.queryShipExplicit,true);
+  const second=w.ask('지난달');
+  assert.equal(t.requests[1].context.ship,'named');
+  assert.equal(t.requests[1].context.previousQueryId,'q1');
+  assert.equal(t.requests[1].context.from,undefined);
+  t.pending.shift().resolve({id:'q2'});await second;w.dispose();
+});
+
+test('directly confirmed context remains usable without overriding natural-language validation',async()=>{
+  const t=setup(),w=t.workspace;w.state.ship='chosen';
+  w.state.queryShipExplicit=true;w.state.queryPeriodExplicit=true;
+  const request=w.ask('운항 실적을 요약해줘');
+  assert.deepEqual(t.requests[0].context,{ship:'chosen',from:w.state.from,to:w.state.to});
+  t.pending.shift().resolve({id:'q'});await request;w.dispose();
+});
+
+test('pending port ship clarification is linked even without a selected ship',async()=>{
+  const t=setup(),w=t.workspace;
+  w.state.answer={id:'port-parent',navigation:{status:'needs_ship',ship:null}};
+  const request=w.ask('해답호');
+  assert.equal(t.requests[0].context.previousQueryId,'port-parent');
+  assert.equal(t.requests[0].context.ship,'');
+  t.pending.shift().resolve({id:'q'});await request;w.dispose();
 });
 test('chat DOM commit scrolls to the bottom; cancelled requests and other pages cannot steal scroll',()=>{
   const t=setup(),w=t.workspace;w.views.chatPage=()=>null;w.views.reportPage=()=>null;

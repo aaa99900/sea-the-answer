@@ -10,6 +10,7 @@ import httpx
 from psycopg.types.json import Jsonb
 
 from .. import config, llm
+from ..question_intent import definition_request
 from ..answer_presentation import (UnsupportedMetric, excerpt_table, operation_presentation, output_format,
                                    wants_operation_table)
 from ..errors import require
@@ -56,6 +57,8 @@ class AnswerStore:
         needs_ops = task in ("operations", "integrated", "report") or task == "auto" and bool(re.search(
             r"운항|연료|배출|거리|속력|선박|항차|추이|계산|보고서|noon|mrv|vessel|ship|fuel|emission|distance|speed|report", question, re.I))
         needs_ops = needs_ops or kind == "chart" and task != "documents"
+        if task == 'auto' and definition_request(question):
+            needs_ops = False
         retrieval_started = monotonic()
         evidence = [] if task == "operations" else self.search(user, question, payload.get("filter", "all"))
         retrieval_ms = max(0, (monotonic() - retrieval_started) * 1000)
@@ -81,7 +84,7 @@ class AnswerStore:
                 compliance = self.compare_criterion(user, payload.get("criterion"), summary)
                 if not summary["count"]:
                     warnings.append("OPERATIONS_NOT_FOUND")
-        operation_table = kind == "table" and wants_operation_table(question, task)
+        operation_table = kind == "table" and needs_ops and wants_operation_table(question, task)
         if kind == "chart" or operation_table:
             try:
                 presentation = operation_presentation(summary, kind, question, language)
