@@ -174,6 +174,8 @@ def main() -> None:
     reviewed = sys.argv[1] if len(sys.argv) > 1 else date.today().isoformat()
     seed = json.loads(SEED.read_text(encoding="utf-8"))
     built = [korean_law(*law, reviewed) for law in KOREAN_LAWS] + [uscg_handbook(reviewed)]
+    for entry in built:
+        entry["title"] = "(테스트용) " + re.sub(r"\s*\(가상\)\s*$", "", entry["title"]).strip()
     by_id = {entry["id"]: entry for entry in built}
     merged = [by_id.pop(entry["id"], entry) for entry in seed]
     merged += list(by_id.values())

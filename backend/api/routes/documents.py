@@ -9,6 +9,7 @@ from fastapi import Response
 from ..errors import ApiError, require
 from ..web import security
 from ..navigation_query import try_answer as navigation_answer
+from ..question_workflows import try_answer as workflow_answer
 
 
 def documents(ctx):
@@ -33,13 +34,20 @@ def history(ctx):
 
 def ask(ctx):
     db, user = ctx.db, ctx.user
+    conversation_id = ctx.body.get("conversationId")
+    if conversation_id is not None:
+        db.lock_conversation(user, conversation_id)
     answer = navigation_answer(ctx)
+    if answer is None:
+        answer = workflow_answer(ctx)
     if answer is None:
         answer = db.answer(user, ctx.body)
     require(security.current_user(db, ctx.request, ctx.guest)["id"] == user["id"],
             "사용자 상태가 바뀌었습니다. 다시 연결해 주세요.", "AUTH_REQUIRED", 401)
     require(all(db.can_read_document(user, item["document_id"]) for item in answer["evidence"]),
             "문서 권한이 변경되었습니다. 다시 질문해 주세요.", "FORBIDDEN", 403)
+    if conversation_id is not None:
+        db.attach_conversation(answer, conversation_id)
     return answer
 
 
@@ -47,6 +55,18 @@ def search(ctx):
     return {"evidence": ctx.db.search(ctx.user, ctx.body.get("question", ""), ctx.body.get("filter", "all"))}
 
 
-GET = {"documents": documents, "history": history}
-GET_PREFIX = [("documents/", document_pdf)]
-POST = {"ask": ask, "search": search}
+def conversations(ctx):
+    return {"history": ctx.db.conversations(ctx.user)}
+
+
+def conversation(ctx):
+    return ctx.db.conversation(ctx.user, ctx.path[len("conversations/"):])
+
+
+def delete_conversation(ctx):
+    return ctx.db.delete_conversation(ctx.user, ctx.body.get("id"))
+
+
+GET = {"documents": documents, "history": history, "conversations": conversations}
+GET_PREFIX = [("documents/", document_pdf), ("conversations/", conversation)]
+POST = {"ask": ask, "search": search, "conversations/delete": delete_conversation}

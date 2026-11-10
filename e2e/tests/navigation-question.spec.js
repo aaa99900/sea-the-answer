@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 
 async function setup(page) {
-  const state = { calls: [], errors: [], delay: null, needsShip: false, unsupported: false };
+  const state = { calls: [], errors: [], delay: null, needsShip: false, unsupported: false, filtered: false };
   page.on('pageerror', e => state.errors.push(e.message));
   const ship = { id: 'real-ship', name: 'VIKING CINDERELLA', imo: '8719188', dwt: 4228, type: 'Passenger ship', version: 1 };
   await page.route('**/api/**', async route => {
@@ -34,6 +34,12 @@ async function setup(page) {
               { kind: 'length', vessel_reported_m: '189', berth_listed_m: '360', status: 'within_listed_reference', reasons: [] },
               { kind: 'beam', vessel_reported_m: '34', berth_listed_m: null, status: 'unavailable', reasons: ['BERTH_LIMIT_NOT_PUBLISHED'] },
             ] }] }));
+        if (state.filtered) {
+          nav.query = { description: { ko: '공개 흘수 제한 8 m 이상', en: 'Published draught limit at least 8 m' } };
+          nav.compared_berth_count = 8; nav.matched_berth_count = 4; nav.excluded_unknown_count = 1;
+          nav.ports.forEach(p => { p.available_berth_count = 4; });
+          nav.previous_query_id = body.context.previousQueryId;
+        }
       }
       return json({ id: 'nav-'+state.calls.length, question: body.question, language: 'ko', generation: 'tool',
         status: nav.results.length ? 'reference_found' : 'needs_input', notice: state.unsupported ? '요청한 항구 자료가 없습니다.' : '일부 공개 수치 비교입니다. 실제 입항 허가 판정은 아닙니다.',
@@ -53,7 +59,8 @@ async function ask(page, question) {
 test('question alone compares available ports and exact IMO aligns the existing context for the next question', async ({ page }) => {
   const state = await setup(page);
   await ask(page, 'IMO 8719188 선박이 입항 가능한 항구는?');
-  const answer = page.locator('[data-navigation-answer]');
+  const firstAnswer = page.locator('[data-answer-id="nav-1"]');
+  const answer = firstAnswer.locator('[data-navigation-answer]');
   await expect(answer).toContainText('VIKING CINDERELLA');
   await expect(answer.locator('table').first()).toContainText('Gothenburg');
   await expect(answer.locator('table').first()).toContainText('Helsinki');
@@ -72,10 +79,36 @@ test('question alone compares available ports and exact IMO aligns the existing 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await ask(page, '우리 배가 입항 가능한 항구가 어디야?');
   await expect.poll(() => state.calls.length).toBe(2);
+  await expect(page.locator('[data-answer-id="nav-2"] [data-navigation-answer]')).toBeVisible();
   await expect(answer).toBeVisible();
+  await expect(page.locator('.chat-turn')).toHaveCount(2);
   expect(state.calls[0].body.context.ship).toBe('sample');
   expect(state.calls[1].body.context.ship).toBe('real-ship');
+  expect(state.calls[1].body.context.previousQueryId).toBe('nav-1');
   expect(state.calls.every(c => c.headers.authorization === undefined && c.headers['x-haedap-token'] === 'nav-csrf')).toBe(true);
+  expect(state.errors).toEqual([]);
+});
+
+test('followup sends only the displayed ship answer ID and shows applied reference conditions', async ({ page }) => {
+  const state = await setup(page);
+  await ask(page, 'IMO 8719188 선박이 입항 가능한 항구는?');
+  await expect(page.locator('[data-navigation-answer]')).toBeVisible();
+  state.filtered = true;
+  await ask(page, '그럼 헬싱키는?');
+  await expect.poll(() => state.calls.length).toBe(2);
+  expect(state.calls[1].body.context.previousQueryId).toBe('nav-1');
+  await expect(page.locator('[data-navigation-conditions]')).toContainText('공개 흘수 제한 8 m 이상');
+  await expect(page.locator('[data-navigation-conditions]')).toContainText('8 / 4');
+  await expect(page.locator('[data-navigation-conditions]')).toContainText('미확인으로 필터에서 제외: 1');
+  await expect(page.locator('[data-navigation-conditions]')).toContainText('현재 자료를 다시 조회');
+  await page.locator('.query-context > summary').click();
+  await expect(page.locator('#ship')).toBeVisible();
+  await page.locator('#ship').selectOption('another');
+  await ask(page, '그럼 예테보리는?');
+  await expect.poll(() => state.calls.length).toBe(3);
+  expect(state.calls[2].body.context.previousQueryId).toBeUndefined();
+  await expect(page.locator('[data-answer-id="nav-3"]')).toBeVisible();
+  await expect(page.locator('[data-answer-id="nav-1"]')).toBeVisible();
   expect(state.errors).toEqual([]);
 });
 
@@ -84,8 +117,12 @@ test('a context change while a response is pending discards the previous ship an
   let release; state.delay = new Promise(resolve => { release = resolve; });
   await ask(page, 'IMO 8719188 선박이 입항 가능한 항구는?');
   await expect.poll(() => state.calls.length).toBe(1);
+  await page.locator('.query-context > summary').click();
+  await expect(page.locator('#ship')).toBeVisible();
   await page.locator('#ship').selectOption('another');
+  const pendingResponse = page.waitForResponse('**/api/ask');
   release(); state.delay = null;
+  await pendingResponse;
   await expect(page.locator('#ship')).toHaveValue('another');
   await expect(page.locator('[data-navigation-answer]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '질문 보내기', exact: true })).toBeEnabled();
@@ -100,10 +137,14 @@ test('clarification buttons submit a complete identity; unsupported ports never 
   await page.locator('[data-navigation-answer]').getByRole('button', { name: 'VIKING CINDERELLA · 8719188', exact: true }).click();
   await expect.poll(() => state.calls.length).toBe(2);
   expect(state.calls[1].body.question).toContain('IMO 8719188');
-  await expect(page.locator('[data-navigation-answer] table').first()).toBeVisible();
+  const resolved = page.locator('[data-answer-id="nav-2"]');
+  await expect(resolved.locator('[data-navigation-answer] table').first()).toBeVisible();
   state.unsupported = true;
   await ask(page, '우리 배가 부산항에 입항 가능해?');
-  await expect(page.locator('.answer')).toContainText('요청한 항구 자료가 없습니다');
-  await expect(page.locator('[data-navigation-answer] table')).toHaveCount(0);
+  const unsupported = page.locator('[data-answer-id="nav-3"]');
+  await expect(unsupported).toContainText('요청한 항구 자료가 없습니다');
+  await expect(unsupported.locator('[data-navigation-answer] table')).toHaveCount(0);
+  await expect(resolved.locator('table').first()).toBeVisible();
+  await expect(page.locator('.chat-turn')).toHaveCount(3);
   expect(state.errors).toEqual([]);
 });

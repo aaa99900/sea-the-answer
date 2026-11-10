@@ -1,7 +1,7 @@
 # HTTP API
 
 - 상태: 구현됨 (1.4.0)
-- 최종 확인: 2026-10-21 (`backend/api/` 대조)
+- 최종 확인: 2026-11-08 (운항 자료 등록·백업 복구의 BUSY 계약 대조)
 - 관련: [`../architecture.md`](../architecture.md), [`../data-model.md`](../data-model.md), [`integrated-answer.md`](integrated-answer.md), [ADR 0016](../adr/0016-crew-admin-authentication.md)
 
 ## 1. 목적
@@ -41,6 +41,7 @@
 | GET `/api/documents/:id/pdf` | 로그인 계정(범위 검사) | 허용된 저장 원본 PDF |
 | GET `/api/operations` | 로그인 계정 | 선박과 일별 운항 기록 |
 | POST `/api/operations/validate` | 관리자 | CSV 행 검증 `{rows:[...]}` |
+| POST `/api/operations/import/{start,chunk,preview,commit,reference,cancel}` | 관리자·소유 업로드 | 기존 CSV 버튼의 자료 판별·블록 전송·검증·종류별 등록. [계약](operation-data-import.md) |
 | POST `/api/operations/example` | 관리자 | 빈 작업공간에 가상 예시 등록 |
 | POST `/api/changes` | 관리자 | `{kind, payload}` 변경 즉시 반영. 일반 사용자는 403 |
 | GET `/api/changes` | 관리자 | 변경·승인 목록 (최근 200) |
@@ -67,6 +68,8 @@
 앱 JSON 백업·복구의 대상은 기존 앱 16개 테이블입니다. 해사 스키마 전체는 포함하지 않습니다. 같은 DB의 `maritime_data.vessels.ship_id`가 있으면 복구 직전 현재 연결을 보관하고, 앱 선박 교체 후 동일한 정체성이 확인되는 연결만 복원합니다. 실제 선박은 원본 7자리 IMO와 복구한 비샘플 앱 선박의 IMO가 같아야 하고, IMO가 없는 합성 선박은 이전 명시 연결의 이름·선종·DWT·IMO·sample 구분이 유지되어야 합니다. ID만 같고 식별정보가 달라진 선박은 연결하지 않습니다.
 
 복구 응답은 `ok`, `safetyBackup`을 유지하며, 연결 컬럼이 있는 경우 `maritimeLinks={linkedBefore,restored,cleared,missingShips,identityMismatch}`를 추가합니다. 해제된 연결이 있으면 `warnings`도 반환하고 같은 건수를 감사 로그에 남깁니다. 이 응답은 현재 연결 보존 결과이며 과거 해사 데이터·연결을 복구하는 별도 백업을 대체하지 않습니다.
+
+복구는 다른 업무 요청·자동 백업과 동시에 실행하지 않습니다. 다른 요청이나 자동 백업이 보호 잠금을 잡고 있으면 **409 `BUSY`**를 반환할 수 있으며 이 거절은 복구 실행·세션 무효화의 성공 응답이 아닙니다. 작업이 끝난 뒤 같은 백업과 확인 문구로 명시적으로 다시 요청할 수 있습니다. 클라이언트가 복구 요청을 자동 재전송하지는 않습니다.
 
 ### 변경 `kind`
 
@@ -189,7 +192,7 @@ DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 �
 - 새 개정본은 전처리를 한 번 수행하고, 결과가 0개면 400 `INVALID_INPUT`으로 거부한다. 이전 개정본의 활성 상태를 바꾸기 전에 검사한다. 기존 동일 해시·과거 개정본의 청크는 재검사·재생성하지 않는다.
 - API 응답·PostgreSQL 테이블·열람 범위·인용 검증은 그대로 유지한다. 현재 검색은 위 BM25 계약을 따른다.
 
-CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest`). 빈 DB의 첫 요청 때 `backend/knowledge/seed.json`(위 `document` 객체 배열)이 자동 등록됩니다.
+CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest`). 빈 DB의 첫 요청 때 `backend/knowledge/seed.json`(위 `document` 객체 배열)이 자동 등록됩니다. 2026-11-09 MEPC 업데이트는 별도 `mepc-2026.json`의 10개 문서를 기존 DB에도 한 번 적용합니다. 기존 문서 제목을 `(테스트용)`으로 표시하고 제목 끝 `(가상)`을 제거한 후 새 문서를 추가합니다. 기존 ID·본문·PDF·당시 답변 스냅샷을 보존하며, 완료 여부는 settings에 같은 트랜잭션으로 기록합니다. 실행 절차는 [사용 안내](../user-guide.md)를 참고하세요.
 
 ## 5. 오류 형식
 

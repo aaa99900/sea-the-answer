@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 async function mockWorkspace(page, admin = false) {
   const state = {
     admin, loggedIn: true, deleteError: false, deleteCalls: [], history: [], waitForAnswer: null,
-    waitForOperations: null, generationCalls: [], answerPatch: null,
+    waitForOperations: null, generationCalls: [], answerPatch: null, answerCount: 0, conversations: new Map(),
     reports: [{ id: 'report-1', title: '삭제 검증 보고서', type: '규정 검토', text: '보존할 보고서 본문',
       sources: [], version: 3, status: 'draft', owner: 'crew_3edf36ec', body: {}, updatedAt: '2026-10-18' }],
   };
@@ -34,6 +34,12 @@ async function mockWorkspace(page, admin = false) {
         records: [{ id: 'record-1', ship: 'ship-1', date: '2026-09-25', fuel: 10, factor: 3.114, distance: 100,
           speed: 10, fuelType: 'HFO', version: 1 }] });
     }
+    if (path === '/api/reports' && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      const report = { ...body, version: body.version + 1 };
+      state.reports = state.reports.map(r => r.id === report.id ? report : r);
+      return json({ report });
+    }
     if (path === '/api/reports') return json({ reports: state.reports });
     if (path === '/api/reports/generate') {
       const payload = request.postDataJSON();
@@ -54,15 +60,23 @@ async function mockWorkspace(page, admin = false) {
     }
     if (path.startsWith('/api/reports/')) return json({ report: state.reports.find(r => r.id === path.split('/').at(-1)) });
     if (path === '/api/ask') {
-      const question = request.postDataJSON().question;
+      const body = request.postDataJSON(), question = body.question;
+      const id = 'answer-' + (++state.answerCount);
+      const conversationId = body.conversationId || id;
       if (state.waitForAnswer) await state.waitForAnswer();
-      const answer = { id: 'answer-1', question, language: 'ko', generation: 'extractive', status: 'insufficient_evidence',
+      const answer = { id, conversationId, question, language: 'ko', generation: 'extractive', status: 'insufficient_evidence',
         notice: '검증 응답', warnings: [], statements: [], evidence: [], toolRuns: [] };
-      if (state.answerPatch) Object.assign(answer, state.answerPatch);
-      state.history = [{ id: answer.id, question, answer, at: '2026-10-18T00:00:00Z' }];
+      if (state.answerPatch) Object.assign(answer, structuredClone(state.answerPatch));
+      const conversation = state.conversations.get(conversationId) || { id: conversationId, turns: [] };
+      conversation.turns.push({ id, question, answer, at: '2026-10-18T00:00:00Z' });
+      state.conversations.set(conversationId, conversation);
+      state.history = [...state.conversations.values()].map(c => ({
+        id: c.id, question: c.turns[0].question, count: c.turns.length, at: c.turns.at(-1).at,
+      }));
       return json(answer);
     }
-    if (path === '/api/history') return json({ history: state.history });
+    if (path === '/api/conversations') return json({ history: state.history });
+    if (path.startsWith('/api/conversations/')) return json(state.conversations.get(path.split('/').at(-1)));
     return json({ changes: [], logs: [], users: [], backups: [] });
   });
   return state;
@@ -112,6 +126,30 @@ test('question menu resets the answer and input while stored history still opens
   await go(page, 'chat');
   await expect(page.locator('#question')).toHaveValue('');
   expect(state.history).toHaveLength(1);
+  expect(state.errors).toEqual([]);
+});
+
+test('report save status follows edits and UI language without translating report data', async ({ page }) => {
+  const state = await mockWorkspace(page);
+  await page.goto('/reports');
+  await action(page, 'openReport').click();
+  const status = page.locator('#saveStatus');
+  await expect(page.locator('#report-title')).toHaveValue('삭제 검증 보고서');
+  await page.locator('#report-title').fill('원문 보고서 제목');
+  await expect(status).toHaveText('브라우저 임시 보관 · 저장 전');
+  await expect(action(page, 'submitReport')).toBeDisabled();
+  await action(page, 'saveReport').click();
+  await expect(status).toHaveText('저장된 내용');
+  await expect(action(page, 'submitReport')).toBeEnabled();
+  await page.locator('.language-button').click();
+  await page.getByRole('button', { name: 'English', exact: true }).click();
+  await expect(status).toHaveText('Saved content');
+  await expect(page.locator('#report-title')).toHaveValue('원문 보고서 제목');
+  await page.locator('#report-text').fill('번역하지 않을 보고서 본문');
+  await expect(status).toHaveText('Stored in browser · Not saved to server');
+  await action(page, 'saveReport').click();
+  await expect(status).toHaveText('Saved content');
+  expect(state.reports[0].text).toBe('번역하지 않을 보고서 본문');
   expect(state.errors).toEqual([]);
 });
 
@@ -275,7 +313,8 @@ test('requested line and bar charts show axis units and accessible data tables o
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/chat');
   await ask(page, '선박의 일별 CO₂ 배출을 막대그래프로 보여줘');
-  const chart = page.locator('.answer-presentation svg');
+  const barAnswer = page.locator('[data-answer-id="answer-1"]');
+  const chart = barAnswer.locator('.answer-presentation svg');
   await expect(chart).toBeVisible();
   await expect(chart.getByText('CO₂ (t CO₂)', { exact: true })).toBeVisible();
   await expect(chart.getByText('일자', { exact: true })).toBeVisible();
@@ -291,8 +330,11 @@ test('requested line and bar charts show axis units and accessible data tables o
   state.answerPatch.presentation.totalPoints = 2;
   state.answerPatch.presentationNotice = null;
   await ask(page, '같은 자료를 선 그래프로 보여줘');
-  await expect(chart.locator('polyline')).toHaveCount(1);
-  await expect(chart.locator('circle')).toHaveCount(2);
+  const line = page.locator('[data-answer-id="answer-2"] .answer-presentation svg');
+  await expect(line.locator('polyline')).toHaveCount(1);
+  await expect(line.locator('circle')).toHaveCount(2);
+  await expect(chart.locator('rect')).toHaveCount(2);
+  await expect(barAnswer).toContainText('전체 101개 중 2개');
   expect(state.errors).toEqual([]);
 });
 
@@ -312,9 +354,11 @@ test('unavailable or malformed presentation retains the answer without executing
     xLabel: '일자', yLabel: '연료', unit: 't', points: [{ label: '오늘', value: 'not-a-number' }],
     truncated: false, totalPoints: 1 };
   await ask(page, '무효 자료를 그래프로 보여줘');
-  await expect(page.locator('.answer-presentation svg')).toHaveCount(0);
-  await expect(page.locator('.answer-presentation')).toContainText('본문 답변을 표시합니다.');
-  await expect(page.locator('.answer')).toContainText('보존해야 하는 본문 답변입니다.');
+  const invalid = page.locator('[data-answer-id="answer-2"]');
+  await expect(invalid.locator('.answer-presentation svg')).toHaveCount(0);
+  await expect(invalid.locator('.answer-presentation')).toContainText('본문 답변을 표시합니다.');
+  await expect(invalid).toContainText('보존해야 하는 본문 답변입니다.');
+  await expect(page.locator('[data-answer-id="answer-1"]')).toContainText('원문 PDF를 확인해 주세요.');
   expect(state.errors).toEqual([]);
 });
 

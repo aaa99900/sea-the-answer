@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import { createWorkspace } from './controller';
 import { Button } from '../components/common';
+import {UiLanguageContext, UiText} from '../components/ui-language';
 const Context = createContext(null);
 export function useWorkspace() {
   const value = useContext(Context);
@@ -47,10 +48,8 @@ function Modal({ workspace }) {
       {modal && (
         <React.Fragment key={modal.id}>
           <div className="modal-head">
-            <h2 id="dialog-title">{modal.title}</h2>
-            <Button action="closeModal" className="ghost sm">
-              닫기
-            </Button>
+            <h2 id="dialog-title"><UiText>{modal.title}</UiText></h2>
+            <Button action="closeModal" className="ghost sm"><UiText>{"닫기"}</UiText></Button>
           </div>
           <div className="modal-body">{modal.body}</div>
           {modal.footer && <div className="modal-footer">{modal.footer}</div>}
@@ -90,7 +89,8 @@ export function WorkspaceProvider({ children }) {
     workspace.routeChanged(pathname);
   }, [pathname, workspace]);
   useEffect(() => {
-    document.title = `해답 · ${workspace.state.loginOpen ? '선원·관리자 로그인' : workspace.state.passwordOpen || workspace.state.user?.must_change_password ? '비밀번호 변경' : workspace.views.pageNames[workspace.state.page] || 'SEA THE ANSWER'}`;
+    document.documentElement.lang = workspace.state.uiLanguage;
+    document.title = '해답 · SEA THE ANSWER';
   }, [workspace, revision]);
   return (
     <Context.Provider
@@ -99,29 +99,38 @@ export function WorkspaceProvider({ children }) {
         revision,
       }}
     >
-      <div {...workspace.events}>
-        <a className="skip" href="#main">
-          본문 바로가기
-        </a>
+      <UiLanguageContext.Provider value={workspace.state.uiLanguage}><div {...workspace.events}>
+        <a className="skip" href="#main"><UiText>{"본문 바로가기"}</UiText></a>
         {workspace.views.shell(children)}
         <Modal workspace={workspace} />
         <div id="toasts" role="status" aria-live="polite">
           {workspace.toasts.map((t) => (
             <div key={t.id} className="toast">
-              {t.text}
+              <UiText>{t.text}</UiText>
             </div>
           ))}
         </div>
-      </div>
+      </div></UiLanguageContext.Provider>
     </Context.Provider>
   );
 }
 export function WorkspacePage({ name, id }) {
   const { workspace } = useWorkspace();
-  if (workspace.state.routeError) return <div className="card pad"><h2>보고서를 불러올 수 없어요</h2><p>{workspace.state.routeError}</p><Button action="reportList" className="mt">보고서 목록</Button></div>;
+  const scrollRequest = workspace.state.chatScrollRequest;
+  useLayoutEffect(() => {
+    if (name !== 'chatPage' || !scrollRequest) return;
+    const frame = requestAnimationFrame(() => {
+      const state = workspace.state;
+      if (state.page !== 'chat' || state.askSequence !== scrollRequest.sequence ||
+          state.chatScrollRequest !== scrollRequest) return;
+      window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'instant'});
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [workspace, name, scrollRequest]);
+  if (workspace.state.routeError) return <div className="card pad"><h2><UiText>{"보고서를 불러올 수 없어요"}</UiText></h2><p>{workspace.state.routeError}</p><Button action="reportList" className="mt"><UiText>{"보고서 목록"}</UiText></Button></div>;
   if (name === 'documentPage' && id && workspace.state.doc !== id)
-    return <p role="status">문서를 불러오고 있어요…</p>;
+    return <p role="status"><UiText>{"문서를 불러오고 있어요…"}</UiText></p>;
   if (name === 'editorPage' && id && id !== 'new' && workspace.state.draft.id !== id)
-    return <p role="status">보고서를 불러오고 있어요…</p>;
+    return <p role="status"><UiText>{"보고서를 불러오고 있어요…"}</UiText></p>;
   return workspace.views[name]();
 }

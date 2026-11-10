@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +12,7 @@ from api import config, deps, main
 from api.errors import ApiError
 from api.store import Workspace
 from api.web import backup_job, concurrency, security
+from test_maritime_migrations import ROOT, postgres_dsn
 
 
 ADMIN = {"id": "admin-1", "username": "admin", "name": "관리자", "role": "admin", "active": True, "version": 1}
@@ -161,6 +164,68 @@ def test_automatic_backup_runs_once_per_utc_day(monkeypatch, tmp_path):
     state["autoBackupDay"] = ""
     backup_job.automatic_backup_once()
     assert calls == ["backup"]
+
+
+def test_automatic_backup_lock_rejects_restore_without_changes_then_allows_retry(postgres_dsn, monkeypatch, tmp_path):
+    # Commit migrations and fixture data so independent HTTP and backup sessions
+    # exercise the actual PostgreSQL locks, not one shared mock connection.
+    with Workspace(postgres_dsn) as db:
+        for path in sorted((ROOT / 'migrations').glob('*.sql')):
+            db.db.execute(path.read_text(encoding='utf-8').split('-- migrate:up', 1)[1].split('-- migrate:down', 1)[0])
+        db.save_user(ADMIN, {'username': 'restore-lock-admin', 'name': 'Restore lock fixture',
+                            'role': 'admin', 'password': 'Restore-lock-test-only-2026'})
+        db.run('UPDATE users SET must_change_password=false')
+        db.run("INSERT INTO settings(key,value) VALUES('autoBackup','daily')")
+        db.run("INSERT INTO ships(id,body,version) VALUES('restore-fixture','{\"name\":\"before\"}'::jsonb,1)")
+    monkeypatch.setenv('DATABASE_URL', postgres_dsn)
+    monkeypatch.setattr(deps, 'initialized', True)
+    monkeypatch.setattr(security, 'sessions', {})
+    monkeypatch.setattr(security, 'login_attempts', {})
+    monkeypatch.setattr(config, 'backup_directory', lambda: tmp_path)
+    client = TestClient(main.app, base_url='http://localhost:5173')
+    headers = {'X-Haedap-Token': client.get('/api/health').json()['csrfToken']}
+    assert client.post('/api/auth/login', headers=headers, json={
+        'username': 'restore-lock-admin', 'password': 'Restore-lock-test-only-2026'}).status_code == 200
+    saved = client.post('/api/backups', headers=headers, json={})
+    assert saved.status_code == 200
+    body = {'id': saved.json()['backup']['id'], 'confirm': '복구'}
+    with Workspace(postgres_dsn) as db:
+        db.run("UPDATE ships SET body='{\"name\":\"after\"}'::jsonb WHERE id='restore-fixture'")
+    session = client.cookies.get('haedap_session')
+    before_files = set(tmp_path.glob('*.json'))
+    entered, release = Event(), Event()
+    create_backup = Workspace.create_backup
+
+    def hold_automatic_backup(db, user, directory, label='수동 백업'):
+        if label == '정기 자동 백업':
+            entered.set()
+            assert release.wait(15), 'test did not release the automatic backup'
+        return create_backup(db, user, directory, label)
+
+    monkeypatch.setattr(Workspace, 'create_backup', hold_automatic_backup)
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        task = worker.submit(backup_job.automatic_backup_once)
+        try:
+            assert entered.wait(10), 'automatic backup did not reach its protected work'
+            rejected = client.post('/api/backups/restore', headers=headers, json=body)
+            assert rejected.status_code == 409
+            assert rejected.json()['error']['code'] == 'BUSY'
+            assert client.cookies.get('haedap_session') == session
+            assert security.digest(session) in security.sessions
+            assert set(tmp_path.glob('*.json')) == before_files  # No pre-restore safety backup or partial restore.
+            with Workspace(postgres_dsn) as db:
+                assert db.one("SELECT body FROM ships WHERE id='restore-fixture'")['body']['name'] == 'after'
+            assert concurrency.active_requests == 0 and not concurrency.restoring
+        finally:
+            release.set()
+        task.result(timeout=10)
+    restored = client.post('/api/backups/restore', headers=headers, json=body)
+    assert restored.status_code == 200, restored.text
+    assert restored.json()['safetyBackup']
+    assert not security.sessions
+    with Workspace(postgres_dsn) as db:
+        assert db.one("SELECT body FROM ships WHERE id='restore-fixture'")['body']['name'] == 'before'
+    assert client.get('/api/operations').status_code == 401
 
 
 def test_bilingual_document_search_matches_korean_evidence():

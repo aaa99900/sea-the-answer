@@ -1,10 +1,13 @@
+import {UiControl} from '../components/ui-language';
 import React from 'react';
+import {UiText} from '../components/ui-language';
 import { SkillResult } from '../components/skill-result';
 import { AnswerPresentation } from '../components/answer-presentation';
 import { validatedPresentation } from '../lib/answer-presentation';
 import SkillsPanel from '../components/skills-panel';
 import * as helpers from '../components/common';
 import NavigationAnswer from '../components/navigation-answer';
+import QuestionWorkflow from '../components/question-workflow';
 export function createMainViews(model, views) {
   const noop = () => {};
   const { state, canWrite, isAdmin } = model;
@@ -31,17 +34,17 @@ export function createMainViews(model, views) {
         <small>
           {d.version}
           {' · '}
-          {d.active ? '사용 중' : d.meta?.status === 'retired' ? '폐기' : '이전 버전'}
+          <UiText>{d.active ? '사용 중' : d.meta?.status === 'retired' ? '폐기' : '이전 버전'}</UiText>
         </small>
       </button>
     ) : (
-      <p className={'unknown-source'}>{'열람할 수 없는 근거입니다.'}</p>
+      <p className={'unknown-source'}><UiText>{'열람할 수 없는 근거입니다.'}</UiText></p>
     );
   }
   function composer() {
     return (
       <><form id={'askForm'} className={'composer'}>
-        <textarea
+        <UiControl as="textarea"
           id={'question'}
           aria-label={'질문 입력'}
           placeholder={'규정의 근거, 운항 기록이나 필요한 보고서를 질문해 보세요.'}
@@ -49,37 +52,10 @@ export function createMainViews(model, views) {
           required
           value={state.question}
           onChange={noop}
-        ></textarea>
+        ></UiControl>
         <div className={'composer-bottom'}>
           <div className={'query-controls'}>
-            <select aria-label={'질문 종류'} data-field={'task'} value={state.task} onChange={noop}>
-              {options([
-                ['auto', '작업 자동 선택'],
-                ['documents', '문서 검색'],
-                ['operations', '운항 분석'],
-                ['integrated', '통합 확인'],
-                ['report', '보고서'],
-              ])}
-            </select>
-            <select
-              aria-label={'답변 언어'}
-              data-field={'language'}
-              value={state.language}
-              onChange={noop}
-            >
-              {options([
-                ['auto', '언어 자동'],
-                ['ko', '한국어'],
-                ['en', 'English'],
-              ])}
-            </select>
-            <select aria-label={'답변 방식'} data-field={'mode'} value={state.mode} onChange={noop}>
-              {options([
-                ['extractive', '근거 문단 보기'],
-                ...(state.health?.llmConfigured ? [['llm', 'AI 답변']] : []),
-              ])}
-            </select>
-            <select
+            <UiControl as="select"
               aria-label={'검색 범위'}
               data-field={'filter'}
               value={state.filter}
@@ -90,9 +66,9 @@ export function createMainViews(model, views) {
                 ['imo', '공식 안내 요약'],
                 ['manual', '선내·샘플'],
               ])}
-            </select>
+            </UiControl>
           </div>
-          <button
+          <UiControl as="button"
             className={'sendbtn'}
             type={'submit'}
             aria-label={'질문 보내기'}
@@ -103,7 +79,7 @@ export function createMainViews(model, views) {
               : {})}
           >
             {I('send')}
-          </button>
+          </UiControl>
         </div>
       </form><SkillsPanel group="documents" /></>
     );
@@ -114,27 +90,27 @@ export function createMainViews(model, views) {
       sources = [...new Set(a.evidence.map((e) => e.document_id))],
       presentation = validatedPresentation(a.presentation, a.evidence);
     return (
-      <article className={'card answer'}>
+      <article className={'card answer'} data-answer-id={a.id}>
         <div className={'inline wrap'}>
           <h2>
-            {en
+            <UiText>{en
               ? 'Answer & evidence'
               : a.status === 'insufficient_evidence'
                 ? '답변 근거를 확인해 주세요'
-                : '답변과 확인 근거'}
+                : '답변과 확인 근거'}</UiText>
           </h2>
-          {badge(a.navigation ? '항구 참조 비교' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
         <p className={'small muted'}>{a.notice}</p>
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
-        {a.warnings.some((w) => w === 'MODEL_FAILED_EXTRACTIVE_FALLBACK' || w === 'MODEL_NOT_CONFIGURED')
+        <UiText>{a.warnings.some((w) => w === 'MODEL_FAILED_EXTRACTIVE_FALLBACK' || w === 'MODEL_NOT_CONFIGURED')
           ? notice(
               en
                 ? 'AI unavailable. Showing source excerpts.'
                 : 'AI 답변을 생성하지 못해 원문 근거를 표시합니다.',
               'warning',
             )
-          : ''}
+          : ''}</UiText>
         {!a.navigation && <>
         {a.statements.map((s, __index) => {
           const e = a.evidence.find((e) => e.id === s.chunkId);
@@ -164,14 +140,14 @@ export function createMainViews(model, views) {
           );
         })}
         <AnswerPresentation answer={a} presentation={presentation} />
-        {!a.evidence.length && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
+        <UiText>{!a.evidence.length && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
           ? notice(
               en
                 ? 'Insufficient document evidence. Ask the responsible officer.'
                 : '문서 근거가 부족합니다. 관련 문서를 등록하거나 담당자에게 확인해 주세요.',
               'warning',
             )
-          : ''}
+          : ''}</UiText>
         {operationAnswer(a)}
         {a.skill && <><h3>{a.skill.name}</h3><SkillResult answer={a} /></>}
         {a.toolRuns.map((t, __index) => (
@@ -180,7 +156,7 @@ export function createMainViews(model, views) {
               <div className={'card pad mt'}>
                 {'CO₂ '}
                 {n(t.emission, 3)}
-                {' t · 집약도 '}
+                <UiText>{' t · 집약도 '}</UiText>
                 {n(t.intensity, 3)}
                 {' gCO₂/(DWT·nm)'}
               </div>
@@ -189,7 +165,7 @@ export function createMainViews(model, views) {
         ))}
         {sources.length ? (
           <div className={'answer-sources'}>
-            <h3>{en ? 'Sources' : '확인한 근거'}</h3>
+            <h3><UiText>{en ? 'Sources' : '확인한 근거'}</UiText></h3>
             {sources.map((id, __index) => (
               <React.Fragment key={__index}>
                 {sourceCard(id, a.evidence.find((e) => e.document_id === id)?.id)}
@@ -201,13 +177,14 @@ export function createMainViews(model, views) {
         )}
         </>}
         {a.navigation && <NavigationAnswer answer={a} />}
+        {a.workflow && <QuestionWorkflow answer={a} />}
         <div className={'answer-actions'}>
-          {canWrite() && (a.statements.length || a.operations?.count || a.toolRuns.length)
+          <UiText>{canWrite() && (a.statements.length || a.operations?.count || a.toolRuns.length)
             ? btn(en ? 'Add to report' : '보고서에 담기', 'answerReport', 'primary', 'edit')
-            : ''}
-          {a.reportSuggested && canWrite()
+            : ''}</UiText>
+          <UiText>{a.reportSuggested && canWrite()
             ? btn(en ? 'Choose report template' : '보고서 양식 선택', 'reportList', '', 'file')
-            : ''}
+            : ''}</UiText>
         </div>
         <SkillsPanel group="evaluation" targetAnswerId={a.id} />
       </article>
@@ -216,9 +193,8 @@ export function createMainViews(model, views) {
   function chatPage() {
     const toolbar = (
         <div className={'chat-toolbar'}>
-          <span className={'muted small'}>{'문서의 근거와 운항 정보를 한곳에서'}</span>
           <div className={'actions'}>
-            {state.answer ? btn('새 질문', 'newQuestion', 'ghost sm', 'plus') : ''}
+            <UiText>{state.turns.length || state.busy ? btn('새 질문', 'newQuestion', 'ghost sm', 'plus') : ''}</UiText>
             {btn('질의 이력', 'history', 'ghost sm', 'clock')}
           </div>
         </div>
@@ -226,22 +202,17 @@ export function createMainViews(model, views) {
       context = (
         <details
           className={'query-context'}
-          {...(state.ship
-            ? {
-                open: true,
-              }
-            : {})}
         >
           <summary>
-            {'운항 분석 대상 '}
-            {state.ships.find((s) => s.id === state.ship)?.name
+            <UiText>{'운항 분석 대상 '}</UiText>
+            <UiText>{state.ships.find((s) => s.id === state.ship)?.name
               ? '· ' + state.ships.find((s) => s.id === state.ship).name
-              : '선택'}
+              : '선택'}</UiText>
           </summary>
           {contextControls(true)}
           {state.criterion ? (
             <p className={'small muted'}>
-              {'비교 기준이 설정됨 '}
+              <UiText>{'비교 기준이 설정됨 '}</UiText>
               {btn('기준 해제', 'clearCriterion', 'ghost sm')}
             </p>
           ) : (
@@ -249,7 +220,7 @@ export function createMainViews(model, views) {
           )}
         </details>
       );
-    if (!state.answer && !state.busy && !state.askError)
+    if (!state.turns.length && !state.busy && !state.askError)
       return (
         <>
           {toolbar}
@@ -257,14 +228,14 @@ export function createMainViews(model, views) {
             <div className={'chat-intro'}>
               <div className={'hero-symbol'}>{I('spark')}</div>
               <h1>
-                {'오늘 운항에 필요한 정보,'}
+                <UiText>{'오늘 운항에 필요한 정보,'}</UiText>
                 <br />
-                <span>{'무엇이 궁금하신가요?'}</span>
+                <span><UiText>{'무엇이 궁금하신가요?'}</UiText></span>
               </h1>
-              <p>{'규정의 근거를 찾고, 운항 기록을 확인하고, 보고서로 정리하세요.'}</p>
+              <p><UiText>{'규정의 근거를 찾고, 운항 기록을 확인하고, 보고서로 정리하세요.'}</UiText></p>
               {context}
               {composer()}
-              <div className={'suggest-label'}>{'이런 질문으로 시작해 보세요'}</div>
+              <div className={'suggest-label'}><UiText>{'이런 질문으로 시작해 보세요'}</UiText></div>
               <div className={'grid3'}>
                 {[
                   ['file', '연료 황 함유량 기준을 알려줘', '문서 검색 · 근거 확인'],
@@ -275,15 +246,15 @@ export function createMainViews(model, views) {
                     {
                       <button className={'suggest'} data-question={q}>
                         {I(i)}
-                        <strong>{q}</strong>
-                        <small>{sub}</small>
+                        <strong><UiText>{q}</UiText></strong>
+                        <small><UiText>{sub}</UiText></small>
                       </button>
                     }
                   </React.Fragment>
                 ))}
               </div>
               <p className={'footnote center mt'}>
-                {'근거 문단은 원문 언어로 표시됩니다. AI 답변은 설정된 경우 사용할 수 있습니다.'}
+                <UiText>{'근거 문단은 원문 언어로 표시됩니다. AI 답변은 설정된 경우 사용할 수 있습니다.'}</UiText>
               </p>
             </div>
           }
@@ -294,17 +265,19 @@ export function createMainViews(model, views) {
         {toolbar}
         {
           <div className={'chat-content'}>
-            <div className={'question-bubble'}>
-              {state.answer?.question || state.pendingQuestion || state.question}
-            </div>
+            {state.turns.map(turn => <section className="chat-turn" key={turn.id}>
+              <div className="question-bubble">{turn.question}</div>
+              <UiText>{turn.answer ? answerView(turn.answer) : notice('근거가 삭제되었거나 현재 열람 권한이 없어 답변을 표시하지 않습니다.', 'warning')}</UiText>
+            </section>)}
+            {(state.busy || state.askError) && <div className="question-bubble">{state.pendingQuestion}</div>}
             {state.busy ? (
               <div className={'thinking'} role={'status'}>
                 <span className={'spinner'}></span>
                 <div>
-                  <strong>{'문서와 데이터를 확인하고 있어요'}</strong>
+                  <strong><UiText>{'문서와 데이터를 확인하고 있어요'}</UiText></strong>
                   {state.slow ? (
                     <p className={'progress-extra'}>
-                      {'15초 이상 소요되고 있어요. 처리가 계속 진행 중입니다.'}
+                      <UiText>{'15초 이상 소요되고 있어요. 처리가 계속 진행 중입니다.'}</UiText>
                     </p>
                   ) : (
                     ''
@@ -323,7 +296,6 @@ export function createMainViews(model, views) {
                   'warning',
                 )
               : ''}
-            {answerView(state.answer)}
             <div className={'mt'}>
               {context}
               {composer()}
@@ -354,7 +326,7 @@ export function createMainViews(model, views) {
           '문서를 등록하고 버전과 적용 조건을 확인하세요.',
           <>
             {btn('새로고침', 'refreshDocuments', '', 'refresh')}
-            {isAdmin() ? btn('문서 등록', 'newDocument', 'primary', 'plus') : ''}
+            <UiText>{isAdmin() ? btn('문서 등록', 'newDocument', 'primary', 'plus') : ''}</UiText>
           </>,
         )}
         {
@@ -362,7 +334,7 @@ export function createMainViews(model, views) {
             <form className={'controls'} id={'docSearch'}>
               <div className={'searchbox'}>
                 {I('search')}
-                <input
+                <UiControl as="input"
                   className={'control'}
                   name={'query'}
                   defaultValue={state.docQuery}
@@ -371,7 +343,7 @@ export function createMainViews(model, views) {
                   onChange={noop}
                 />
               </div>
-              <select
+              <UiControl as="select"
                 className={'control'}
                 aria-label={'문서 유형'}
                 data-field={'docKind'}
@@ -384,8 +356,8 @@ export function createMainViews(model, views) {
                   ['onboard', '선내 문서'],
                   ['sample', '가상 샘플'],
                 ])}
-              </select>
-              <select
+              </UiControl>
+              <UiControl as="select"
                 className={'control'}
                 aria-label={'문서 상태'}
                 data-field={'docStatus'}
@@ -397,16 +369,16 @@ export function createMainViews(model, views) {
                   ['all', '모든 버전'],
                   ['old', '이전·폐기'],
                 ])}
-              </select>
-              <button className={'btn'}>{'검색'}</button>
+              </UiControl>
+              <button className={'btn'}><UiText>{'검색'}</UiText></button>
             </form>
             <div className={'sectiontitle'}>
               <h3>
-                {'문서 '}
+                <UiText>{'문서 '}</UiText>
                 {docs.length}
-                {'개'}
+                <UiText>{'개'}</UiText>
               </h3>
-              <span className={'small muted'}>{'열람 가능한 문서만 표시'}</span>
+              <span className={'small muted'}><UiText>{'열람 가능한 문서만 표시'}</UiText></span>
             </div>
             <div className={'card'}>
               {docs.length
@@ -433,10 +405,10 @@ export function createMainViews(model, views) {
                             </div>
                             <div className={'docmeta'}>
                               <span>{d.version}</span>
-                              <span>{d.meta.issuer || '발행기관 미입력'}</span>
+                              <span>{d.meta.issuer || <UiText>발행기관 미입력</UiText>}</span>
                               <span>
-                                {'개정 '}
-                                {d.meta.revisedAt || '미입력'}
+                                <UiText>{'개정 '}</UiText>
+                                {d.meta.revisedAt || <UiText>미입력</UiText>}
                               </span>
                             </div>
                           </div>
@@ -450,9 +422,9 @@ export function createMainViews(model, views) {
                 : empty('검색 결과가 없어요', '검색어와 필터를 확인해 주세요.')}
             </div>
             <p className={'footnote mt'}>
-              {
+              <UiText>{
                 '‘사용 중’은 내부에서 선택한 적용 버전입니다. 외부 원문의 최신성은 발행일·개정일과 함께 확인하세요.'
-              }
+              }</UiText>
             </p>
           </>
         }
@@ -473,8 +445,8 @@ export function createMainViews(model, views) {
     return (
       <>
         {head(
-          d.title,
-          d.reference,
+          <span>{d.title}</span>,
+          <span>{d.reference}</span>,
           <>
             {btn('돌아가기', 'backDocument', '', 'arrowback')}
             {isAdmin() ? (
@@ -482,11 +454,11 @@ export function createMainViews(model, views) {
                 {btn('개정·정보 수정', 'editDocument', '', 'edit', {
                   'data-id': d.id,
                 })}
-                {d.active
+                <UiText>{d.active
                   ? btn('삭제', 'deleteDocument', 'danger-outline', '', {
                       'data-id': d.id,
                     })
-                  : ''}
+                  : ''}</UiText>
               </>
             ) : (
               ''
@@ -495,9 +467,9 @@ export function createMainViews(model, views) {
         )}
         {
           <>
-            {!d.active
+            <UiText>{!d.active
               ? notice('이전 버전 또는 폐기된 문서입니다. 적용 여부를 확인해 주세요.', 'warning')
-              : ''}
+              : ''}</UiText>
             <div className={'docviewer'}>
               <div className={'paper-shell'}>
                 <div className={'actions mb'}>
@@ -506,16 +478,16 @@ export function createMainViews(model, views) {
                     'documentText',
                     state.docView === 'text' ? 'primary sm' : 'sm',
                   )}
-                  {d.hasPdf
+                  <UiText>{d.hasPdf
                     ? btn('PDF 원문', 'documentPdf', state.docView === 'pdf' ? 'primary sm' : 'sm')
-                    : ''}
+                    : ''}</UiText>
                 </div>
                 {state.docView === 'pdf' && d.hasPdf ? (
-                  <iframe
+                  <UiControl as="iframe"
                     className={'pdf-frame'}
                     title={d.title + ' 원문 PDF'}
                     src={'/api/documents/' + encodeURIComponent(d.id) + '/pdf#page=' + page}
-                  ></iframe>
+                  ></UiControl>
                 ) : (
                   <article className={'paper'}>
                     <div className={'doc-kicker'}>{'SEA THE ANSWER / DOCUMENT'}</div>
@@ -530,7 +502,7 @@ export function createMainViews(model, views) {
                             <h3>
                               {s.heading}{' '}
                               <small className={'muted'}>
-                                {s.page ? 'p.' + s.page : '페이지 미지정'}
+                                <UiText>{s.page ? 'p.' + s.page : '페이지 미지정'}</UiText>
                               </small>
                             </h3>
                             <p>{s.text}</p>
@@ -542,7 +514,7 @@ export function createMainViews(model, views) {
                 )}
               </div>
               <aside className={'card pad'}>
-                <h3>{'문서 정보'}</h3>
+                <h3><UiText>{'문서 정보'}</UiText></h3>
                 {[
                   ['버전', d.version],
                   ['발행기관', d.meta.issuer],
@@ -562,21 +534,21 @@ export function createMainViews(model, views) {
                   <React.Fragment key={__index}>
                     {
                       <div className={'metaitem'}>
-                        <label>{k}</label>
-                        <p>{v || '미입력'}</p>
+                        <label><UiText>{k}</UiText></label>
+                        <p>{v || <UiText>미입력</UiText>}</p>
                       </div>
                     }
                   </React.Fragment>
                 ))}
                 {url ? (
                   <a className={'btn mt'} href={url} target={'_blank'} rel={'noopener noreferrer'}>
-                    {'외부 원문'}
+                    <UiText>{'외부 원문'}</UiText>
                   </a>
                 ) : (
                   ''
                 )}
                 <div className={'divider'}></div>
-                <h3>{'저장된 버전'}</h3>
+                <h3><UiText>{'저장된 버전'}</UiText></h3>
                 {state.docs
                   .filter((x) => x.logical_id === d.logical_id)
                   .map((x, __index) => (
@@ -605,28 +577,29 @@ export function createMainViews(model, views) {
       return (
         <main className={'login-layout'}>
           <section className={'login-card'}>
-            <h1>{'해답'}</h1>
+            <h1><UiText>{'해답'}</UiText></h1>
             <p role={'status'}>{state.connectionError || '작업공간에 연결하고 있어요…'}</p>
-            {state.connectionError ? btn('다시 연결', 'reconnect', 'mt') : ''}
+            <UiText>{state.connectionError ? btn('다시 연결', 'reconnect', 'mt') : ''}</UiText>
           </section>
         </main>
       );
     const page = state.page;
     return (
       <div className={'app'}>
-        <button
+        <UiControl as="button"
           className={'menu-scrim ' + (state.menu ? 'visible' : '')}
           data-action={'menu'}
           aria-label={'메뉴 닫기'}
-        ></button>
-        <aside className={'sidebar ' + (state.menu ? 'open' : '')} aria-label={'주 메뉴'}>
-          <button type={'button'} className={'brand'} data-action={'home'} aria-label={'SEA THE ANSWER · 통합 질문으로 이동'}>
+        ></UiControl>
+        <UiControl as="aside" className={'sidebar ' + (state.menu ? 'open' : '')} aria-label={'주 메뉴'}>
+          <UiControl as="button" type={'button'} className={'brand' + (state.uiLanguage === 'en' ? ' brand-english' : '')} data-action={'home'} aria-label={'SEA THE ANSWER · 통합 질문으로 이동'}>
             <div className={'brandmark'}>{I('ship')}</div>
             <div>
-              <strong>{'해답'}</strong>
-              <small>{'SEA THE ANSWER'}</small>
+              {state.uiLanguage === 'en' ? (
+                <strong className="brand-title-en">SEA<br />THE ANSWER</strong>
+              ) : <><strong>해답</strong><small>SEA THE ANSWER</small></>}
             </div>
-          </button>
+          </UiControl>
           <div className={'navlabel'}>{'WORKSPACE'}</div>
           {[
             ['chat', 'chat', '통합 질문'],
@@ -648,7 +621,7 @@ export function createMainViews(model, views) {
                   data-nav={p}
                 >
                   {I(i)}
-                  <span>{l}</span>
+                  <span><UiText>{l}</UiText></span>
                 </button>
               }
             </React.Fragment>
@@ -661,52 +634,50 @@ export function createMainViews(model, views) {
                 data-nav={'admin'}
               >
                 {I('settings')}
-                <span>{'관리'}</span>
+                <span><UiText>{'관리'}</UiText></span>
               </button>
             </div>
           ) : (
             ''
           )}
           <div className={'sidebar-bottom'}>
-            <div className={'local-note'}>
-              <b>{'선박 운항 업무지원'}</b>
-              <br />
-              {'내부 문서와 운항 정보를 한곳에서'}
-            </div>
             <div className={'account'}>
               <div className={'avatar'}>{state.user.name.slice(0, 1)}</div>
               <div>
-                <span className={'small'}>{state.user.role === 'guest' ? '일반 사용자' : state.user.name}</span>
-                <div className={'account-note'}>{roleName[state.user.role]}</div>
+                <span className={'small'}><UiText>{state.user.role === 'guest' ? '일반 사용자' : state.user.name}</UiText></span>
+                <div className={'account-note'}><UiText>{roleName[state.user.role]}</UiText></div>
               </div>
             </div>
-            <button className={'sidebar-logout'} data-action={'changePassword'}>비밀번호 변경</button>
-            <button className={'sidebar-logout'} data-action={'logout'}>
-              {'로그아웃'}
-            </button>
+            <div className="account-actions">
+              <button className={'sidebar-logout'} data-action={'changePassword'}><UiText>{"비밀번호 변경"}</UiText></button>
+              <button className={'sidebar-logout'} data-action={'logout'}>
+                <UiText>{'로그아웃'}</UiText>
+              </button>
+              <button className="sidebar-logout language-button" data-action="selectLanguage">Select Language</button>
+            </div>
           </div>
-        </aside>
+        </UiControl>
         <div className={'layout'}>
           <header className={'topbar'}>
             <div className={'crumb'}>
-              <button
+              <UiControl as="button"
                 className={'iconbtn mobile-menu'}
                 data-action={'menu'}
                 aria-label={'메뉴 열기'}
               >
                 {I('menu')}
-              </button>
-              <span>{'워크스페이스'}</span>
+              </UiControl>
+              <span><UiText>{'워크스페이스'}</UiText></span>
               {I('chevron')}
-              <strong>{pageNames[page]}</strong>
+              <strong><UiText>{pageNames[page]}</UiText></strong>
             </div>
             <div className={'top-right'}>
               <span className={'connection ' + (state.ready ? '' : 'off')}>
-                {state.ready ? '서버 연결됨' : '연결 확인'}
+                <UiText>{state.ready ? '서버 연결됨' : '연결 확인'}</UiText>
               </span>
-              <button className={'iconbtn'} data-action={'help'} aria-label={'사용 안내'}>
+              <UiControl as="button" className={'iconbtn'} data-action={'help'} aria-label={'사용 안내'}>
                 {I('info')}
-              </button>
+              </UiControl>
             </div>
           </header>
           <main id={'main'} className={'body'} tabIndex={'-1'}>

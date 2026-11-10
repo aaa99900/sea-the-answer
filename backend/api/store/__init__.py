@@ -6,7 +6,6 @@ using `db.save_document(...)`, `db.answer(...)` and so on.
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 
@@ -14,8 +13,10 @@ import psycopg
 
 from ..config import BACKEND_DIR
 from ..errors import ApiError
+from ..knowledge_update import apply_mepc_update, document_payload
 from ..validation import text
 from .answers import AnswerStore
+from .conversations import ConversationStore
 from .backups import BACKUP_TABLES, BackupStore
 from .base import Database
 from .changes import ChangeStore
@@ -29,7 +30,7 @@ __all__ = ["BACKUP_TABLES", "TOOL_DEFINITIONS", "Workspace"]
 
 
 class Workspace(Database, UserStore, DocumentStore, OperationStore, ChangeStore, ReportStore,
-                AnswerStore, ToolStore, BackupStore):
+                AnswerStore, ConversationStore, ToolStore, BackupStore):
     def bootstrap(self) -> None:
         try:
             self.one("SELECT 1 FROM settings LIMIT 1")
@@ -46,12 +47,5 @@ class Workspace(Database, UserStore, DocumentStore, OperationStore, ChangeStore,
         if not self.one("SELECT 1 FROM documents LIMIT 1"):
             knowledge = BACKEND_DIR / "knowledge"
             for raw in json.loads((knowledge / "seed.json").read_text(encoding="utf-8")):
-                payload = {"expectedId": "", "meta": {"scope": "all", "status": "active"}}
-                # "file" names an original PDF under knowledge/ (scripts/build_seed_documents.py).
-                file_name = raw.pop("file", None)
-                if file_name:
-                    path = (knowledge / file_name).resolve()
-                    if not (path.is_relative_to(knowledge.resolve()) and path.is_file()):
-                        raise RuntimeError(f"Seed document file not found: {file_name}")
-                    payload["file"] = {"name": path.name, "base64": base64.b64encode(path.read_bytes()).decode("ascii")}
-                self.save_document({**payload, "document": raw})
+                self.save_document(document_payload(raw, knowledge))
+        apply_mepc_update(self, BACKEND_DIR / "knowledge")

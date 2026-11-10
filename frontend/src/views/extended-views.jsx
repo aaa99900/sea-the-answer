@@ -1,3 +1,5 @@
+import {UiText} from '../components/ui-language';
+import {UiControl} from '../components/ui-language';
 import React from 'react';
 import * as helpers from '../components/common';
 export function createExtendedViews(model, views) {
@@ -24,25 +26,26 @@ export function createExtendedViews(model, views) {
       <main className={'login-layout'}>
         <section className={'login-brand'}>
           <div className={'brandmark'}>{I('ship')}</div>
-          <h1>{'해답'}</h1>
+          <h1><UiText>{'해답'}</UiText></h1>
           <p>
-            {'문서의 근거부터'}
+            <UiText>{'문서의 근거부터'}</UiText>
             <br />
-            {'오늘의 운항 기록까지.'}
+            <UiText>{'오늘의 운항 기록까지.'}</UiText>
           </p>
-          <small>{'선박 운항 업무지원'}</small>
+          <small><UiText>{'선박 운항 업무지원'}</UiText></small>
         </section>
         <section className={'login-card'}>
+          <button className="btn ghost sm" data-action="selectLanguage">Select Language</button>
           <span className={'eyebrow'}>{'SEA THE ANSWER WORKSPACE'}</span>
-          <h2>{changing ? '비밀번호 변경' : '선원·관리자 로그인'}</h2>
+          <h2><UiText>{changing ? '비밀번호 변경' : '선원·관리자 로그인'}</UiText></h2>
           <p className={'muted mb'}>
-            {changing
+            <UiText>{changing
               ? '본인만 아는 12~128자의 비밀번호를 설정해 주세요. 변경 후 다른 기기의 세션은 종료됩니다.'
-              : '관리자가 발급한 개인 계정으로 로그인해 주세요. 계정 발급·초기화는 관리자에게 요청하세요.'}
+              : '관리자가 발급한 개인 계정으로 로그인해 주세요. 계정 발급·초기화는 관리자에게 요청하세요.'}</UiText>
           </p>
           <form id={changing ? 'passwordForm' : 'authForm'}>
             {!changing ? <div className={'field'}>
-              <label htmlFor={'auth-username'}>{'아이디'}</label>
+              <label htmlFor={'auth-username'}><UiText>{'아이디'}</UiText></label>
               <input
                 id={'auth-username'}
                 name={'username'}
@@ -53,7 +56,7 @@ export function createExtendedViews(model, views) {
               />
             </div> : <p className={'mb'}>{state.user.name} · {state.user.username}</p>}
             <div className={'field'}>
-              <label htmlFor={'auth-password'}>{changing ? '현재 비밀번호' : '비밀번호'}</label>
+              <label htmlFor={'auth-password'}><UiText>{changing ? '현재 비밀번호' : '비밀번호'}</UiText></label>
               <input
                 id={'auth-password'}
                 name={changing ? 'currentPassword' : 'password'}
@@ -66,12 +69,12 @@ export function createExtendedViews(model, views) {
             </div>
             {changing ? <>
               <div className={'field'}>
-                <label htmlFor={'auth-new-password'}>새 비밀번호</label>
+                <label htmlFor={'auth-new-password'}><UiText>{"새 비밀번호"}</UiText></label>
                 <input id={'auth-new-password'} name={'newPassword'} type={'password'} required
                   minLength={12} maxLength={128} autoComplete={'new-password'} />
               </div>
               <div className={'field'}>
-                <label htmlFor={'auth-confirm-password'}>새 비밀번호 확인</label>
+                <label htmlFor={'auth-confirm-password'}><UiText>{"새 비밀번호 확인"}</UiText></label>
                 <input id={'auth-confirm-password'} name={'confirmPassword'} type={'password'} required
                   minLength={12} maxLength={128} autoComplete={'new-password'} />
               </div>
@@ -88,12 +91,12 @@ export function createExtendedViews(model, views) {
                   }
                 : {})}
             >
-              {state.connecting || state.authBusy ? '처리 중…' : changing ? '비밀번호 변경' : '로그인'}
+              <UiText>{state.connecting || state.authBusy ? '처리 중…' : changing ? '비밀번호 변경' : '로그인'}</UiText>
             </button>
           </form>
-          {changing ? btn('로그아웃', 'logout', 'mt') : null}
-          {changing && !state.user?.must_change_password ? btn('돌아가기', 'cancelPassword', 'mt') : null}
-          {state.connectionError ? btn('서버 다시 연결', 'reconnect', 'mt') : ''}
+          <UiText>{changing ? btn('로그아웃', 'logout', 'mt') : null}</UiText>
+          <UiText>{changing && !state.user?.must_change_password ? btn('돌아가기', 'cancelPassword', 'mt') : null}</UiText>
+          <UiText>{state.connectionError ? btn('서버 다시 연결', 'reconnect', 'mt') : ''}</UiText>
         </section>
       </main>
     );
@@ -117,10 +120,10 @@ export function createExtendedViews(model, views) {
     return (
       <section className={'integrated-result mt'}>
         <div className={'sectiontitle'}>
-          <h3>{en ? 'Operations summary' : '운항 데이터 요약'}</h3>
-          {s.sample
+          <h3><UiText>{en ? 'Operations summary' : '운항 데이터 요약'}</UiText></h3>
+          <UiText>{s.sample
             ? badge(en ? 'Sample data' : '가상 데이터', 'warn')
-            : badge(en ? 'Saved records' : '저장 기록', 'teal')}
+            : badge(en ? 'Saved records' : '저장 기록', 'teal')}</UiText>
         </div>
         <p className={'small muted'}>
           {s.ship.name}
@@ -130,7 +133,7 @@ export function createExtendedViews(model, views) {
           {s.to}
           {' · '}
           {s.count}
-          {en ? ' records' : '개 기록'}
+          <UiText>{en ? ' records' : '개 기록'}</UiText>
         </p>
         {s.count ? (
           <>
@@ -140,23 +143,23 @@ export function createExtendedViews(model, views) {
               {stat(en ? 'Distance' : '거리', n(s.distance), 'nm', '')}
             </div>
             <div className={'card pad mt'}>
-              <h3>{en ? 'Daily CO₂ emissions' : '일별 CO₂ 배출량'}</h3>
+              <h3><UiText>{en ? 'Daily CO₂ emissions' : '일별 CO₂ 배출량'}</UiText></h3>
               {s.rowsTruncated && notice(en
                 ? `Totals include all ${n(s.totalRows, 0)} records; the graph and table below show only the first ${n(s.rows.length, 0)}.`
                 : `총 ${n(s.totalRows, 0)}건으로 집계했으며, 아래 그래프·표는 처음 ${n(s.rows.length, 0)}건만 표시합니다.`)}
               {chartSVG([s.ship.id], 'emission', s.rows, [s.ship], s.from, s.to)}
               <details>
-                <summary>{s.rowsTruncated
+                <summary><UiText>{s.rowsTruncated
                   ? en ? `View displayed records (${n(s.rows.length, 0)} / ${n(s.totalRows, 0)})`
                     : `표시한 기록 보기 (${n(s.rows.length, 0)} / ${n(s.totalRows, 0)}건)`
-                  : en ? 'View input records' : '계산에 사용한 기록 보기'}</summary>
+                  : en ? 'View input records' : '계산에 사용한 기록 보기'}</UiText></summary>
                 <div className={'tablewrap'}>
                   <table>
                     <thead>
                       <tr>
-                        <th>{en ? 'Date' : '일자'}</th>
-                        <th>{en ? 'Fuel (t)' : '연료 (t)'}</th>
-                        <th>{en ? 'Factor' : '배출계수'}</th>
+                        <th><UiText>{en ? 'Date' : '일자'}</UiText></th>
+                        <th><UiText>{en ? 'Fuel (t)' : '연료 (t)'}</UiText></th>
+                        <th><UiText>{en ? 'Factor' : '배출계수'}</UiText></th>
                         <th>{'CO₂ (t)'}</th>
                         <th>{'nm'}</th>
                       </tr>
@@ -189,7 +192,7 @@ export function createExtendedViews(model, views) {
         )}
         <div className={'card pad mt'}>
           <div className={'sectiontitle'}>
-            <h3>{en ? 'Rule comparison' : '규정 기준 비교'}</h3>
+            <h3><UiText>{en ? 'Rule comparison' : '규정 기준 비교'}</UiText></h3>
             {badge(
               en
                 ? {
@@ -207,7 +210,7 @@ export function createExtendedViews(model, views) {
               {': '}
               {n(c.actual, 3)}
               {' / '}
-              {en ? 'Entered limit' : '입력 기준'} {n(c.limit, 3)}
+              <UiText>{en ? 'Entered limit' : '입력 기준'}</UiText> {n(c.limit, 3)}
               <br />
               {c.rule.quote}
             </p>
@@ -234,7 +237,7 @@ export function createExtendedViews(model, views) {
       content = (
         <div className={'status-grid'}>
           <div className={'card pad'}>
-            <h2>{'작업공간 상태'}</h2>
+            <h2><UiText>{'작업공간 상태'}</UiText></h2>
             {[
               ['서버', '연결됨'],
               ['문서', state.docs.filter((d) => d.active).length + '개'],
@@ -248,7 +251,7 @@ export function createExtendedViews(model, views) {
               <React.Fragment key={__index}>
                 {
                   <div className={'status-line'}>
-                    <span>{k}</span>
+                    <span><UiText>{k}</UiText></span>
                     <strong>{v}</strong>
                   </div>
                 }
@@ -256,11 +259,11 @@ export function createExtendedViews(model, views) {
             ))}
           </div>
           <div className={'card pad'}>
-            <h2>{'운영 안내'}</h2>
+            <h2><UiText>{'운영 안내'}</UiText></h2>
             <p className={'muted mt'}>
-              {
+              <UiText>{
                 '문서와 운항 정보는 관리자만 등록·수정·삭제하며 저장 즉시 반영됩니다. 보고서는 승인 탭에서 검토합니다. 모든 업무 기능은 개인 계정으로 로그인한 뒤 사용합니다.'
-              }
+              }</UiText>
             </p>
             {notice(
               '텍스트 PDF 검색·기록 관리·계산·초안·백업은 로컬에서 동작합니다. 선택적 외부 AI 답변에는 인터넷이 필요합니다.',
@@ -274,9 +277,9 @@ export function createExtendedViews(model, views) {
         <>
           <div className={'sectiontitle'}>
             <h3>
-              {'사용자 '}
+              <UiText>{'사용자 '}</UiText>
               {state.users.length}
-              {'명'}
+              <UiText>{'명'}</UiText>
             </h3>
             {btn('사용자 추가', 'newUser', 'primary', 'plus')}
           </div>
@@ -284,9 +287,9 @@ export function createExtendedViews(model, views) {
             <table>
               <thead>
                 <tr>
-                  <th>{'이름 / 아이디'}</th>
-                  <th>{'권한'}</th>
-                  <th>{'상태'}</th>
+                  <th><UiText>{'이름 / 아이디'}</UiText></th>
+                  <th><UiText>{'권한'}</UiText></th>
+                  <th><UiText>{'상태'}</UiText></th>
                   <th></th>
                 </tr>
               </thead>
@@ -300,7 +303,7 @@ export function createExtendedViews(model, views) {
                           <br />
                           <small>{u.username}</small>
                         </td>
-                        <td>{roleName[u.role]}</td>
+                        <td><UiText>{roleName[u.role]}</UiText></td>
                         <td>{badge(u.active ? '활성' : '비활성', u.active ? 'good' : '')}</td>
                         <td>
                           {btn('수정', 'editUser', 'sm', '', {
@@ -320,7 +323,7 @@ export function createExtendedViews(model, views) {
       content = (
         <>
           <div className={'sectiontitle'}>
-            <h3>{'변경·보고서 검토'}</h3>
+            <h3><UiText>{'변경·보고서 검토'}</UiText></h3>
             {btn('새로고침', 'refreshAdmin', 'sm', 'refresh')}
           </div>
           <div className={'card'}>
@@ -360,7 +363,7 @@ export function createExtendedViews(model, views) {
       content = (
         <>
           <div className={'controls'}>
-            <select
+            <UiControl as="select"
               className={'control'}
               aria-label={'로그 종류'}
               data-field={'logFilter'}
@@ -378,18 +381,18 @@ export function createExtendedViews(model, views) {
                 ['backup', '백업'],
                 ['users', '사용자'],
               ])}
-            </select>
+            </UiControl>
             {btn('새로고침', 'refreshAdmin', '', 'refresh')}
-            <span className={'small muted'}>{'최근 500건'}</span>
+            <span className={'small muted'}><UiText>{'최근 500건'}</UiText></span>
           </div>
           <div className={'card tablewrap'}>
             <table>
               <thead>
                 <tr>
-                  <th>{'시각'}</th>
-                  <th>{'수행자'}</th>
-                  <th>{'동작'}</th>
-                  <th>{'대상'}</th>
+                  <th><UiText>{'시각'}</UiText></th>
+                  <th><UiText>{'수행자'}</UiText></th>
+                  <th><UiText>{'동작'}</UiText></th>
+                  <th><UiText>{'대상'}</UiText></th>
                   <th></th>
                 </tr>
               </thead>
@@ -414,7 +417,7 @@ export function createExtendedViews(model, views) {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={'5'}>{'기록이 없습니다.'}</td>
+                    <td colSpan={'5'}><UiText>{'기록이 없습니다.'}</UiText></td>
                   </tr>
                 )}
               </tbody>
@@ -428,9 +431,9 @@ export function createExtendedViews(model, views) {
         <>
           <div className={'sectiontitle'}>
             <div>
-              <h3>{'전체 데이터 백업'}</h3>
+              <h3><UiText>{'전체 데이터 백업'}</UiText></h3>
               <p className={'small muted mt'}>
-                {'문서·원본 PDF·운항 기록·보고서·계정 및 권한·이력·시스템 설정 포함'}
+                <UiText>{'문서·원본 PDF·운항 기록·보고서·계정 및 권한·이력·시스템 설정 포함'}</UiText>
               </p>
             </div>
             <div className={'actions wrap'}>
@@ -442,7 +445,7 @@ export function createExtendedViews(model, views) {
             '복구는 현재 데이터를 선택한 시점으로 되돌립니다. 복구 직전 자동 백업을 만들고, 모든 계정은 다시 로그인합니다.',
           )}
           <div className={'controls mt'}>
-            <label htmlFor={'auto-backup'}>{'자동 백업'}</label>
+            <label htmlFor={'auto-backup'}><UiText>{'자동 백업'}</UiText></label>
             <select
               id={'auto-backup'}
               className={'control'}
@@ -455,7 +458,7 @@ export function createExtendedViews(model, views) {
                 ['off', '사용 안 함'],
               ])}
             </select>
-            <span className={'small muted'}>{'서버 실행 중 · UTC 날짜 기준 · 1분마다 확인'}</span>
+            <span className={'small muted'}><UiText>{'서버 실행 중 · UTC 날짜 기준 · 1분마다 확인'}</UiText></span>
           </div>
           <div className={'card mt'}>
             {state.backups.length
@@ -467,15 +470,15 @@ export function createExtendedViews(model, views) {
                           <h3>{b.label}</h3>
                           <p className={'small muted'}>
                             {dateText(b.createdAt)}
-                            {' · 형식 v'}
+                            <UiText>{' · 형식 v'}</UiText>
                             {b.version}
                           </p>
                           <p className={'small'}>
-                            {'문서 '}
+                            <UiText>{'문서 '}</UiText>
                             {b.counts.documents}
-                            {' · 운항 '}
+                            <UiText>{' · 운항 '}</UiText>
                             {b.counts.operations}
-                            {' · 보고서 '}
+                            <UiText>{' · 보고서 '}</UiText>
                             {b.counts.reports}
                           </p>
                         </div>
@@ -494,9 +497,9 @@ export function createExtendedViews(model, views) {
               : empty('아직 백업이 없어요', '중요한 데이터를 등록한 뒤 백업을 만들어 주세요.')}
           </div>
           <p className={'footnote mt'}>
-            {
+            <UiText>{
               '백업에는 계정 정보와 문서가 포함됩니다. 관리자만 내려받을 수 있습니다. 외부 AI 비밀키(.env)는 백업에서 제외되며 서버에서 별도로 보관합니다.'
-            }
+            }</UiText>
           </p>
         </>
       );
@@ -521,7 +524,7 @@ export function createExtendedViews(model, views) {
               ))}
             </div>
             {state.adminError ? notice(state.adminError, 'warning') : ''}
-            {state.adminLoading ? <p role={'status'}>{'불러오는 중…'}</p> : content}
+            {state.adminLoading ? <p role={'status'}><UiText>{'불러오는 중…'}</UiText></p> : content}
           </>
         }
       </>

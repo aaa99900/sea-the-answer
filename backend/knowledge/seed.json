@@ -1,7 +1,7 @@
 [
   {
     "id": "imo-sulphur",
-    "title": "IMO 2020 · 연료 황 함유량 안내 요약",
+    "title": "(테스트용) IMO 2020 · 연료 황 함유량 안내 요약",
     "kind": "official-summary",
     "url": "https://www.imo.org/en/mediacentre/hottopics/pages/sulphur-2020.aspx",
     "reference": "MARPOL Annex VI · Regulation 14",
@@ -21,7 +21,7 @@
   },
   {
     "id": "imo-cii",
-    "title": "IMO · CII 적용 대상과 개선 계획 요약",
+    "title": "(테스트용) IMO · CII 적용 대상과 개선 계획 요약",
     "kind": "official-summary",
     "url": "https://www.imo.org/en/mediacentre/hottopics/pages/eexi-cii-faq.aspx",
     "reference": "MARPOL Annex VI · Regulation 28",
@@ -41,7 +41,7 @@
   },
   {
     "id": "sample-fuel-checklist",
-    "title": "HAE-01 · 연료 전환 점검표 (가상)",
+    "title": "(테스트용) HAE-01 · 연료 전환 점검표",
     "kind": "sample",
     "url": null,
     "reference": "DEMO-FUEL-01 · §2–3",
@@ -57,7 +57,7 @@
   },
   {
     "id": "sample-carbon",
-    "title": "HAE-01 · 배출량 계산 범위 (가상)",
+    "title": "(테스트용) HAE-01 · 배출량 계산 범위",
     "kind": "sample",
     "url": null,
     "reference": "HAEDAP-EMISSIONS-1",
@@ -73,7 +73,7 @@
   },
   {
     "id": "maritime-glossary",
-    "title": "해사 기본 용어집 (한·영)",
+    "title": "(테스트용) 해사 기본 용어집 (한·영)",
     "kind": "onboard",
     "url": null,
     "reference": "해양환경관리법·선박안전법·해상교통안전법·선박직원법 제2조, COLREG Rule 3 기반 팀 정리",
@@ -113,7 +113,7 @@
   },
   {
     "id": "kr-marine-environment-management-act",
-    "title": "해양환경관리법 (법률 제21416호)",
+    "title": "(테스트용) 해양환경관리법 (법률 제21416호)",
     "kind": "onboard",
     "url": "https://www.law.go.kr/%EB%B2%95%EB%A0%B9/%ED%95%B4%EC%96%91%ED%99%98%EA%B2%BD%EA%B4%80%EB%A6%AC%EB%B2%95",
     "reference": "법률 제21416호 · 시행 2026. 08. 28. · 국가법령정보센터 원문",
@@ -816,7 +816,7 @@
   },
   {
     "id": "kr-ship-safety-act",
-    "title": "선박안전법 (법률 제19134호)",
+    "title": "(테스트용) 선박안전법 (법률 제19134호)",
     "kind": "onboard",
     "url": "https://www.law.go.kr/%EB%B2%95%EB%A0%B9/%EC%84%A0%EB%B0%95%EC%95%88%EC%A0%84%EB%B2%95",
     "reference": "법률 제19134호 · 시행 2023. 06. 28. · 국가법령정보센터 원문",
@@ -1259,7 +1259,7 @@
   },
   {
     "id": "kr-maritime-traffic-safety-act",
-    "title": "해상교통안전법 (법률 제19573호)",
+    "title": "(테스트용) 해상교통안전법 (법률 제19573호)",
     "kind": "onboard",
     "url": "https://www.law.go.kr/%EB%B2%95%EB%A0%B9/%ED%95%B4%EC%83%81%EA%B5%90%ED%86%B5%EC%95%88%EC%A0%84%EB%B2%95",
     "reference": "법률 제19573호 · 시행 2024. 07. 26. · 국가법령정보센터 원문",
@@ -1862,7 +1862,7 @@
   },
   {
     "id": "kr-ship-officers-act",
-    "title": "선박직원법 (법률 제21053호)",
+    "title": "(테스트용) 선박직원법 (법률 제21053호)",
     "kind": "onboard",
     "url": "https://www.law.go.kr/%EB%B2%95%EB%A0%B9/%EC%84%A0%EB%B0%95%EC%A7%81%EC%9B%90%EB%B2%95",
     "reference": "법률 제21053호 · 시행 2025. 12. 17. · 국가법령정보센터 원문",
@@ -2065,7 +2065,7 @@
   },
   {
     "id": "uscg-navigation-rules-handbook",
-    "title": "USCG Navigation Rules and Regulations Handbook (COLREGS · Inland Rules)",
+    "title": "(테스트용) USCG Navigation Rules and Regulations Handbook (COLREGS · Inland Rules)",
     "url": "https://www.navcen.uscg.gov/sites/default/files/pdf/navRules/Handbook/Nav%20Rules%20Handbook_Corrected_08-12-2024.pdf",
     "reference": "72 COLREGS · 33 CFR Part 83 (corrected 2024-08-12)",
     "version": "2024-08-12",

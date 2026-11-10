@@ -1,5 +1,9 @@
 # 해답 문서 안내
 
+- [2026-11-09 MEPC 문서 등록과 표시 정리](plans/2026-11-09-mepc-document-update.md): 완료 (검증 범위 기록).
+
+- [운항 자료 통합 등록](plans/2026-11-06-operation-data-import.md): 완료 (로컬·미제출, 실제 MRV/독립 JSON·권한·재시작 검증). [구현 계약](specs/operation-data-import.md).
+
 프로젝트의 모든 문서는 이 `docs/` 폴더에 모읍니다. 문서 위치·작성 규칙의 원본은 최상위 [`AGENTS.md`](../AGENTS.md)이며, 이 파일은 목록과 요약입니다.
 
 ## 어떤 문서를 먼저 볼까
@@ -19,6 +23,10 @@
 ## 전체 목록
 
 - [문서별 벡터 준비 상태](plans/2026-11-05-vector-readiness.md): 완료 · [ADR 0022](adr/0022-document-vector-readiness.md): 채택.
+
+- [자연어 조건·되묻기·다단계 조회](plans/2026-11-06-natural-language-workflows.md): 완료 (로컬·미제출).
+
+- [공식 항만 조건 수집·변경 확인](plans/2026-11-06-port-condition-updates.md): 완료(6개 문서·21개 조건·명시 갱신 검토·실제 DB/API/화면 검증).
 
 - [벡터 색인 복구·팀 브랜치 통합 검증](plans/2026-10-29-vector-index-repair-integration.md): 완료 (머지 커밋 대기).
 
@@ -51,6 +59,12 @@
 | [`specs/prepare-data.md`](specs/prepare-data.md) — 데이터 선택·출처·품질·집계 적격성 계약 | 구현됨 |
 
 ### plans — 작업 계획
+
+- [등록 제원·지역 환경 관측 품질](plans/2026-11-05-navigation-reference-quality.md) — 완료(로컬 자료·API·화면·실제 DB 검증).
+
+- [입항 검토 조건·다국가 자료](plans/2026-11-05-navigation-readiness-and-sources.md) — 완료(로컬 구현·데이터 확보·검증, 실제 입항 승인/운영 배포 제외).
+
+- [항구 질문 조건·후속 질문](plans/2026-11-05-navigation-question-conditions.md) — 완료(로컬 보완·검증, 원격 미반영).
 
 - [교수 피드백: 표·차트와 입력량 검증](plans/2026-11-03-answer-presentation-and-load-validation.md) — 완료
 - [한국어 평가 사람 검토](plans/2026-11-03-korean-llm-human-review.md) — 완료
@@ -118,3 +132,5 @@
 - adr: `NNNN-주제.md`, 상태 `제안 → 채택 → 대체됨/폐기`. 채택된 본문은 고치지 않고 새 ADR로 대체.
 - 문서를 추가하거나 상태를 바꾸면 이 목록도 갱신합니다.
 - 문서와 코드가 다르면 코드가 사실입니다. 발견하면 문서를 고칩니다.
+
+- [통합 질문·언어·대화 이력 개선](plans/2026-11-09-ui-conversations-language.md) — 완료 (대화 API·브라우저 회귀 검증, Docker 전체 스택 미실행).

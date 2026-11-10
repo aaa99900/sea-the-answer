@@ -2,6 +2,20 @@
 
 - [2026-11-05 문서별 벡터 준비 상태](2026-11-05-vector-readiness.md): 완료.
 
+- [2026-11-09 MEPC 문서 등록과 표시 정리](2026-11-09-mepc-document-update.md): 완료 (검증 범위 기록).
+
+- [2026-11-06 운항 자료 통합 등록](2026-11-06-operation-data-import.md): 완료 (로컬·미제출, 원격 배포 제외).
+
+- [2026-11-06 자연어 업무 질문](2026-11-06-natural-language-workflows.md): 완료 (로컬·미제출).
+
+- [2026-11-06 공식 항만 조건·변경 확인](2026-11-06-port-condition-updates.md): 완료(공식 문서·갱신 검토·API/화면·실제 DB 검증, 운영 배포 제외).
+
+- [2026-11-05 등록 제원·지역 환경 관측 품질](2026-11-05-navigation-reference-quality.md): 완료(로컬 자료·API·화면·실제 DB 검증, 운영 배포 제외).
+
+- [2026-11-05 입항 검토 조건·다국가 자료](2026-11-05-navigation-readiness-and-sources.md): 완료(로컬 구현·데이터 확보·검증, 실제 입항 승인/운영 배포 제외).
+
+- [2026-11-05 항구 질문 조건·후속 질문](2026-11-05-navigation-question-conditions.md): 완료(로컬 보완·검증, 원격 미반영).
+
 - [2026-11-04 선박·항구 참조 연결 검증](2026-11-04-port-reference-linkage.md): 완료 — 기존 질문창·두 항구 참조 비교·오프라인 배포·최신 main 통합 검증.
 
 - [2026-10-15 앱 업무 스킬](2026-10-15-app-workflow-skills.md): 여섯 기능과 선택 LLM의 구현·검증.
@@ -46,3 +60,5 @@
 | [`2026-10-13-mrv-reference-intensity.md`](2026-10-13-mrv-reference-intensity.md) | 공개 제원 후보 연결·MRV 참고 집약도 | 완료 (로컬·미제출) |
 
 - [자동 색인과 이미지 모델](2026-10-29-automatic-vector-indexing.md) — 완료
+
+- [통합 질문·언어·대화 이력 개선](2026-11-09-ui-conversations-language.md) — 완료 (대화 API·브라우저 회귀 검증, Docker 전체 스택 미실행).
