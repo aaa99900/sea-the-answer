@@ -1,5 +1,7 @@
 'use client';
 
+import {UiText} from '../components/ui-language';
+import {UiControl} from '../components/ui-language';
 import React from 'react';
 import { createModel } from '../lib/model';
 import { createApiClient } from '../lib/api';
@@ -10,6 +12,7 @@ import { documentSavePayload } from '../lib/document-save';
 import { toCsv } from '../lib/csv';
 import { uuid } from '../lib/id';
 import OperationImport from '../components/operation-import';
+import {UI_LANGUAGE_KEY} from '../lib/ui-language';
 export function createWorkspace() {
   const model = createModel(),
     api = createApiClient(),
@@ -109,7 +112,7 @@ export function createWorkspace() {
     reports: '/reports',
     admin: '/admin',
   };
-  function navigate(page, id = '') {
+  function navigate(page, id = '', {scroll = true} = {}) {
     closeModal();
     state.menu = false;
     state.page = page;
@@ -120,9 +123,9 @@ export function createWorkspace() {
         : page === 'editor'
           ? '/reports/' + encodeURIComponent(id || state.draft.id || 'new')
           : routes[page] || '/chat';
-    router?.push(url);
+    router?.push(url, {scroll});
     render();
-    window.scrollTo(0, 0);
+    if (scroll) window.scrollTo(0, 0);
     if (page === 'admin' && isAdmin()) run(refreshAdmin);
   }
   async function routeChanged(path) {
@@ -189,6 +192,10 @@ export function createWorkspace() {
     state.adminError = '';
     state.adminLoading = false;
     state.answer = null;
+    state.turns = [];
+    state.chatScrollRequest = null;
+    state.conversationId = '';
+    state.historySequence++;
     state.busy = false;
     state.history = [];
     state.docs = [];
@@ -374,25 +381,27 @@ export function createWorkspace() {
       }
     }
   }
-  async function ask(q, workflowInput) {
+  async function ask(q, workflowInput, parentAnswerId) {
     q = q.trim();
     if (!q || state.busy) return;
     if (!state.ready) throw Error('서버 연결을 먼저 확인해 주세요.');
-    const workflowParent = state.answer?.workflow &&
-      (state.answer.workflow.scope.action==='selected_document' || (state.answer.workflow.scope.ships.length ? state.answer.workflow.scope.ships.some(s=>s.id===state.ship) : !state.ship))
-      ? state.answer.id : undefined;
+    const parent = parentAnswerId ? state.turns.find(t => t.id === parentAnswerId)?.answer : state.answer;
+    const workflowParent = parent?.workflow &&
+      (parent.workflow.scope.action==='selected_document' || (parent.workflow.scope.ships.length ? parent.workflow.scope.ships.some(s=>s.id===state.ship) : !state.ship))
+      ? parent.id : undefined;
     if (workflowInput && !workflowParent) throw Error('현재 업무 답변에서 조건을 보완해 주세요.');
-    const previousQueryId = workflowParent || (state.answer?.navigation?.ship?.id === state.ship &&
-      ['reference_only', 'no_reference_matches'].includes(state.answer?.navigation?.status)
-      ? state.answer.id : undefined);
+    const previousQueryId = workflowParent || (parent?.navigation?.ship?.id === state.ship &&
+      ['reference_only', 'no_reference_matches'].includes(parent?.navigation?.status)
+      ? parent.id : undefined);
     const sequence = ++state.askSequence;
+    state.chatScrollRequest = {sequence, phase: 'pending'};
     state.pendingQuestion = q;
-    state.answer = null;
     state.askError = '';
     state.busy = true;
     state.slow = false;
     const body = {
       question: q,
+      ...(state.conversationId ? {conversationId: state.conversationId} : {}),
       filter: state.filter,
       language: state.language,
       mode: state.mode,
@@ -406,7 +415,7 @@ export function createWorkspace() {
       },
       criterion: state.criterion,
     };
-    navigate('chat');
+    navigate('chat', '', {scroll: false});
     const timer = setTimeout(() => {
       if (sequence === state.askSequence && state.busy) {
         state.slow = true;
@@ -421,6 +430,9 @@ export function createWorkspace() {
         state.ship = resolvedShip;
       }
       state.answer = answer;
+      state.conversationId = answer.conversationId || answer.id;
+      state.turns = [...state.turns, {id: answer.id, question: q, answer}];
+      state.pendingQuestion = '';
       if (state.question.trim() === q) state.question = '';
     } catch (e) {
       if (sequence === state.askSequence) state.askError = e.message;
@@ -430,43 +442,61 @@ export function createWorkspace() {
       if (sequence === state.askSequence) {
         state.busy = false;
         state.slow = false;
+        state.chatScrollRequest = {sequence, phase: 'complete'};
         render();
       }
     }
   }
   async function showHistory() {
-    const userId = state.user?.id,
-      { history } = await api.request('/api/history');
-    if (state.user?.id !== userId) return;
+    const userId = state.user?.id, sequence = ++state.historySequence;
+    const {history} = await api.request('/api/conversations');
+    if (state.user?.id !== userId || sequence !== state.historySequence) return;
     state.history = history;
-    openModal(
-      '내 질의 이력',
-      <>
-        <p className={'small muted mb'}>
-          {'최근 100건입니다. 질문 당시의 답변과 출처를 확인합니다.'}
-        </p>
-        {history.length
-          ? history.map((h, __index) => (
-              <React.Fragment key={__index}>
-                {
-                  <button className={'history-item'} data-action={'historyAnswer'} data-id={h.id}>
-                    <small>{dateText(h.at)}</small>
-                    {h.question}
-                    {h.unavailable ? ' · 근거 열람 불가' : ''}
-                  </button>
-                }
-              </React.Fragment>
-            ))
-          : empty('아직 질문이 없어요', '질문을 보내면 답변과 함께 저장됩니다.')}
-      </>,
-      '',
-      true,
-    );
+    openModal('내 질의 이력', <>
+      <p className="small muted mb"><UiText>{"최근 대화 100건입니다. 대화를 열면 모든 질문과 답변을 순서대로 확인합니다."}</UiText></p>
+      {history.length ? history.map(h => <div className="history-row" key={h.id}>
+        <button className="history-item" data-action="historyAnswer" data-id={h.id}>
+          <small>{dateText(h.at, state.uiLanguage)}</small><span>{h.question}</span>
+          <small>{h.count}<UiText>{"개 질문"}</UiText></small>
+        </button>
+        <UiControl as="button" type="button" className="history-delete" data-action="deleteConversation" data-id={h.id}
+          aria-label="대화 삭제" title="대화 삭제" disabled={state.busy && state.conversationId === h.id}>×</UiControl>
+      </div>) : empty('아직 질문이 없어요', '질문을 보내면 답변과 함께 저장됩니다.')}
+    </>, '', true);
   }
-  function showSource(id, sectionId = '') {
+  async function openConversation(id) {
+    const userId = state.user?.id, sequence = ++state.askSequence;
+    state.busy = false;
+    state.pendingQuestion = '';
+    state.askError = '';
+    render();
+    const conversation = await api.request('/api/conversations/' + encodeURIComponent(id));
+    if (state.user?.id !== userId || sequence !== state.askSequence) return;
+    state.turns = conversation.turns;
+    state.conversationId = conversation.id;
+    state.answer = conversation.turns.at(-1)?.answer || null;
+    state.busy = false;
+    state.slow = false;
+    state.askError = '';
+    state.pendingQuestion = '';
+    state.question = '';
+    navigate('chat');
+  }
+  async function deleteConversation(id, el) {
+    const userId = state.user?.id;
+    el.disabled = true;
+    try {
+      await api.request('/api/conversations/delete', {id});
+      if (state.user?.id !== userId) return;
+      if (state.conversationId === id) actions.newQuestion();
+      await showHistory();
+    } finally { el.disabled = false; }
+  }
+  function showSource(id, sectionId = '', answerId = '') {
     const d = state.docs.find((d) => d.id === id);
     if (!d) throw Error('문서가 삭제되었거나 열람 권한이 없습니다.');
-    const e = state.answer?.evidence.find((e) => e.id === sectionId),
+    const a = state.turns.find(t => t.id === answerId)?.answer || state.answer;
+    const e = a?.evidence.find((e) => e.id === sectionId),
       s = d.sections.find((s) => s.id === sectionId) || d.sections[0];
     openModal(
       '답변 근거',
@@ -485,9 +515,9 @@ export function createWorkspace() {
           {' · '}
           {s.heading}
           <br />
-          {'발행 '}
+          <UiText>{'발행 '}</UiText>
           {d.meta.issuedAt || '미입력'}
-          {' / 개정 '}
+          <UiText>{' / 개정 '}</UiText>
           {d.meta.revisedAt || '미입력'}
         </p>
         <blockquote className={'quote'}>{e?.text || s.text}</blockquote>
@@ -594,8 +624,8 @@ export function createWorkspace() {
     navigate('editor');
     toast('내용과 근거를 초안에 담았어요.');
   }
-  function answerToReport() {
-    const a = state.answer;
+  function answerToReport(id) {
+    const a = state.turns.find(t => t.id === id)?.answer || state.answer;
     if (!a) return;
     let text = `## ${a.question}\n\n${a.statements
       .map((s) => {
@@ -1071,31 +1101,31 @@ export function createWorkspace() {
             )}
           </div>
           <p className={'small muted'}>
-            {'발행기관: '}
+            <UiText>{'발행기관: '}</UiText>
             {p.meta?.issuer || '미입력'}
             <br />
-            {'발행일 '}
+            <UiText>{'발행일 '}</UiText>
             {p.meta?.issuedAt || '미입력'}
-            {' / 개정일 '}
+            <UiText>{' / 개정일 '}</UiText>
             {p.meta?.revisedAt || '미입력'}
             <br />
-            {'적용 조건: '}
+            <UiText>{'적용 조건: '}</UiText>
             {p.meta?.applicability || '미입력'}
           </p>
           {p.mode === 'metadata' ? (
             <p className={'small muted'}>
-              {'문서 정보만 수정했으며 본문과 기존 인용은 유지했습니다.'}
+              <UiText>{'문서 정보만 수정했으며 본문과 기존 인용은 유지했습니다.'}</UiText>
             </p>
           ) : (
             <details className={'mt'}>
-              <summary>{'등록할 본문과 페이지 확인'}</summary>
+              <summary><UiText>{'등록할 본문과 페이지 확인'}</UiText></summary>
               <div className={'review-payload'}>
                 {p.document.sections.map((s, __index) => (
                   <React.Fragment key={__index}>
                     {
                       <>
                         <h4>
-                          {s.page ? 'p.' + s.page : '페이지 미지정'}
+                          <UiText>{s.page ? 'p.' + s.page : '페이지 미지정'}</UiText>
                           {' · '}
                           {s.heading}
                         </h4>
@@ -1113,9 +1143,9 @@ export function createWorkspace() {
       return (
         <>
           <p className={'small muted'}>
-            {'등록할 기록 '}
+            <UiText>{'등록할 기록 '}</UiText>
             {p.rows.length}
-            {'개'}
+            <UiText>{'개'}</UiText>
           </p>
           <div className={'review-payload'}>
             {p.rows.map((r, __index) => (
@@ -1143,7 +1173,7 @@ export function createWorkspace() {
       const d = state.docs.find((d) => d.id === p.id);
       return (
         <p className={'mt'}>
-          {'삭제 대상: '}
+          <UiText>{'삭제 대상: '}</UiText>
           {d?.title || '이미 삭제되었거나 접근 불가'}
           {' / '}
           {d?.version || ''}
@@ -1275,9 +1305,9 @@ export function createWorkspace() {
               onChange={noop}
             />
             <p className={'small muted'}>
-              {
+              <UiText>{
                 '100MB 이하의 해답 전체 백업 JSON을 가져옵니다. 목록에 추가된 뒤 별도로 복구를 실행할 수 있습니다.'
-              }
+              }</UiText>
             </p>
           </>,
           '가져오기',
@@ -1319,12 +1349,31 @@ export function createWorkspace() {
       state.authError = '';
       render();
     },
-    home: () => navigate('chat'),
+    selectLanguage: () => openModal('언어 선택', <>
+      <p className="muted mb"><UiText>{"화면의 메뉴와 안내 언어를 선택하세요. 질문과 답변, 문서와 보고서는 변경하지 않습니다."}</UiText></p>
+      <UiControl as="div" className="language-options" role="group" aria-label="언어 선택">
+        {['ko', 'en'].map(code => <button key={code} type="button" className={'btn ' + (state.uiLanguage === code ? 'primary' : '')}
+          aria-pressed={state.uiLanguage === code} data-action="setUiLanguage" data-id={code}>
+          <UiText>{code === 'ko' ? '한국어' : 'English'}</UiText>{state.uiLanguage === code ? ' ✓' : ''}
+        </button>)}
+      </UiControl>
+    </>),
+    setUiLanguage: (code) => {
+      if (!['ko','en'].includes(code)) return;
+      state.uiLanguage = code;
+      writeLocal(UI_LANGUAGE_KEY, code);
+      closeModal();
+    },
+    home: () => actions.newQuestion(),
     newQuestion: () => {
       state.askSequence++;
       state.busy = false;
       state.slow = false;
       state.answer = null;
+      state.turns = [];
+      state.chatScrollRequest = null;
+      state.conversationId = '';
+      state.historySequence++;
       state.askError = '';
       state.question = '';
       state.pendingQuestion = '';
@@ -1332,15 +1381,9 @@ export function createWorkspace() {
     },
     retryQuestion: () => ask(state.pendingQuestion || state.question),
     history: showHistory,
-    historyAnswer: (id) => {
-      const h = state.history.find((h) => h.id === id);
-      if (!h?.answer)
-        throw Error('근거가 삭제되었거나 현재 열람 권한이 없어 답변을 표시하지 않습니다.');
-      state.answer = h.answer;
-      state.askError = '';
-      navigate('chat');
-    },
-    source: (id, el) => showSource(id, el.dataset.section),
+    historyAnswer: openConversation,
+    deleteConversation,
+    source: (id, el) => showSource(id, el.dataset.section, el.closest('[data-answer-id]')?.dataset.answerId),
     document: (id, el) => openDocument(id, el.dataset.section),
     backDocument: () => navigate(state.docBack),
     backDocs: () => navigate('docs'),
@@ -1424,7 +1467,7 @@ export function createWorkspace() {
       state.criterion = null;
       render();
     },
-    answerReport: answerToReport,
+    answerReport: (id, el) => answerToReport(el.closest('[data-answer-id]')?.dataset.answerId),
     newReport,
     editReport: () => navigate('editor'),
     reportList: () => navigate('reports'),
@@ -1468,7 +1511,7 @@ export function createWorkspace() {
           <>
             <h2>{r.title}</h2>
             <p>
-              {'버전 '}
+              <UiText>{'버전 '}</UiText>
               {r.version}
             </p>
             <pre>{r.text}</pre>
@@ -1505,7 +1548,7 @@ export function createWorkspace() {
               onChange={noop}
             />
             <p className={'small muted'}>
-              {'가져온 내용은 새 초안으로 열립니다. 서버에 저장된 보고서를 덮어쓰지 않습니다.'}
+              <UiText>{'가져온 내용은 새 초안으로 열립니다. 서버에 저장된 보고서를 덮어쓰지 않습니다.'}</UiText>
             </p>
           </>,
           '가져오기',
@@ -1577,11 +1620,11 @@ export function createWorkspace() {
         <>
           {
             <ol className={'help-list'}>
-              <li>{'문서에서 PDF와 적용 정보를 등록합니다.'}</li>
-              <li>{'운항 정보에서 선박과 기록을 등록합니다.'}</li>
-              <li>{'통합 질문에서 선박·기간을 선택하고 질문합니다.'}</li>
-              <li>{'결과를 보고서에 담거나 Noon/MRV 초안을 만듭니다.'}</li>
-              <li>{'관리자는 승인·로그·백업을 확인합니다.'}</li>
+              <li><UiText>{'문서에서 PDF와 적용 정보를 등록합니다.'}</UiText></li>
+              <li><UiText>{'운항 정보에서 선박과 기록을 등록합니다.'}</UiText></li>
+              <li><UiText>{'통합 질문에서 선박·기간을 선택하고 질문합니다.'}</UiText></li>
+              <li><UiText>{'결과를 보고서에 담거나 Noon/MRV 초안을 만듭니다.'}</UiText></li>
+              <li><UiText>{'관리자는 승인·로그·백업을 확인합니다.'}</UiText></li>
             </ol>
           }
           {notice(
@@ -1629,12 +1672,8 @@ export function createWorkspace() {
     if (t.dataset.report && canWrite() && state.draft.status === 'draft') {
       state.draft[t.dataset.report] = t.value;
       persistDraft();
-      if ($('#saveStatus'))
-        $('#saveStatus').textContent = state.localFailed
-          ? '브라우저 보관 실패 · 파일로 보관해 주세요'
-          : '브라우저 임시 보관 · 저장 전';
-      const b = $('[data-action=submitReport]');
-      if (b) b.disabled = true;
+      // events.onInput renders the state. Do not replace UiText's DOM children:
+      // doing so detaches the text node used by save and language updates.
     }
     if (t.dataset.calc) {
       state.calcInputs[t.dataset.calc] = t.value;
@@ -1866,6 +1905,8 @@ export function createWorkspace() {
     },
     async start() {
       disposed = false;
+      const language = readLocal(UI_LANGUAGE_KEY, 'ko');
+      state.uiLanguage = language === 'en' ? 'en' : 'ko';
       startup ??= connect();
       await startup;
       if (!disposed) await routeChanged(window.location.pathname);

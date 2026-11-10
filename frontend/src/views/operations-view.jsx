@@ -1,3 +1,5 @@
+import {UiText} from '../components/ui-language';
+import {UiControl} from '../components/ui-language';
 import React from 'react';
 import SkillsPanel from '../components/skills-panel';
 import PortReferencePanel from '../components/port-reference-panel';
@@ -57,7 +59,7 @@ export function createOperationsViews(model, views) {
       x = (i) => left + (i * (W - left - right)) / Math.max(1, dates.length - 1),
       y = (v) => H - bottom - (v / max) * (H - top - bottom);
     return (
-      <svg
+      <UiControl as="svg"
         className={'chart'}
         viewBox={'0 0 ' + W + ' ' + H}
         role={'img'}
@@ -143,7 +145,7 @@ export function createOperationsViews(model, views) {
             </React.Fragment>
           );
         })}
-      </svg>
+      </UiControl>
     );
   }
   function operationTable(rows, editable = false) {
@@ -152,13 +154,13 @@ export function createOperationsViews(model, views) {
         <table>
           <thead>
             <tr>
-              <th>{'선박 / 일자'}</th>
-              <th>{'연료 (t)'}</th>
+              <th><UiText>{'선박 / 일자'}</UiText></th>
+              <th><UiText>{'연료 (t)'}</UiText></th>
               <th>{'CO₂ (t)'}</th>
-              <th>{'거리 (nm)'}</th>
-              <th>{'속력 (kn)'}</th>
-              <th>{'확인'}</th>
-              {editable ? <th>{'관리'}</th> : ''}
+              <th><UiText>{'거리 (nm)'}</UiText></th>
+              <th><UiText>{'속력 (kn)'}</UiText></th>
+              <th><UiText>{'확인'}</UiText></th>
+              {editable ? <th><UiText>{'관리'}</UiText></th> : ''}
             </tr>
           </thead>
           <tbody>
@@ -181,7 +183,7 @@ export function createOperationsViews(model, views) {
                         r.sample ? 'warn' : '',
                       )}
                       <button className={'tabletitle'} data-action={'recordDetail'} data-id={r.id}>
-                        {'상세'}
+                        <UiText>{'상세'}</UiText>
                       </button>
                     </td>
                     {editable ? (
@@ -211,20 +213,20 @@ export function createOperationsViews(model, views) {
     return (
       <div className={'controls ' + (compact ? 'context-controls' : '')}>
         <div className={'field'}>
-          <label htmlFor={'ship'}>{'대상 선박'}</label>
+          <label htmlFor={'ship'}><UiText>{'대상 선박'}</UiText></label>
           <select id={'ship'} data-field={'ship'} value={state.ship} onChange={noop}>
             {options([
               ['', '선박 선택'],
-              ...state.ships.map((s) => [s.id, s.name + (s.sample ? ' · 예시' : '')]),
+              ...state.ships.map((s) => [s.id, <>{s.name}{s.sample && <UiText> · 예시</UiText>}</>]),
             ])}
           </select>
         </div>
         <div className={'field'}>
-          <label htmlFor={'from'}>{'시작일'}</label>
+          <label htmlFor={'from'}><UiText>{'시작일'}</UiText></label>
           <input id={'from'} type={'date'} data-field={'from'} value={state.from} onChange={noop} />
         </div>
         <div className={'field'}>
-          <label htmlFor={'to'}>{'종료일'}</label>
+          <label htmlFor={'to'}><UiText>{'종료일'}</UiText></label>
           <input id={'to'} type={'date'} data-field={'to'} value={state.to} onChange={noop} />
         </div>
       </div>
@@ -238,7 +240,7 @@ export function createOperationsViews(model, views) {
     return (
       <>
         <div className={'grid4'}>
-          {stat('연료 소비량', n(m.fuel), 't', `${m.count}개 기록 합계`)}
+          {stat('연료 소비량', n(m.fuel), 't', <>{m.count}<UiText>개 기록 합계</UiText></>)}
           {stat('CO₂ 배출량', n(m.co2), 't', '기록별 배출계수 적용')}
           {stat('운항거리', n(m.distance), 'nm', '선택 기간 합계', 'ship')}
           {stat('점검 기록', m.anomalies, '건', '점검 사유가 입력된 기록', 'alert')}
@@ -246,7 +248,7 @@ export function createOperationsViews(model, views) {
         <div className={'card ship-strip'}>
           <div>
             <h3>
-              {s.name} {s.sample ? badge('가상 예시', 'warn') : ''}
+              {s.name} <UiText>{s.sample ? badge('가상 예시', 'warn') : ''}</UiText>
             </h3>
             <span className={'muted small'}>
               {s.type || ''}
@@ -256,33 +258,33 @@ export function createOperationsViews(model, views) {
             </span>
           </div>
           <div className={'small muted'}>
-            {'최근 기록 '}
-            {last?.date || '없음'}
+            <UiText>{'최근 기록 '}</UiText>
+            {last?.date || <UiText>없음</UiText>}
             <br />
-            {'위치 '}
-            {last?.position || '미입력'}
-            {' · 속력 '}
+            <UiText>{'위치 '}</UiText>
+            {last?.position || <UiText>미입력</UiText>}
+            <UiText>{' · 속력 '}</UiText>
             {last ? n(last.speed) + ' kn' : '—'}
           </div>
-          {isAdmin()
+          <UiText>{isAdmin()
             ? btn('선박 정보', 'editShip', 'sm', '', {
                 'data-id': s.id,
               })
-            : ''}
+            : ''}</UiText>
         </div>
         {analysisChart([state.ship])}
         <div className={'sectiontitle mt'}>
           <h3>
-            {'운항 기록 '}
+            <UiText>{'운항 기록 '}</UiText>
             {rows.length}
-            {'건'}
+            <UiText>{'건'}</UiText>
           </h3>
           {btn('CSV 내보내기', 'exportRecords', 'ghost sm', 'download')}
         </div>
         <div className={'card'}>
-          {rows.length
+          <UiText>{rows.length
             ? operationTable(rows, isAdmin())
-            : empty('등록된 기록이 없어요', '선택한 선박·기간의 기록을 등록해 주세요.')}
+            : empty('등록된 기록이 없어요', '선택한 선박·기간의 기록을 등록해 주세요.')}</UiText>
         </div>
         {timeTool()}
       </>
@@ -293,10 +295,10 @@ export function createOperationsViews(model, views) {
       <div className={'card pad'}>
         <div className={'sectiontitle'}>
           <h3>
-            {metricLabels[state.metric][0]}
-            {' 추이'}
+            <UiText>{metricLabels[state.metric][0]}</UiText>
+            <UiText>{' 추이'}</UiText>
           </h3>
-          <select
+          <UiControl as="select"
             className={'control'}
             aria-label={'표시 지표'}
             data-field={'metric'}
@@ -304,13 +306,13 @@ export function createOperationsViews(model, views) {
             onChange={noop}
           >
             {options(Object.entries(metricLabels).map(([k, v]) => [k, v[0]]))}
-          </select>
+          </UiControl>
         </div>
         {chartSVG(ids)}
         <p className={'small muted'}>
-          {'단위: '}
+          <UiText>{'단위: '}</UiText>
           {metricLabels[state.metric][1]}
-          {' · CII 등급을 의미하지 않습니다.'}
+          <UiText>{' · CII 등급을 의미하지 않습니다.'}</UiText>
         </p>
       </div>
     );
@@ -367,7 +369,7 @@ export function createOperationsViews(model, views) {
       <div className={'grid2'}>
         <form id={'calcForm'} className={'card pad'}>
           <div className={'sectiontitle'}>
-            <h3>{'계산 입력값'}</h3>
+            <h3><UiText>{'계산 입력값'}</UiText></h3>
             {badge('서버 계산', 'teal')}
           </div>
           {btn('선택 기록에서 가져오기', 'useSampleInputs', 'sm mb', 'database')}
@@ -381,7 +383,7 @@ export function createOperationsViews(model, views) {
               <React.Fragment key={__index}>
                 {
                   <div className={'field'}>
-                    <label htmlFor={id}>{l}</label>
+                    <label htmlFor={id}><UiText>{l}</UiText></label>
                     <input
                       id={id}
                       name={id}
@@ -410,32 +412,32 @@ export function createOperationsViews(model, views) {
                 }
               : {})}
           >
-            {state.calcBusy ? '계산 중…' : '지표 계산'}
+            <UiText>{state.calcBusy ? '계산 중…' : '지표 계산'}</UiText>
           </button>
         </form>
         <div>
           <div className={'calculation-result'} aria-live={'polite'}>
-            <h3>{'계산 결과'}</h3>
+            <h3><UiText>{'계산 결과'}</UiText></h3>
             {c ? (
               <>
-                <div className={'mt'}>{'CO₂ 배출량'}</div>
+                <div className={'mt'}><UiText>{'CO₂ 배출량'}</UiText></div>
                 <div className={'stat-value'}>
                   {n(c.emission, 3)} <small>{'t CO₂'}</small>
                 </div>
                 <div className={'divider'}></div>
-                <div>{'단순 탄소집약도'}</div>
+                <div><UiText>{'단순 탄소집약도'}</UiText></div>
                 <div className={'stat-value'}>
                   {n(c.intensity, 3)} <small>{'gCO₂/(DWT·nm)'}</small>
                 </div>
                 <p className={'formula'}>
                   {c.formula}
                   <br />
-                  {'계산 버전: '}
+                  <UiText>{'계산 버전: '}</UiText>
                   {c.version}
                 </p>
               </>
             ) : (
-              <p className={'mt'}>{'입력값을 확인하고 계산을 실행하세요.'}</p>
+              <p className={'mt'}><UiText>{'입력값을 확인하고 계산을 실행하세요.'}</UiText></p>
             )}
           </div>
           <div className={'card pad mt'}>
@@ -444,12 +446,12 @@ export function createOperationsViews(model, views) {
               {badge('산출 불가', 'warn')}
             </h3>
             <p className={'small muted mt'}>
-              {
+              <UiText>{
                 '공식 CII 산식·선종별 용량 기준·보정 및 제외 조건·적용 연도 검증이 필요합니다. 위 단순 집약도를 CII 등급으로 사용하지 마세요.'
-              }
+              }</UiText>
             </p>
           </div>
-          {c && canWrite() ? btn('계산 결과를 보고서에 담기', 'calcReport', 'mt', 'edit') : ''}
+          <UiText>{c && canWrite() ? btn('계산 결과를 보고서에 담기', 'calcReport', 'mt', 'edit') : ''}</UiText>
         </div>
       </div>
     );
@@ -459,7 +461,7 @@ export function createOperationsViews(model, views) {
       r = state.timeResult;
     return (
       <details className={'card pad time-tool'}>
-        <summary>{'항해 시각 계산'}</summary>
+        <summary><UiText>{'항해 시각 계산'}</UiText></summary>
         <form id={'timeForm'}>
           <div className={'grid2'}>
             {[
@@ -471,7 +473,7 @@ export function createOperationsViews(model, views) {
               <React.Fragment key={__index}>
                 {
                   <div className={'field'}>
-                    <label htmlFor={'time-' + id}>{l}</label>
+                    <label htmlFor={'time-' + id}><UiText>{l}</UiText></label>
                     <input
                       id={'time-' + id}
                       data-time={id}
@@ -496,16 +498,16 @@ export function createOperationsViews(model, views) {
                 }
               : {})}
           >
-            {'시간 계산'}
+            <UiText>{'시간 계산'}</UiText>
           </button>
         </form>
         {r ? (
           <p className={'mt'}>
-            {'실제 경과 '}
+            <UiText>{'실제 경과 '}</UiText>
             {n(r.elapsedHours)}
-            {'시간 · 선내 시계 차이 '}
+            <UiText>{'시간 · 선내 시계 차이 '}</UiText>
             {n(r.clockHours)}
-            {'시간'}
+            <UiText>{'시간'}</UiText>
           </p>
         ) : (
           ''
@@ -550,7 +552,7 @@ export function createOperationsViews(model, views) {
                   <React.Fragment key={__index}>
                     {
                       <button className={'tab ' + (state.tab === id ? 'active' : '')} data-tab={id}>
-                        {l}
+                        <UiText>{l}</UiText>
                       </button>
                     }
                   </React.Fragment>
@@ -566,7 +568,7 @@ export function createOperationsViews(model, views) {
               isAdmin() ? (
                 <>
                   {btn('선박 등록', 'newShip', 'primary')}
-                  {isAdmin() ? btn('가상 예시로 둘러보기', 'seedExample', 'mt') : ''}
+                  <UiText>{isAdmin() ? btn('가상 예시로 둘러보기', 'seedExample', 'mt') : ''}</UiText>
                 </>
               ) : (
                 '관리자에게 선박 등록을 요청해 주세요.'

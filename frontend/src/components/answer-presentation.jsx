@@ -1,3 +1,4 @@
+import {UiText,UiControl} from './ui-language';
 import React from 'react';
 import { chartCoordinates, validatedPresentation } from '../lib/answer-presentation';
 
@@ -5,11 +6,11 @@ const number = value => value.toLocaleString('ko-KR', { maximumFractionDigits: 6
 
 function Citation({ citation, evidence, sourceIds, en }) {
   const source = evidence.find(item => item.id === citation.chunkId);
-  return <button type="button" className="citation" data-action="source"
+  return <UiControl as="button" type="button" className="citation" data-action="source"
     data-id={source.document_id} data-section={source.id} title={citation.quote}
     aria-label={`${source.title || (en ? 'Source' : '근거')} ${en ? 'original text' : '원문 보기'}`}>
     [{sourceIds.indexOf(source.document_id) + 1}{source.page ? ` · p.${source.page}` : ''}]
-  </button>;
+  </UiControl>;
 }
 
 function AnswerTable({ presentation, evidence, en }) {
@@ -19,7 +20,7 @@ function AnswerTable({ presentation, evidence, en }) {
       <caption>{presentation.title}</caption>
       <thead><tr>
         {presentation.columns.map((column, index) => <th scope="col" key={index}>{column}</th>)}
-        {presentation.source === 'documents' && <th scope="col">{en ? 'Evidence' : '근거'}</th>}
+        {presentation.source === 'documents' && <th scope="col"><UiText>{en ? 'Evidence' : '근거'}</UiText></th>}
       </tr></thead>
       <tbody>{presentation.rows.map((row, index) => <tr key={index}>
         {row.cells.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}
@@ -42,8 +43,8 @@ function AnswerChart({ presentation, en }) {
     <svg className="presentation-chart" viewBox={`0 0 ${plot.width} ${plot.height}`}
       role="img" aria-label={`${presentation.title}. ${presentation.xLabel}. ${yLabel}`}>
       <title>{presentation.title}</title>
-      <desc>{en ? 'Values from saved operation records. Exact values are available in the data table below.'
-        : '저장된 운항 기록으로 만든 차트입니다. 정확한 값은 아래 데이터 표에서 확인할 수 있습니다.'}</desc>
+      <desc><UiText>{en ? 'Values from saved operation records. Exact values are available in the data table below.'
+        : '저장된 운항 기록으로 만든 차트입니다. 정확한 값은 아래 데이터 표에서 확인할 수 있습니다.'}</UiText></desc>
       {plot.ticks.map((tick, index) => <g key={index}>
         <line x1={plot.left} x2={plot.left + plot.plotWidth} y1={tick.y} y2={tick.y}
           className="presentation-grid" />
@@ -73,7 +74,7 @@ function AnswerChart({ presentation, en }) {
         textAnchor="middle" className="presentation-axis-label">{yLabel}</text>
     </svg>
     <details className="presentation-data">
-      <summary>{en ? 'View chart data table' : '차트 데이터 표 보기'}</summary>
+      <summary><UiText>{en ? 'View chart data table' : '차트 데이터 표 보기'}</UiText></summary>
       <div className="tablewrap"><table className="presentation-table">
         <caption>{dataTitle}</caption>
         <thead><tr><th scope="col">{presentation.xLabel}</th><th scope="col">{yLabel}</th></tr></thead>
@@ -94,16 +95,16 @@ export function AnswerPresentation({ answer, presentation = validatedPresentatio
         : '요청한 표·그래프 데이터를 확인할 수 없어 본문 답변을 표시합니다.'
       : '';
   if (!presentation && !message) return null;
-  return <section className="answer-presentation" aria-label={en ? 'Requested presentation' : '요청한 표·그래프'}>
+  return <UiControl as="section" className="answer-presentation" aria-label={en ? 'Requested presentation' : '요청한 표·그래프'}>
     {message && <p className="notice">{message}</p>}
     {presentation?.type === 'table' && <AnswerTable presentation={presentation} evidence={answer.evidence || []} en={en} />}
     {presentation?.type === 'chart' && <AnswerChart presentation={presentation} en={en} />}
     {presentation && <p className="small muted presentation-source">
-      {presentation.source === 'operations' ? en ? 'Source: saved operation records' : '자료: 저장된 운항 기록'
-        : en ? 'Use each row’s evidence link to review the original text.' : '각 행의 근거를 눌러 원문을 확인할 수 있습니다.'}
+      <UiText>{presentation.source === 'operations' ? en ? 'Source: saved operation records' : '자료: 저장된 운항 기록'
+        : en ? 'Use each row’s evidence link to review the original text.' : '각 행의 근거를 눌러 원문을 확인할 수 있습니다.'}</UiText>
       {presentation.truncated && ` · ${en ? 'Showing' : '표시'} ${presentation.type === 'table'
         ? `${presentation.rows.length} / ${presentation.totalRows}`
         : `${presentation.points.length} / ${presentation.totalPoints}`}${en ? '' : '개'}`}
     </p>}
-  </section>;
+  </UiControl>;
 }

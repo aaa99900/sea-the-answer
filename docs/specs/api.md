@@ -192,7 +192,7 @@ DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 �
 - 새 개정본은 전처리를 한 번 수행하고, 결과가 0개면 400 `INVALID_INPUT`으로 거부한다. 이전 개정본의 활성 상태를 바꾸기 전에 검사한다. 기존 동일 해시·과거 개정본의 청크는 재검사·재생성하지 않는다.
 - API 응답·PostgreSQL 테이블·열람 범위·인용 검증은 그대로 유지한다. 현재 검색은 위 BM25 계약을 따른다.
 
-CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest`). 빈 DB의 첫 요청 때 `backend/knowledge/seed.json`(위 `document` 객체 배열)이 자동 등록됩니다.
+CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest`). 빈 DB의 첫 요청 때 `backend/knowledge/seed.json`(위 `document` 객체 배열)이 자동 등록됩니다. 2026-11-09 MEPC 업데이트는 별도 `mepc-2026.json`의 10개 문서를 기존 DB에도 한 번 적용합니다. 기존 문서 제목을 `(테스트용)`으로 표시하고 제목 끝 `(가상)`을 제거한 후 새 문서를 추가합니다. 기존 ID·본문·PDF·당시 답변 스냅샷을 보존하며, 완료 여부는 settings에 같은 트랜잭션으로 기록합니다. 실행 절차는 [사용 안내](../user-guide.md)를 참고하세요.
 
 ## 5. 오류 형식
 

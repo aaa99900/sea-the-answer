@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_on": "2026-10-28",
-  "seed_sha256": "c1153c2f7ad7cc3b7f583d3bae29a7a331111b8c9ac2ea01b535c8936753ec0c",
+  "seed_sha256": "5bb471f1f0210e739417d2f4a6916972dda64d79764d2e2aefb563268b9a7476",
   "label_status": "author-labelled pilot; independent maritime expert review pending",
   "notes": "16 answerable and 4 corpus-unanswerable questions. Retrieval only; not LLM, routing, permission or vessel safety evaluation. Repository source snapshots are not assertions of current law.",
   "cases": [

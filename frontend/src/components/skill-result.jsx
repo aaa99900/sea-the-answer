@@ -1,3 +1,4 @@
+import {UiText,UiControl} from './ui-language';
 import React from 'react';
 
 const labels = {
@@ -16,38 +17,38 @@ const labels = {
 export function SkillResult({ answer, draftSaved }) {
   const r = answer?.result || {};
   if (!Object.keys(r).length && !answer?.warnings?.length) return null;
-  return <section className="skill-result" aria-label="업무 결과">
+  return <UiControl as="section" className="skill-result" aria-label="업무 결과">
     {r.reference_only && <>
-      <h3>MRV 기반 참고 탄소집약도</h3>
+      <h3><UiText>{"MRV 기반 참고 탄소집약도"}</UiText></h3>
       <p className="skill-value">{r.reference_dwt_intensity ?? '계산 불가'} <small>{r.units?.reference_dwt_intensity}</small></p>
-      <p>보고 CO₂ {r.source_reported_co2_t ?? '미제공'} t · 공개 DWT 후보 {r.candidate_dwt_t ?? '미제공'} t · 추정거리 {r.distance_nm_estimate ?? '미제공'} nm</p>
-      <p>공식 CII·등급은 산출하지 않습니다. 보고 범위와 제원 기준연도가 검증되지 않은 참고값입니다.</p>
-      {r.blockers?.length > 0 && <ul>{r.blockers.map(v=><li key={v}>{labels[v] || v}</li>)}</ul>}
+      <p><UiText>{"보고 CO₂"}</UiText>{r.source_reported_co2_t ?? '미제공'}<UiText>{"t · 공개 DWT 후보"}</UiText>{r.candidate_dwt_t ?? '미제공'}<UiText>{"t · 추정거리"}</UiText>{r.distance_nm_estimate ?? '미제공'} nm</p>
+      <p><UiText>{"공식 CII·등급은 산출하지 않습니다. 보고 범위와 제원 기준연도가 검증되지 않은 참고값입니다."}</UiText></p>
+      {r.blockers?.length > 0 && <ul>{r.blockers.map(v=><li key={v}><UiText>{labels[v] || v}</UiText></li>)}</ul>}
     </>}
     {r.fuel_t !== undefined && <>
       <h3>{r.ship?.name} · {r.from} ~ {r.to}</h3>
       <dl className="skill-metrics">
-        <div><dt>연료 합계</dt><dd>{r.fuel_t} t</dd></div>
-        <div><dt>계산 CO₂</dt><dd>{r.calculated_co2_t} t CO₂</dd></div>
-        <div><dt>거리 합계</dt><dd>{r.distance_nm} nm</dd></div>
-        <div><dt>보고일 / 달력일</dt><dd>{r.reported_days} / {r.calendar_days}</dd></div>
+        <div><dt><UiText>{"연료 합계"}</UiText></dt><dd>{r.fuel_t} t</dd></div>
+        <div><dt><UiText>{"계산 CO₂"}</UiText></dt><dd>{r.calculated_co2_t} t CO₂</dd></div>
+        <div><dt><UiText>{"거리 합계"}</UiText></dt><dd>{r.distance_nm} nm</dd></div>
+        <div><dt><UiText>{"보고일 / 달력일"}</UiText></dt><dd>{r.reported_days} / {r.calendar_days}</dd></div>
       </dl>
       <p>{r.notice}</p>
-      {r.sample && <p className="notice warning">가상 예시 데이터가 포함되어 있습니다.</p>}
+      {r.sample && <p className="notice warning"><UiText>{"가상 예시 데이터가 포함되어 있습니다."}</UiText></p>}
     </>}
     {r.items && <>
-      <h3>점검 항목 초안</h3><p>{r.notice}</p>
-      <ol>{r.items.map((item,i)=><li key={`${item.chunkId}-${i}`}><label><input type="checkbox" aria-label={`점검 항목 ${i+1}`} /> {item.text}</label></li>)}</ol>
-      <p className="small muted">체크 표시는 이 화면에서만 사용하며 점검 완료·승인을 서버에 기록하지 않습니다.</p>
+      <h3><UiText>{"점검 항목 초안"}</UiText></h3><p>{r.notice}</p>
+      <ol>{r.items.map((item,i)=><li key={`${item.chunkId}-${i}`}><label><UiControl as="input" type="checkbox" aria-label={`점검 항목 ${i+1}`} /> {item.text}</label></li>)}</ol>
+      <p className="small muted"><UiText>{"체크 표시는 이 화면에서만 사용하며 점검 완료·승인을 서버에 기록하지 않습니다."}</UiText></p>
     </>}
     {r.checks && <>
-      <h3>질의·응답 평가</h3><p>{r.notice}</p>
-      <div className="table-wrap"><table><thead><tr><th>점검</th><th>결과</th><th>설명</th></tr></thead><tbody>
+      <h3><UiText>{"질의·응답 평가"}</UiText></h3><p>{r.notice}</p>
+      <div className="table-wrap"><table><thead><tr><th><UiText>{"점검"}</UiText></th><th><UiText>{"결과"}</UiText></th><th><UiText>{"설명"}</UiText></th></tr></thead><tbody>
         {r.checks.map(v=><tr key={v.check}><td>{v.check}</td><td>{{pass:'통과',fail:'실패',not_applicable:'해당 없음',manual_review_required:'사람 검토 필요'}[v.status] || v.status}</td><td>{v.detail}</td></tr>)}
       </tbody></table></div>
     </>}
-    {r.draft && <><h3>검토용 보고서 초안</h3><textarea aria-label="보고서 초안 내용" readOnly rows={14} value={r.draft.text} /><p>{draftSaved === true ? '새 보고서 초안으로 저장했습니다. 제출되지 않았습니다.' : draftSaved === false ? '아직 저장·제출되지 않았습니다.' : '생성 당시의 미리보기입니다. 현재 저장·제출 상태는 보고서에서 확인하세요.'}</p></>}
-    {answer.warnings?.filter(v=>labels[v]).map(v=><p key={v} className="small">{labels[v]}</p>)}
-    {Object.keys(r).length > 0 && <details><summary>조회·계산 근거 상세</summary><pre className="skill-json">{JSON.stringify(r,null,2)}</pre></details>}
-  </section>;
+    {r.draft && <><h3><UiText>{"검토용 보고서 초안"}</UiText></h3><UiControl as="textarea" aria-label="보고서 초안 내용" readOnly rows={14} value={r.draft.text} /><p><UiText>{draftSaved === true ? '새 보고서 초안으로 저장했습니다. 제출되지 않았습니다.' : draftSaved === false ? '아직 저장·제출되지 않았습니다.' : '생성 당시의 미리보기입니다. 현재 저장·제출 상태는 보고서에서 확인하세요.'}</UiText></p></>}
+    {answer.warnings?.filter(v=>labels[v]).map(v=><p key={v} className="small"><UiText>{labels[v]}</UiText></p>)}
+    {Object.keys(r).length > 0 && <details><summary><UiText>{"조회·계산 근거 상세"}</UiText></summary><pre className="skill-json">{JSON.stringify(r,null,2)}</pre></details>}
+  </UiControl>;
 }

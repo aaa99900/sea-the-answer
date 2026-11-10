@@ -1,4 +1,5 @@
 import React from 'react';
+import {UiText} from '../components/ui-language';
 import * as helpers from '../components/common';
 export function createForms(model, views) {
   const noop = () => {};
@@ -9,7 +10,7 @@ export function createForms(model, views) {
   function field(name, label, value = '', type = 'text', extra = '') {
     return (
       <div className={'field'}>
-        <label htmlFor={'f-' + name}>{label}</label>
+        <label htmlFor={'f-' + name}><UiText>{label}</UiText></label>
         <input
           id={'f-' + name}
           name={name}
@@ -24,7 +25,7 @@ export function createForms(model, views) {
   function select(name, label, list, value) {
     return (
       <div className={'field'}>
-        <label htmlFor={'f-' + name}>{label}</label>
+        <label htmlFor={'f-' + name}><UiText>{label}</UiText></label>
         <select id={'f-' + name} name={name} defaultValue={value} onChange={noop}>
           {options(list)}
         </select>
@@ -34,7 +35,7 @@ export function createForms(model, views) {
   function area(name, label, value = '', extra = '') {
     return (
       <div className={'field'}>
-        <label htmlFor={'f-' + name}>{label}</label>
+        <label htmlFor={'f-' + name}><UiText>{label}</UiText></label>
         <textarea
           id={'f-' + name}
           name={name}
@@ -53,7 +54,7 @@ export function createForms(model, views) {
         <div className={'form-progress small muted'} role={'status'}></div>
         <div className={'actions mt'}>
           <button className={'btn primary'} type={'submit'}>
-            {label || '저장'}
+            <UiText>{label || '저장'}</UiText>
           </button>
         </div>
       </form>
@@ -77,9 +78,9 @@ export function createForms(model, views) {
               'metadata',
             )}
             <p className={'small muted mb'}>
-              {
+              <UiText>{
                 '정보만 수정하면 기존 본문과 인용을 유지합니다. 문서명·버전·원문을 바꾸려면 본문·버전 개정을 선택하세요.'
-              }
+              }</UiText>
             </p>
           </>
         ) : (
@@ -92,12 +93,12 @@ export function createForms(model, views) {
           style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
         >
           <p className={'small muted mb'}>
-            {d
+            <UiText>{d
               ? 'PDF를 다시 선택하거나 원문 전체를 입력하세요. 추출 결과와 페이지를 확인한 뒤 저장하세요.'
-              : 'PDF를 선택하면 페이지별 본문을 읽습니다. 추출 결과와 적용 조건을 확인한 뒤 등록하세요.'}
+              : 'PDF를 선택하면 페이지별 본문을 읽습니다. 추출 결과와 적용 조건을 확인한 뒤 등록하세요.'}</UiText>
           </p>
           <div className={'field'}>
-            <label htmlFor={'document-file'}>{'PDF 파일 (최대 25MB)'}</label>
+            <label htmlFor={'document-file'}><UiText>{'PDF 파일 (최대 25MB)'}</UiText></label>
             <input
               id={'document-file'}
               name={'file'}
@@ -109,7 +110,7 @@ export function createForms(model, views) {
           <div id={'pdfProgress'} className={'small muted mt'} role={'status'}></div>
           {d?.hasPdf ? (
             <p className={'small muted'}>
-              {'새 파일을 선택하지 않으면 기존 원본 PDF를 유지합니다.'}
+              <UiText>{'새 파일을 선택하지 않으면 기존 원본 PDF를 유지합니다.'}</UiText>
             </p>
           ) : (
             ''
@@ -179,9 +180,9 @@ export function createForms(model, views) {
         })}
         <label className={'checkline mt'}>
           <input name={'checked'} type={'checkbox'} required onChange={noop} />
-          {d
+          <UiText>{d
             ? ' 변경할 문서 정보와 개정 시 원문·페이지를 확인했습니다.'
-            : ' 추출 본문·페이지와 적용 버전을 확인했습니다.'}
+            : ' 추출 본문·페이지와 적용 버전을 확인했습니다.'}</UiText>
         </label>
       </>,
     );
@@ -218,7 +219,7 @@ export function createForms(model, views) {
           {select(
             'ship',
             '선박',
-            state.ships.map((s) => [s.id, s.name]),
+            state.ships.map((s) => [s.id, <>{s.name}</>]),
             r.ship || state.ship,
           )}
           {field('date', '기록 일자', r.date || today(), 'date', {
@@ -255,7 +256,7 @@ export function createForms(model, views) {
           {field('voyage', '항차', r.voyage)}
         </div>
         <p className={'small muted'}>
-          {'CO₂는 입력한 연료 × 배출계수로 계산됩니다. 배출계수는 연료 종류에 맞게 확인해 주세요.'}
+          <UiText>{'CO₂는 입력한 연료 × 배출계수로 계산됩니다. 배출계수는 연료 종류에 맞게 확인해 주세요.'}</UiText>
         </p>
         <details
           className={'mt'}
@@ -265,7 +266,7 @@ export function createForms(model, views) {
               }
             : {})}
         >
-          <summary>{'Noon Report 상세 항목'}</summary>
+          <summary><UiText>{'Noon Report 상세 항목'}</UiText></summary>
           <div className={'grid2 mt'}>
             {field('position', '위치', r.position)}
             {field('draft', '흘수 (m)', r.draft, 'number', {
@@ -325,7 +326,7 @@ export function createForms(model, views) {
           autoComplete: 'new-password',
         })}
         <p className={'small muted mt'}>
-          {'업무에 필요한 최소 권한으로 개인 계정을 발급하세요. 초기 비밀번호는 본인이 로그인한 뒤 변경해야 합니다.'}
+          <UiText>{'업무에 필요한 최소 권한으로 개인 계정을 발급하세요. 초기 비밀번호는 본인이 로그인한 뒤 변경해야 합니다.'}</UiText>
         </p>
       </>,
       '계정 저장',
@@ -345,7 +346,7 @@ export function createForms(model, views) {
           {select(
             'documentId',
             '근거 문서',
-            docs.map((d) => [d.id, d.title]),
+            docs.map((d) => [d.id, <>{d.title}</>]),
             d?.id,
           )}
           {select(
@@ -395,7 +396,7 @@ export function createForms(model, views) {
           </div>
           <label className={'checkline mt'}>
             <input type={'checkbox'} name={'confirmed'} required onChange={noop} />
-            {' 이 선박·기간·단위에 적용되는 기준임을 확인했습니다.'}
+            <UiText>{' 이 선박·기간·단위에 적용되는 기준임을 확인했습니다.'}</UiText>
           </label>
         </div>
       </>,

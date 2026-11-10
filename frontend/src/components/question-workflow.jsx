@@ -1,4 +1,5 @@
 'use client';
+import {UiText,UiControl} from './ui-language';
 import React, {useState} from 'react';
 import {useWorkspace} from '../workspace/provider';
 import {SkillResult} from './skill-result';
@@ -22,44 +23,44 @@ function Workflow({answer}) {
     if(missing.includes('periods'))reply.periods=[{start,end}];
     if(missing.includes('document_ids'))reply.document_ids=docs;
     if(missing.includes('reference_ack'))reply.reference_ack=ack;
-    try { await workspace.ask('조건을 보완해서 다시 실행해줘',reply); }
+    try { await workspace.ask('조건을 보완해서 다시 실행해줘',reply,answer.id); }
     catch(e){setError(e.message);}
   }
   return <section className="mt" data-question-workflow>
-    <h3>해석한 실행 범위</h3>
-    <p>{scope.action==='selected_document' ? `선택 문서 ${scope.document_ids.length}개` : scope.ships?.map(s=>s.name).join(' / ') || '선박 미지정'}
-      {['mrv_reference','combined'].includes(scope.action) && scope.years?.length>0 && <> · MRV 연도 {scope.years.join(', ')}</>}
+    <h3><UiText>{"해석한 실행 범위"}</UiText></h3>
+    <p><UiText>{scope.action==='selected_document' ? `선택 문서 ${scope.document_ids.length}개` : scope.ships?.map(s=>s.name).join(' / ') || '선박 미지정'}</UiText>
+      {['mrv_reference','combined'].includes(scope.action) && scope.years?.length>0 && <><UiText>{"· MRV 연도"}</UiText>{scope.years.join(', ')}</>}
       {scope.periods?.map((p,i)=><React.Fragment key={i}> · {p.start}~{p.end}</React.Fragment>)}</p>
-    <p className="small muted">{flow.routing.method==='llm'?'AI 작업 선택·서버 범위 검증':'규칙 기반 조건 해석'}
+    <p className="small muted"><UiText>{flow.routing.method==='llm'?'AI 작업 선택·서버 범위 검증':'규칙 기반 조건 해석'}</UiText>
       {flow.routing.fallback && ' · 모델 제안을 사용할 수 없어 규칙/추가 확인으로 처리'}
       {flow.previous_query_id && ' · 이전 범위를 연결해 현재 자료로 재조회'}</p>
     {missing.length>0 && <form className="card pad mt" onSubmit={submit} onInput={e=>e.stopPropagation()} onChange={e=>e.stopPropagation()}>
-      <h3>추가로 필요한 조건</h3>
+      <h3><UiText>{"추가로 필요한 조건"}</UiText></h3>
       {missing.includes('ships') && <div className="controls">
-        <label className="field">조회 선박<select aria-label="업무 조회 선박" required value={ship} onChange={e=>setShip(e.target.value)}>
-          <option value="">선박 선택</option>{flow.options.ships.map(s=><option key={s.id} value={s.id}>{s.name} {s.imo}</option>)}
-        </select></label>
-        <label className="field">비교 선박 (선택)<select aria-label="업무 비교 선박" value={second} onChange={e=>setSecond(e.target.value)}>
-          <option value="">추가하지 않음</option>{flow.options.ships.filter(s=>s.id!==ship).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-        </select></label></div>}
-      {missing.includes('years') && <label className="field">MRV 보고연도 (최대 3개)<input aria-label="업무 보고연도" required placeholder="2024, 2025" value={years} onChange={e=>setYears(e.target.value)} /></label>}
-      {missing.includes('periods') && <div className="controls"><label className="field">시작일<input aria-label="업무 시작일" type="date" required value={start} onChange={e=>setStart(e.target.value)} /></label>
-        <label className="field">종료일<input aria-label="업무 종료일" type="date" required value={end} onChange={e=>setEnd(e.target.value)} /></label></div>}
-      {missing.includes('document_ids') && <label className="field">사용할 문서 (최대 5개)<select aria-label="업무 선택 문서" multiple required value={docs} onChange={e=>setDocs([...e.target.selectedOptions].map(v=>v.value))}>
+        <label className="field"><UiText>{"조회 선박"}</UiText><UiControl as="select" aria-label="업무 조회 선박" required value={ship} onChange={e=>setShip(e.target.value)}>
+          <option value=""><UiText>{"선박 선택"}</UiText></option>{flow.options.ships.map(s=><option key={s.id} value={s.id}>{s.name} {s.imo}</option>)}
+        </UiControl></label>
+        <label className="field"><UiText>{"비교 선박 (선택)"}</UiText><UiControl as="select" aria-label="업무 비교 선박" value={second} onChange={e=>setSecond(e.target.value)}>
+          <option value=""><UiText>{"추가하지 않음"}</UiText></option>{flow.options.ships.filter(s=>s.id!==ship).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+        </UiControl></label></div>}
+      {missing.includes('years') && <label className="field"><UiText>{"MRV 보고연도 (최대 3개)"}</UiText><UiControl as="input" aria-label="업무 보고연도" required placeholder="2024, 2025" value={years} onChange={e=>setYears(e.target.value)} /></label>}
+      {missing.includes('periods') && <div className="controls"><label className="field"><UiText>{"시작일"}</UiText><UiControl as="input" aria-label="업무 시작일" type="date" required value={start} onChange={e=>setStart(e.target.value)} /></label>
+        <label className="field"><UiText>{"종료일"}</UiText><UiControl as="input" aria-label="업무 종료일" type="date" required value={end} onChange={e=>setEnd(e.target.value)} /></label></div>}
+      {missing.includes('document_ids') && <label className="field"><UiText>{"사용할 문서 (최대 5개)"}</UiText><UiControl as="select" aria-label="업무 선택 문서" multiple required value={docs} onChange={e=>setDocs([...e.target.selectedOptions].map(v=>v.value))}>
         {flow.options.documents.map(d=><option key={d.id} value={d.id}>{d.title}</option>)}
-      </select></label>}
-      {missing.includes('reference_ack') && <label><input aria-label="MRV 참고값 동의" type="checkbox" required checked={ack} onChange={e=>setAck(e.target.checked)} /> MRV 기반 참고 탄소집약도 계산에 동의합니다. 공식 CII·등급이 아닙니다.</label>}
-      <p className="small">자연어로 선박·연도·기간을 답해도 됩니다. 아래 입력은 현재 되묻기에만 적용합니다.</p>
-      <button className="btn primary" disabled={workspace.state.busy} type="submit">조건 적용 후 조회</button>
+      </UiControl></label>}
+      {missing.includes('reference_ack') && <label><UiControl as="input" aria-label="MRV 참고값 동의" type="checkbox" required checked={ack} onChange={e=>setAck(e.target.checked)} /><UiText>{"MRV 기반 참고 탄소집약도 계산에 동의합니다. 공식 CII·등급이 아닙니다."}</UiText></label>}
+      <p className="small"><UiText>{"자연어로 선박·연도·기간을 답해도 됩니다. 아래 입력은 현재 되묻기에만 적용합니다."}</UiText></p>
+      <button className="btn primary" disabled={workspace.state.busy} type="submit"><UiText>{"조건 적용 후 조회"}</UiText></button>
       {error && <p role="alert">{error}</p>}
     </form>}
     {flow.results?.map((row,i)=><section className="card pad mt" key={i} data-workflow-result>
       {row.kind==='mrv_reference' && <h3>{row.label}</h3>}
-      <p className="small">{row.kind==='mrv_reference'?'실제 MRV 연간 자료·참고 계산':'앱 일별 운항 기록'} · {statuses[row.status] || row.status}</p>
+      <p className="small"><UiText>{row.kind==='mrv_reference'?'실제 MRV 연간 자료·참고 계산':'앱 일별 운항 기록'}</UiText> · <UiText>{statuses[row.status] || row.status}</UiText></p>
       <SkillResult answer={{result:row.result,warnings:[]}} />
     </section>)}
-    {flow.comparisons?.length>0 && <section className="card pad mt"><h3>입력 결과의 산술 비교</h3>
-      {flow.comparisons.map((c,i)=><p key={i}>{c.base} → {c.target}<br />{metrics[c.metric] || c.metric}: 차이 {c.difference ?? '비교 불가'} {c.unit} · 변화율 {c.percent_change==null?'산출 불가':`${c.percent_change}%`}</p>)}
+    {flow.comparisons?.length>0 && <section className="card pad mt"><h3><UiText>{"입력 결과의 산술 비교"}</UiText></h3>
+      {flow.comparisons.map((c,i)=><p key={i}>{c.base} → {c.target}<br /><UiText>{metrics[c.metric] || c.metric}</UiText><UiText>{": 차이"}</UiText>{c.difference ?? '비교 불가'} {c.unit}<UiText>{"· 변화율"}</UiText><UiText>{c.percent_change==null?'산출 불가':`${c.percent_change}%`}</UiText></p>)}
       <p className="small muted">{flow.comparisons[0].notice}</p>
     </section>}
   </section>;

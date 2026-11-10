@@ -1,3 +1,5 @@
+import {UiText} from '../components/ui-language';
+import {UiControl} from '../components/ui-language';
 import React from 'react';
 import SkillsPanel from '../components/skills-panel';
 import * as helpers from '../components/common';
@@ -30,7 +32,7 @@ export function createReportViews(model, views) {
                     }
                   : {})}
               >
-                <summary>{'운항 기록으로 초안 만들기'}</summary>
+                <summary><UiText>{'운항 기록으로 초안 만들기'}</UiText></summary>
                 {contextControls()}
                 <div className={'actions wrap'}>
                   {btn('Noon Report', 'templateNoon', '', 'ship', { disabled: templatesLoading })}
@@ -39,9 +41,9 @@ export function createReportViews(model, views) {
                   {btn('초안 JSON 가져오기', 'importDraft', 'ghost', 'database')}
                 </div>
                 <p className={'footnote mt'}>
-                  {
+                  <UiText>{
                     'Noon은 선택 기간의 마지막 하루, MRV는 선택 기간 전체 기록을 사용합니다. 팀 검토용 양식이며 제출 전 필수 항목을 확인해 주세요.'
-                  }
+                  }</UiText>
                 </p>
               </details>
             ) : (
@@ -52,7 +54,7 @@ export function createReportViews(model, views) {
         {
           <>
             <form className={'controls'} id={'reportSearch'}>
-              <input
+              <UiControl as="input"
                 className={'control'}
                 name={'query'}
                 aria-label={'보고서 검색'}
@@ -60,7 +62,7 @@ export function createReportViews(model, views) {
                 defaultValue={state.reportQuery}
                 onChange={noop}
               />
-              <button className={'btn'}>{'검색'}</button>
+              <button className={'btn'}><UiText>{'검색'}</UiText></button>
               {btn('새로고침', 'refreshReports', 'ghost', 'refresh')}
             </form>
             <div className={'card'}>
@@ -69,14 +71,14 @@ export function createReportViews(model, views) {
                     <React.Fragment key={__index}>
                       {
                         <div className={'docrow'}>
-                          <div className={'docicon'}>{'보고'}</div>
+                          <div className={'docicon'}><UiText>{'보고'}</UiText></div>
                           <div className={'docmain'}>
                             <h3>{r.title}</h3>
                             <p className={'small muted'}>
                               {r.type}
                               {' · '}
                               {dateText(r.updatedAt)}
-                              {' · 버전 '}
+                              <UiText>{' · 버전 '}</UiText>
                               {r.version}
                             </p>
                             <p className={'small'}>
@@ -117,18 +119,18 @@ export function createReportViews(model, views) {
           '내용과 출처를 확인한 뒤 저장·검토를 진행하세요.',
           <>
             {btn('목록으로', 'reportList', '', 'arrowback')}
-            {isAdmin() && d.id && d.version > 0
+            <UiText>{isAdmin() && d.id && d.version > 0
               ? btn(state.deletingReport ? '삭제 중…' : '삭제', 'deleteReport', 'danger-outline', '', {
                   disabled: state.saving || state.deletingReport,
                 })
-              : ''}
+              : ''}</UiText>
           </>,
         )}
         {
           <>
             <div className={'controls report-controls'}>
               <div className={'field'}>
-                <label htmlFor={'report-type'}>{'보고서 유형'}</label>
+                <label htmlFor={'report-type'}><UiText>{'보고서 유형'}</UiText></label>
                 <select
                   id={'report-type'}
                   data-report={'type'}
@@ -145,24 +147,24 @@ export function createReportViews(model, views) {
               </div>
               {badge(statusName[d.status] || '작성 중', d.status === 'approved' ? 'good' : '')}
               <span className={'small muted'}>
-                {'버전 '}
+                <UiText>{'버전 '}</UiText>
                 {d.version}
               </span>
               <div className={'actions'}>
                 {btn('미리보기', 'previewReport', 'sm', 'file')}
-                {canWrite() ? btn('새 초안으로 복사', 'copyReport', 'sm', 'plus') : ''}
+                <UiText>{canWrite() ? btn('새 초안으로 복사', 'copyReport', 'sm', 'plus') : ''}</UiText>
               </div>
             </div>
             {state.reportError ? notice(state.reportError, 'warning') : ''}
             {state.conflict ? (
               <div className={'card pad mb'}>
-                <h3>{'다른 창에서 변경되었어요.'}</h3>
+                <h3><UiText>{'다른 창에서 변경되었어요.'}</UiText></h3>
                 <p className={'small muted'}>
-                  {'서버 버전 '}
+                  <UiText>{'서버 버전 '}</UiText>
                   {state.conflict.version}
                   {' · '}
                   {dateText(state.conflict.updatedAt)}
-                  {'. 편집 중인 내용은 유지됩니다.'}
+                  <UiText>{'. 편집 중인 내용은 유지됩니다.'}</UiText>
                 </p>
                 <div className={'actions mt'}>
                   {btn('서버 내용 확인', 'viewConflict', 'sm')}
@@ -176,9 +178,9 @@ export function createReportViews(model, views) {
             <div className={'report-layout'}>
               <section className={'card'}>
                 <label className={'a11y-hidden'} htmlFor={'report-title'}>
-                  {'보고서 제목'}
+                  <UiText>{'보고서 제목'}</UiText>
                 </label>
-                <input
+                <UiControl as="input"
                   id={'report-title'}
                   className={'report-title'}
                   data-report={'title'}
@@ -193,7 +195,7 @@ export function createReportViews(model, views) {
                   onChange={noop}
                 />
                 <label className={'a11y-hidden'} htmlFor={'report-text'}>
-                  {'보고서 본문'}
+                  <UiText>{'보고서 본문'}</UiText>
                 </label>
                 <textarea
                   id={'report-text'}
@@ -210,15 +212,15 @@ export function createReportViews(model, views) {
                 ></textarea>
                 <div className={'report-actions'}>
                   <span id={'saveStatus'} className={'saved-state'}>
-                    {state.localFailed
+                    <UiText>{state.localFailed
                       ? '브라우저 보관 실패 · 파일로 보관해 주세요'
                       : state.dirty
                         ? '브라우저 임시 보관 · 저장 전'
-                        : '저장된 내용'}
+                        : '저장된 내용'}</UiText>
                   </span>
                   <div className={'actions wrap'}>
                     {btn('파일 출력', 'downloadReport', '', 'download')}
-                    {editable
+                    <UiText>{editable
                       ? btn(
                           state.saving ? '저장 중…' : '저장',
                           'saveReport',
@@ -230,8 +232,8 @@ export function createReportViews(model, views) {
                               }
                             : {},
                         )
-                      : ''}
-                    {editable && d.id
+                      : ''}</UiText>
+                    <UiText>{editable && d.id
                       ? btn(
                           '검토 요청',
                           'submitReport',
@@ -244,13 +246,13 @@ export function createReportViews(model, views) {
                               }
                             : {},
                         )
-                      : ''}
+                      : ''}</UiText>
                   </div>
                 </div>
               </section>
               <aside>
                 <div className={'card pad'}>
-                  <h3>{'작성 근거'}</h3>
+                  <h3><UiText>{'작성 근거'}</UiText></h3>
                   {d.sources.length ? (
                     d.sources.map((id, __index) => {
                       const s = state.docs.find((x) => x.id === id);
@@ -262,18 +264,18 @@ export function createReportViews(model, views) {
                                 <strong>{s?.title || '열람 불가 문서'}</strong>
                                 <small>{s?.version || ''}</small>
                               </button>
-                              {editable
+                              <UiText>{editable
                                 ? btn('제거', 'removeSource', 'ghost sm', '', {
                                     'data-id': id,
                                   })
-                                : ''}
+                                : ''}</UiText>
                             </div>
                           }
                         </React.Fragment>
                       );
                     })
                   ) : (
-                    <p className={'small muted mt'}>{'연결된 문서가 없습니다.'}</p>
+                    <p className={'small muted mt'}><UiText>{'연결된 문서가 없습니다.'}</UiText></p>
                   )}
                 </div>
                 <div className={'mt'}>

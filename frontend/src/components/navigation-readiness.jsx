@@ -1,3 +1,4 @@
+import {UiText} from './ui-language';
 import React from 'react';
 
 const states = { needs_information:'추가 정보 필요', action_required:'가정 조건상 조치 필요',
@@ -10,25 +11,25 @@ inputs.current_port_source = '오래되거나 시각이 잘못된 항만 자료�
 export function NavigationReadiness({ value }) {
   if (!value) return null;
   return <details className="card pad mt" data-navigation-readiness>
-    <summary>입항 전 추가 확인 · {value.items.length}개 항목 미확인</summary>
+    <summary><UiText>{"입항 전 추가 확인 ·"}</UiText>{value.items.length}<UiText>{"개 항목 미확인"}</UiText></summary>
     <p className="notice warning mt">{value.notice}</p>
-    {value.scenario_only && <p className="notice">입력한 가정 조건으로만 검토했습니다. 실제 풍속·예선 확보·현재 실측 흘수를 인증한 결과가 아닙니다.</p>}
-    <ul>{value.items.map(item=><li key={item.id}><strong>{item.title}</strong> · 확인 필요<br />{item.reason}</li>)}</ul>
+    {value.scenario_only && <p className="notice"><UiText>{"입력한 가정 조건으로만 검토했습니다. 실제 풍속·예선 확보·현재 실측 흘수를 인증한 결과가 아닙니다."}</UiText></p>}
+    <ul>{value.items.map(item=><li key={item.id}><strong>{item.title}</strong><UiText>{"· 확인 필요"}</UiText><br />{item.reason}</li>)}</ul>
   </details>;
 }
 
 export function OperationalChecks({ checks }) {
   if (!checks?.length) return null;
   return <section className="mt" data-navigation-operational-checks>
-    <strong>게시 조건의 추가 검토</strong>
+    <strong><UiText>{"게시 조건의 추가 검토"}</UiText></strong>
     {checks.map(check=><div key={check.id} className="notice mt" style={{display:'block'}}>
-      <strong>{check.kind==='tug'?'예선 조건':check.kind==='ukc'?'선저 여유 조건':'최신 자료 확인'} · {states[check.status] || check.status}</strong>
+      <strong><UiText>{check.kind==='tug'?'예선 조건':check.kind==='ukc'?'선저 여유 조건':'최신 자료 확인'}</UiText> · <UiText>{states[check.status] || check.status}</UiText></strong>
       <p>{check.scope}</p>
-      {check.missing_inputs?.length>0 && <p>필요 정보: {check.missing_inputs.map(k=>inputs[k] || k).join(' · ')}</p>}
-      {check.values?.scenario_wind_m_s!=null && <p>가정 풍속 {check.values.scenario_wind_m_s} m/s · 가정 예선 {check.values.scenario_available_tugs ?? '미입력'}척</p>}
-      {check.values?.scenario_ukc_m!=null && <p>가정 선저 여유 {check.values.scenario_ukc_m} m · 게시 기준 {check.minimum_m} m</p>}
-      <details><summary>규칙 원문·위치</summary><p>{check.source_text}</p><small>{check.source_ref?.source_id} · {check.source_ref?.locator}</small></details>
+      {check.missing_inputs?.length>0 && <p><UiText>{"필요 정보:"}</UiText>{check.missing_inputs.map(k=>inputs[k] || k).join(' · ')}</p>}
+      {check.values?.scenario_wind_m_s!=null && <p><UiText>{"가정 풍속"}</UiText>{check.values.scenario_wind_m_s}<UiText>{"m/s · 가정 예선"}</UiText>{check.values.scenario_available_tugs ?? '미입력'}<UiText>{"척"}</UiText></p>}
+      {check.values?.scenario_ukc_m!=null && <p><UiText>{"가정 선저 여유"}</UiText>{check.values.scenario_ukc_m}<UiText>{"m · 게시 기준"}</UiText>{check.minimum_m} m</p>}
+      <details><summary><UiText>{"규칙 원문·위치"}</UiText></summary><p>{check.source_text}</p><small>{check.source_ref?.source_id} · {check.source_ref?.locator}</small></details>
     </div>)}
-    <p className="small muted">일부 검토된 조건만 구조화했습니다. 원문 전체 조건과 실제 입항 승인은 별도 확인해야 합니다.</p>
+    <p className="small muted"><UiText>{"일부 검토된 조건만 구조화했습니다. 원문 전체 조건과 실제 입항 승인은 별도 확인해야 합니다."}</UiText></p>
   </section>;
 }

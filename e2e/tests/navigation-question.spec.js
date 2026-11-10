@@ -59,7 +59,8 @@ async function ask(page, question) {
 test('question alone compares available ports and exact IMO aligns the existing context for the next question', async ({ page }) => {
   const state = await setup(page);
   await ask(page, 'IMO 8719188 선박이 입항 가능한 항구는?');
-  const answer = page.locator('[data-navigation-answer]');
+  const firstAnswer = page.locator('[data-answer-id="nav-1"]');
+  const answer = firstAnswer.locator('[data-navigation-answer]');
   await expect(answer).toContainText('VIKING CINDERELLA');
   await expect(answer.locator('table').first()).toContainText('Gothenburg');
   await expect(answer.locator('table').first()).toContainText('Helsinki');
@@ -78,7 +79,9 @@ test('question alone compares available ports and exact IMO aligns the existing 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await ask(page, '우리 배가 입항 가능한 항구가 어디야?');
   await expect.poll(() => state.calls.length).toBe(2);
+  await expect(page.locator('[data-answer-id="nav-2"] [data-navigation-answer]')).toBeVisible();
   await expect(answer).toBeVisible();
+  await expect(page.locator('.chat-turn')).toHaveCount(2);
   expect(state.calls[0].body.context.ship).toBe('sample');
   expect(state.calls[1].body.context.ship).toBe('real-ship');
   expect(state.calls[1].body.context.previousQueryId).toBe('nav-1');
@@ -98,10 +101,14 @@ test('followup sends only the displayed ship answer ID and shows applied referen
   await expect(page.locator('[data-navigation-conditions]')).toContainText('8 / 4');
   await expect(page.locator('[data-navigation-conditions]')).toContainText('미확인으로 필터에서 제외: 1');
   await expect(page.locator('[data-navigation-conditions]')).toContainText('현재 자료를 다시 조회');
+  await page.locator('.query-context > summary').click();
+  await expect(page.locator('#ship')).toBeVisible();
   await page.locator('#ship').selectOption('another');
   await ask(page, '그럼 예테보리는?');
   await expect.poll(() => state.calls.length).toBe(3);
   expect(state.calls[2].body.context.previousQueryId).toBeUndefined();
+  await expect(page.locator('[data-answer-id="nav-3"]')).toBeVisible();
+  await expect(page.locator('[data-answer-id="nav-1"]')).toBeVisible();
   expect(state.errors).toEqual([]);
 });
 
@@ -110,8 +117,12 @@ test('a context change while a response is pending discards the previous ship an
   let release; state.delay = new Promise(resolve => { release = resolve; });
   await ask(page, 'IMO 8719188 선박이 입항 가능한 항구는?');
   await expect.poll(() => state.calls.length).toBe(1);
+  await page.locator('.query-context > summary').click();
+  await expect(page.locator('#ship')).toBeVisible();
   await page.locator('#ship').selectOption('another');
+  const pendingResponse = page.waitForResponse('**/api/ask');
   release(); state.delay = null;
+  await pendingResponse;
   await expect(page.locator('#ship')).toHaveValue('another');
   await expect(page.locator('[data-navigation-answer]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '질문 보내기', exact: true })).toBeEnabled();
@@ -126,10 +137,14 @@ test('clarification buttons submit a complete identity; unsupported ports never 
   await page.locator('[data-navigation-answer]').getByRole('button', { name: 'VIKING CINDERELLA · 8719188', exact: true }).click();
   await expect.poll(() => state.calls.length).toBe(2);
   expect(state.calls[1].body.question).toContain('IMO 8719188');
-  await expect(page.locator('[data-navigation-answer] table').first()).toBeVisible();
+  const resolved = page.locator('[data-answer-id="nav-2"]');
+  await expect(resolved.locator('[data-navigation-answer] table').first()).toBeVisible();
   state.unsupported = true;
   await ask(page, '우리 배가 부산항에 입항 가능해?');
-  await expect(page.locator('.answer')).toContainText('요청한 항구 자료가 없습니다');
-  await expect(page.locator('[data-navigation-answer] table')).toHaveCount(0);
+  const unsupported = page.locator('[data-answer-id="nav-3"]');
+  await expect(unsupported).toContainText('요청한 항구 자료가 없습니다');
+  await expect(unsupported.locator('[data-navigation-answer] table')).toHaveCount(0);
+  await expect(resolved.locator('table').first()).toBeVisible();
+  await expect(page.locator('.chat-turn')).toHaveCount(3);
   expect(state.errors).toEqual([]);
 });

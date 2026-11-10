@@ -1,5 +1,7 @@
 # plans — 작업 계획
 
+- [2026-11-09 MEPC 문서 등록과 표시 정리](2026-11-09-mepc-document-update.md): 완료 (검증 범위 기록).
+
 - [2026-11-06 운항 자료 통합 등록](2026-11-06-operation-data-import.md): 완료 (로컬·미제출, 원격 배포 제외).
 
 - [2026-11-06 자연어 업무 질문](2026-11-06-natural-language-workflows.md): 완료 (로컬·미제출).
@@ -56,3 +58,5 @@
 | [`2026-10-13-mrv-reference-intensity.md`](2026-10-13-mrv-reference-intensity.md) | 공개 제원 후보 연결·MRV 참고 집약도 | 완료 (로컬·미제출) |
 
 - [자동 색인과 이미지 모델](2026-10-29-automatic-vector-indexing.md) — 완료
+
+- [통합 질문·언어·대화 이력 개선](2026-11-09-ui-conversations-language.md) — 완료 (대화 API·브라우저 회귀 검증, Docker 전체 스택 미실행).

@@ -108,3 +108,14 @@
 - [ ] 기준 비교의 met / unmet / unknown과 잘못된 근거 거부 전용 회귀 검증 — 이전 Node 테스트는 #8에서 제거됨; 이번 전환은 기준 비교를 변경하지 않음
 - [ ] 운항 분석 응답의 CII가 항상 `unavailable`인지 전용 테스트 추가 필요
 - [ ] 실제 외부 LLM 호출 검증
+
+## 대화 저장·조회·삭제 (2026-11-09, 구현됨)
+
+- `POST /api/ask`에 선택 `conversationId`를 추가한다. 미지정 시 기존과 같이 새 질문을 저장하며 그 응답의 `id`가 새 대화 ID다. 지정 시 본인이 소유한 대화의 첫 질문을 확인하고 행 잠금을 획득한 뒤 같은 대화에 저장한다. 후속 답변에는 `conversationId`가 포함된다.
+- `GET /api/conversations`: 본인 소유 최근 100개 대화의 `{history: [{id, question, at, count}]}`. `question`은 첫 질문, `at`은 마지막 질문 시각. 질문 수에는 100개 제한을 적용하지 않는다.
+- `GET /api/conversations/{id}`: `{id, turns: [{id, question, at, answer, unavailable}]}`. 생성 시각과 ID 순으로 모든 질문을 반환하고 각 답변의 근거 열람 권한을 재검사한다. 권한을 잃은 답변만 `answer:null`로 숨긴다.
+- `POST /api/conversations/delete` 입력 `{id}`: 본인 대화의 모든 `queries`와 `query_owner` 행을 삭제한다. `{deleted:id, count}` 반환. 삭제 후 재조회·추가는 404. POST의 기존 로그인·CSRF·identity 검증을 그대로 적용한다.
+- 타인의 대화 ID와 없는 ID는 모두 404로 처리한다. 삭제와 후속 저장은 대화 첫 행 잠금으로 직렬화한다. 이미 작성한 보고서나 등록 문서는 삭제하지 않는다. 삭제 감사 로그와 과거 백업은 유지한다.
+- 기존 `/api/history` 계약은 호환 유지한다. 대화 식별자가 없는 기존 질문/스킬 실행은 각 1개 질문 대화로 표시한다.
+- 새 대화/로고 클릭은 화면을 비우고 이후 첫 질문부터 새 대화로 저장한다. 화면 전환으로 진행 중 응답을 떠나더라도 서버 완료 기록은 이력에 남을 수 있다.
+- UI 기본값은 `task:auto`, `language:auto`, `mode:extractive`를 유지한다. 화면 언어 `ko/en`은 API 질문 필드와 독립적이다. 전문 LLM 다중 대화 메모리를 추가하지 않고 기존 제한적 후속 질문 처리만 유지한다.

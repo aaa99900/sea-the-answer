@@ -1,4 +1,5 @@
 import React from 'react';
+import {UiText} from './ui-language';
 import { icons } from '../lib/icons';
 export const esc = (value) => String(value ?? ''); // React escapes text at render time.
 export const I = (name) => (
@@ -10,24 +11,24 @@ export function Button({ children, action, className = '', icon = '', ...props }
   return (
     <button type="button" className={`btn ${className}`} data-action={action} {...props}>
       {icon && I(icon)}
-      {children}
+      <UiText>{children}</UiText>
     </button>
   );
 }
 export const btn = (label, action, cls = '', icon = '', extra = {}) => (
   <Button action={action} className={cls} icon={icon} {...extra}>
-    {label}
+    <UiText>{label}</UiText>
   </Button>
 );
-export const badge = (text, cls = '') => <span className={`badge ${cls}`}>{text}</span>;
+export const badge = (text, cls = '') => <span className={`badge ${cls}`}><UiText>{text}</UiText></span>;
 export const n = (v, d = 1) =>
   Number(v).toLocaleString('ko-KR', {
     minimumFractionDigits: d,
     maximumFractionDigits: d,
   });
-export const dateText = (date) =>
+export const dateText = (date, language = 'ko') =>
   date
-    ? new Date(date).toLocaleString('ko-KR', {
+    ? new Date(date).toLocaleString(language === 'en' ? 'en-GB' : 'ko-KR', {
         timeZone: 'Asia/Seoul',
         year: 'numeric',
         month: '2-digit',
@@ -41,7 +42,7 @@ export const options = (list) =>
     const [v, label] = Array.isArray(item) ? item : [item, item];
     return (
       <option key={v} value={v}>
-        {label}
+        <UiText>{label}</UiText>
       </option>
     );
   });
@@ -49,10 +50,10 @@ export function PageHeader({ title, description, children }) {
   return (
     <div className="pagehead">
       <div>
-        <h1>{title}</h1>
-        <p>{description}</p>
+        <h1><UiText>{title}</UiText></h1>
+        <p><UiText>{description}</UiText></p>
       </div>
-      <div className="actions wrap">{children}</div>
+      <div className="actions wrap"><UiText>{children}</UiText></div>
     </div>
   );
 }
@@ -65,29 +66,29 @@ export function Notice({ children, kind = '' }) {
   return (
     <div className={`notice ${kind}`}>
       {I(kind === 'warning' ? 'alert' : 'info')}
-      <span>{children}</span>
+      <span><UiText>{children}</UiText></span>
     </div>
   );
 }
-export const notice = (text, kind = '') => <Notice kind={kind}>{text}</Notice>;
+export const notice = (text, kind = '') => <Notice kind={kind}><UiText>{text}</UiText></Notice>;
 export const empty = (title, sub, action = null) => (
   <div className="empty">
     {I('file')}
-    <h3>{title}</h3>
-    <p>{sub}</p>
+    <h3><UiText>{title}</UiText></h3>
+    <p><UiText>{sub}</UiText></p>
     <div className="mt">{action}</div>
   </div>
 );
 export const stat = (label, value, unit, sub, icon = 'chart') => (
   <div className="card stat">
     <div className="stat-top">
-      <span>{label}</span>
+      <span><UiText>{label}</UiText></span>
       {I(icon)}
     </div>
     <div className="stat-value mono">
-      {value} <small>{unit}</small>
+      {value} <small><UiText>{unit}</UiText></small>
     </div>
-    <div className="small muted">{sub}</div>
+    <div className="small muted"><UiText>{sub}</UiText></div>
   </div>
 );
 export function safeUrl(value) {

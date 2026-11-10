@@ -21,13 +21,15 @@ async function setup(page,handler) {
  await page.goto('/chat');await expect(page.locator('#question')).toBeVisible();return {calls,errors};
 }
 async function ask(page,text) {
- await page.locator('#question').fill(text);await page.getByRole('button',{name:'질문 보내기',exact:true}).click();
- await expect(page.locator('[data-question-workflow]')).toBeVisible();
+ await page.locator('#question').fill(text);const count=await page.locator('.chat-turn').count();
+ await page.getByRole('button',{name:'질문 보내기',exact:true}).click();
+ await expect(page.locator('.chat-turn')).toHaveCount(count+1);
+ await expect(page.locator('.chat-turn').filter({has:page.getByText(text,{exact:true})}).locator('[data-question-workflow]')).toBeVisible();
 }
 
 test('clarification submits only current parent and shows blocked years without invented ratings',async({page})=>{
  const first='11111111-1111-4111-8111-111111111111',second='22222222-2222-4222-8222-222222222222';
- const state=await setup(page,(body,n)=>n===1?answer(first,{missing:['years']}):answer(second,{
+ const state=await setup(page,(body,n)=>n===1?answer(first,{missing:['years']}):answer(n===2?second:'66666666-6666-4666-8666-666666666666',{
   scope:{...scope,years:[2024,2025]},previous_query_id:first,
   results:[{kind:'mrv_reference',label:'해답호 · 2024',status:'estimated',result:{reference_only:true,reference_dwt_intensity:'1.500000',units:{reference_dwt_intensity:'gCO2/(DWT t * nm)'},blockers:[]}},
     {kind:'mrv_reference',label:'해답호 · 2025',status:'blocked',result:{reference_only:true,reference_dwt_intensity:null,blockers:['NO_ELIGIBLE_ANNUAL_RECORD']}}]
@@ -37,8 +39,8 @@ test('clarification submits only current parent and shows blocked years without 
  await expect(page.locator('[data-workflow-result]')).toHaveCount(2);
  expect(state.calls[1].workflowInput).toEqual({years:[2024,2025]});
  expect(state.calls[1].context.previousQueryId).toBe(first);
- await expect(page.locator('[data-question-workflow]')).toContainText('계산 불가');
- await expect(page.locator('[data-question-workflow]')).toContainText('공식 CII·등급은 산출하지 않습니다.');
+ await expect(page.locator(`[data-answer-id="${second}"] [data-question-workflow]`)).toContainText('계산 불가');
+ await expect(page.locator(`[data-answer-id="${second}"] [data-question-workflow]`)).toContainText('공식 CII·등급은 산출하지 않습니다.');
  await ask(page,'그럼 2023년은?');expect(state.calls[2].context.previousQueryId).toBe(second);
  expect(state.errors).toEqual([]);
 });

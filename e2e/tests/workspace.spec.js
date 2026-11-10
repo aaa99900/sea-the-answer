@@ -46,7 +46,8 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
   const action = (a) => page.locator(`[data-action=${a}]`);
   const go = async (name) => {
     await page.locator(`[data-nav=${name}]`).click();
-    await page.waitForTimeout(100);
+    const route = name === 'docs' ? 'documents' : name;
+    await expect(page).toHaveURL(new RegExp(`/${route}$`));
   };
   const confirm = () => action('confirm').click();
   const close = () => action('closeModal').click();
@@ -166,7 +167,6 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
 
   await test.step('Natural-language table and chart requests use real document and operation data', async () => {
     await go('chat');
-    await page.locator('[data-field=task]').selectOption('documents');
     await page.locator('#question').fill('연료 황 함유량 한도를 표로 보여줘');
     const tableResponse = page.waitForResponse(
       response => new URL(response.url()).pathname === '/api/ask' && response.request().method() === 'POST',
@@ -177,6 +177,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect(tableResult.ok()).toBe(true);
     // No outputFormat shortcut: the server must recognize the question's table request.
     expect(tableResult.request().postDataJSON().outputFormat).toBeUndefined();
+    expect(tableResult.request().postDataJSON().task).toBe('auto');
     const documentAnswer = await tableResult.json();
     expect(documentAnswer.presentation.type).toBe('table');
     expect(documentAnswer.presentation.source).toBe('documents');
@@ -196,11 +197,11 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     const ship = operations.ships.find(item => operations.records.some(row => row.ship === item.id));
     const rows = operations.records.filter(row => row.ship === ship.id).sort((a, b) => a.date.localeCompare(b.date));
     expect(rows.length).toBeGreaterThan(0);
-    await page.locator('.query-context').evaluate(details => { details.open = true; });
+    await page.locator('.query-context > summary').click();
+    await expect(page.locator('.query-context #ship')).toBeVisible();
     await page.locator('.query-context #ship').selectOption(ship.id);
     await page.locator('.query-context #from').fill(rows[0].date);
     await page.locator('.query-context #to').fill(rows.at(-1).date);
-    await page.locator('[data-field=task]').selectOption('operations');
     await page.locator('#question').fill('선택 선박의 일별 CO₂ 배출량을 막대그래프로 보여줘');
     const chartResponse = page.waitForResponse(
       response => new URL(response.url()).pathname === '/api/ask' && response.request().method() === 'POST',
@@ -220,7 +221,9 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
       expect(record).toBeTruthy();
       expect(point.value).toBeCloseTo(record.fuel * record.factor, 6);
     }
-    const chart = page.locator('.answer-presentation svg');
+    expect(chartResult.request().postDataJSON().task).toBe('auto');
+    const chart = page.locator(`[data-answer-id="${operationAnswer.id}"] .answer-presentation svg`);
+    await expect(documentTable).toBeVisible();
     await expect(chart).toBeVisible();
     await expect(chart.getByText(presentation.xLabel, { exact: true })).toBeVisible();
     await expect(chart.getByText(`${presentation.yLabel} (${presentation.unit})`, { exact: true })).toBeVisible();
@@ -233,7 +236,6 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     await expect(firstRow.getByRole('cell', {
       name: firstPoint.value.toLocaleString('ko-KR', { maximumFractionDigits: 6 }), exact: true,
     })).toBeVisible();
-    await page.locator('[data-field=task]').selectOption('auto');
   });
 
   await test.step('Document create, revision and immediate deletion', async () => {
@@ -247,6 +249,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     const created = page.locator('.docrow').filter({ hasText: 'Next.js 검증 문서' });
     await created.waitFor();
     await created.locator('[data-action=document]').click();
+    await expect(page).toHaveURL(/\/documents\/[^/]+$/);
     const before = (await api('/api/documents')).data.documents.find((d) => d.title === 'Next.js 검증 문서');
     const writes = [];
     const recordWrite = (request) => {
