@@ -29,6 +29,7 @@ CSV_COLUMNS = (
 STATUS_LABELS = {
     "scheduled": "출항 예정", "departure": "출항", "underway": "항해 중",
     "waiting": "운하 통과 대기", "canal": "수에즈운하 통과", "arrived": "입항 완료",
+    "berthed": "포트사이드 정박", "approach": "인천항 접근",
 }
 
 
@@ -191,6 +192,17 @@ def operation_csv(records: list[dict]) -> str:
     return output.getvalue()
 
 
+def write_export(result: dict, output_format: str, path: Path | None) -> None:
+    output = (operation_csv(result["records"]) if output_format == "csv" else
+              json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    if path is not None:
+        with path.open("x", encoding="utf-8", newline="") as file:
+            file.write(output)
+    else:
+        sys.stdout.reconfigure(encoding="utf-8", newline="")
+        sys.stdout.write(output)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, required=True, help="SQLite voyage log to create or resume")
@@ -201,14 +213,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         result = advance(args.database, args.departure, args.through or datetime.now(UTC))
-        output = (operation_csv(result["records"]) if args.format == "csv" else
-                  json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-        if args.output:
-            with args.output.open("x", encoding="utf-8", newline="") as file:
-                file.write(output)
-        else:
-            sys.stdout.reconfigure(encoding="utf-8", newline="")
-            sys.stdout.write(output)
+        write_export(result, args.format, args.output)
     except (ValueError, OSError, sqlite3.Error) as exc:
         parser.exit(1, f"simulate_voyage: {exc}\n")
 

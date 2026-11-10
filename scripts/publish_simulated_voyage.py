@@ -1,4 +1,4 @@
-"""Publish completed simulated UTC days through the app's admin API.
+"""Publish completed simulated UTC days or the fixed round-trip sample.
 
 The default is a preview. Use --apply to append the missing records. For a
 scheduled invocation, provide HAEDAP_SIM_PASSWORD via its secret store.
@@ -19,6 +19,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPCookieProcessor, HTTPRedirectHandler, Request, build_opener
 
+from scripts.simulate_round_trip import build_round_trip
 from scripts.simulate_voyage import advance
 
 
@@ -102,20 +103,28 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", required=True, help="HTTPS origin of the app")
     parser.add_argument("--username", required=True, help="app administrator username")
-    parser.add_argument("--database", type=Path, required=True, help="simulation's SQLite log")
-    parser.add_argument("--departure", type=date.fromisoformat, required=True, help="departure date (UTC midnight)")
+    parser.add_argument("--database", type=Path, help="one-way simulation's SQLite log")
+    parser.add_argument("--departure", type=date.fromisoformat, help="one-way departure date (UTC midnight)")
     parser.add_argument("--through", type=datetime.fromisoformat, help="snapshot timestamp with offset (default: now)")
+    parser.add_argument("--round-trip", action="store_true", help="use the fixed 60-day sample, including projected return records")
     parser.add_argument("--apply", action="store_true", help="append missing days to the app")
     parser.add_argument("--password-stdin", action="store_true", help="read one password line from stdin")
     args = parser.parse_args()
+    if args.round_trip and (args.database is not None or args.departure is not None or args.through is not None):
+        parser.error("--round-trip uses fixed dates and does not accept --database, --departure, or --through")
+    if not args.round_trip and (args.database is None or args.departure is None):
+        parser.error("--database and --departure are required for a one-way voyage")
     try:
-        now = datetime.now(UTC)
-        through = args.through or now
-        if through.utcoffset() is None:
-            raise ValueError("--through must include a UTC offset, such as Z or +09:00")
-        if args.apply and through > now:
-            raise ValueError("Publishing requires a snapshot time at or before the present")
-        result = advance(args.database, args.departure, through)
+        if args.round_trip:
+            result = build_round_trip()
+        else:
+            now = datetime.now(UTC)
+            through = args.through or now
+            if through.utcoffset() is None:
+                raise ValueError("--through must include a UTC offset, such as Z or +09:00")
+            if args.apply and through > now:
+                raise ValueError("Publishing requires a snapshot time at or before the present")
+            result = advance(args.database, args.departure, through)
         client = AdminClient(args.server)
         password = (sys.stdin.readline().rstrip("\r\n") if args.password_stdin else
                     os.environ.get("HAEDAP_SIM_PASSWORD") or getpass("App password: "))
@@ -124,7 +133,11 @@ def main() -> None:
         try:
             client.login(args.username, password)
             del password
-            print(json.dumps(publish(client, result, apply=args.apply)))
+            summary = publish(client, result, apply=args.apply)
+            if args.round_trip:
+                summary["scenario_days"] = summary.pop("completed_days")
+                summary["projected_days"] = result["simulation"]["return"]["record_count"]
+            print(json.dumps(summary))
         finally:
             if client.identity:
                 client.request("auth/logout", {})
