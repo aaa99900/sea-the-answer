@@ -2,7 +2,7 @@
 
 - [실제 로컬 LLM 연결·최종 답변 검증](plans/2026-11-10-local-llm-answer-validation.md): 완료. 실제 연결과 제한된 생성 확인, 전반적 생성 품질 미달.
 
-- [질문창 중심 조건 보완](plans/2026-11-10-conversation-first-queries.md): 로컬 완료. 단계별 대화·AIS 현황·질문 표현 회귀, 운영 반영 제외.
+- [질문창 중심 조건 보완](plans/2026-11-10-conversation-first-queries.md): 구현·검증 완료, [PR #27](https://github.com/dudco/sea-the-answer/pull/27) 제출. 단계별 대화·AIS 현황·질문 표현 회귀, 운영 반영 제외.
 
 - [2026-11-09 MEPC 문서 등록과 표시 정리](plans/2026-11-09-mepc-document-update.md): 완료 (검증 범위 기록).
 
