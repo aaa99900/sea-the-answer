@@ -375,6 +375,8 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     });
     await submit('#csvForm');
     await action('commitCsv').click();
+    await expect(page.locator('[data-import-database]')).toBeVisible();
+    await close();
     await dialogClosed();
     expect(await records()).toHaveLength(22);
   });
@@ -457,12 +459,32 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     const restore = page.locator(`[data-action=restoreBackup][data-id="${backup.id}"]`);
     await restore.click();
     await page.locator('#f-confirm').fill('복구');
-    const restoreResponse = page.waitForResponse(response =>
-      new URL(response.url()).pathname === '/api/backups/restore' && response.request().method() === 'POST');
-    await submit('#restoreForm');
-    const restored = await restoreResponse;
-    const restoreResult = await restored.json();
-    expect(restored.status(), JSON.stringify(restoreResult.error || {})).toBe(200);
+    // Exercise a BUSY response deterministically, then use the real restore API.
+    // The automatic backup can also hold its DB lock outside HTTP request slots.
+    await page.route('**/api/backups/restore', route => route.fulfill({
+      status: 409, contentType: 'application/json',
+      body: JSON.stringify({error: {code: 'BUSY', message: '다른 요청 또는 복구가 진행 중입니다.'}}),
+    }), {times: 1});
+    const restoreDeadline = Date.now() + 15_000;
+    let busyResponses = 0;
+    for (;;) {
+      await expect(page.locator('#restoreForm button[type=submit]')).toBeEnabled();
+      const restoreResponse = page.waitForResponse(response =>
+        new URL(response.url()).pathname === '/api/backups/restore' && response.request().method() === 'POST');
+      await submit('#restoreForm');
+      const restored = await restoreResponse;
+      const restoreResult = await restored.json();
+      if (restored.status() === 409 && restoreResult.error?.code === 'BUSY' && Date.now() < restoreDeadline) {
+        busyResponses++;
+        await expect(page.locator('#restoreForm')).toBeVisible();
+        await expect(page.locator('#f-confirm')).toHaveValue('복구');
+        await page.waitForTimeout(250); // Back off only for the documented BUSY rejection.
+        continue;
+      }
+      expect(restored.status(), JSON.stringify(restoreResult.error || {})).toBe(200);
+      break;
+    }
+    expect(busyResponses).toBeGreaterThanOrEqual(1);
     await page.locator('#authForm').waitFor();
     expect((await api('/api/health')).data.user.role).toBe('guest');
     expect((await api('/api/operations')).status).toBe(401);
