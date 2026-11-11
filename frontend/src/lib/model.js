@@ -87,6 +87,7 @@ export function createModel() {
     filter: 'all',
     language: 'auto',
     mode: 'extractive',
+    answerModePreference: '',
     includeCalc: false,
     task: 'auto',
     criterion: null,

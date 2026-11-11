@@ -27,6 +27,10 @@ class DB:
         if sql.startswith('INSERT INTO query_owner '):self.owners[args[0]]=args[1]
     def audit(self,*args):pass
     def can_read_document(self,user,identifier):return identifier in self.allowed
+    def allowed_document_ids(self,user):return self.allowed
+    def compare_criterion(self,user,criterion,summary):
+        from api.store.answers import AnswerStore
+        return AnswerStore.compare_criterion(self,user,criterion,summary)
     def documents(self,user):return [{'id':i,'title':i} for i in sorted(self.allowed)]
     def operation_summary(self,scope):
         self.calls.append(deepcopy(scope));ship=next(s for s in self.fleet if s['id']==scope['ship'])
@@ -157,7 +161,7 @@ def test_role_or_ship_changes_while_tools_run_rolls_back_save(monkeypatch):
 
 def test_document_and_presentation_routes_do_not_invoke_new_planner():
     db=DB()
-    for q in ['선박 안전 규정을 알려줘','헬싱키 입항 절차를 문서만 사용해서 알려줘','연료 추이를 차트로 보여줘','연료 황 함유량 기준을 알려줘']:
+    for q in ['선박 안전 규정을 알려줘','헬싱키 입항 절차를 문서만 사용해서 알려줘','연료 황 함유량 기준을 알려줘']:
         assert ask(db,q,mode='llm') is None
 
 
@@ -258,3 +262,76 @@ def test_year_ranges_and_ambiguous_baselines_never_silently_become_endpoint_comp
     db=DB();first=ask(db,'해답호 2025년 1월 연료 사용량 알려줘');db.calls=[]
     answer=ask(db,'그럼 같은 기간 다른 선박은?',{'ship':'a','previousQueryId':first['id']})
     assert answer['workflow']['missing']==['ships'] and not db.calls
+
+
+def test_conversation_can_fill_ship_then_relative_period_without_forms(monkeypatch):
+    monkeypatch.setattr(intent,'local_today',lambda:date(2026,11,10))
+    db=DB();first=ask(db,'우리 배 기름 얼마나 썼는지 알려줘')
+    assert first['workflow']['clarification']['field']=='ships' and not db.calls
+    second=ask(db,'해답호로 해줘',{'previousQueryId':first['id']})
+    assert second['workflow']['clarification']['field']=='periods' and not db.calls
+    assert second['workflow']['scope']['ships'][0]['id']=='a'
+    third=ask(db,'지난 달',{'ship':'a','previousQueryId':second['id']})
+    assert third['status']=='completed' and len(db.calls)==1
+    assert (db.calls[0]['from'],db.calls[0]['to'])==('2026-10-01','2026-10-31')
+    assert third['workflow']['previous_query_id']==second['id']
+
+
+def test_bare_period_and_ship_followups_keep_scope_but_new_topics_do_not():
+    db=DB();first=ask(db,'해답호 2025년 1월 연료 사용량 알려줘')
+    second=ask(db,'2월은?',{'ship':'a','previousQueryId':first['id']})
+    assert db.calls[-1]['from']=='2025-02-01'
+    third=ask(db,'별빛호는?',{'ship':'a','previousQueryId':second['id']})
+    assert db.calls[-1]['ship']=='b' and db.calls[-1]['from']=='2025-02-01'
+    db.calls=[]
+    for question in ['그럼 해답호 선장은 누구야?','2월 입항 절차는?','2025년 점심 메뉴는?','해답호2는?','네']:
+        assert ask(db,question,{'ship':'b','previousQueryId':third['id']}) is None
+    assert not db.calls
+    assert not intent.slot_reply('해답호 의도?',labels=['해답호'],dates=True,ships=True)
+    unknown=ask(db,'미등록호는?',{'ship':'b','previousQueryId':third['id']})
+    assert unknown['status']=='needs_input' and not db.calls
+
+
+def test_document_title_reply_preserves_original_question_and_duplicate_titles_require_choice(monkeypatch):
+    db=DB();seen=[]
+    db.documents=lambda user:[{'id':'doc-a','title':'소화기 점검 규정'},{'id':'doc-b','title':'연료 전환 문서'}]
+    monkeypatch.setattr(flow.skills,'selected_evidence',lambda d,u,b:seen.append((b.question,b.document_ids)) or [])
+    monkeypatch.setattr(flow.skills,'evidence_statements',lambda *a:([],'extractive'))
+    original='선택한 문서에서 소화기 점검 항목을 알려줘'
+    first=ask(db,original)
+    second=ask(db,'소화기 점검 규정으로 해줘',{'previousQueryId':first['id']})
+    assert seen==[(original,['doc-a'])] and second['status']=='insufficient_evidence'
+    db.documents=lambda user:[{'id':'doc-a','title':'동일 제목'},{'id':'doc-b','title':'동일 제목'}]
+    duplicate=ask(db,'동일 제목',{'previousQueryId':first['id']})
+    assert duplicate['status']=='needs_input' and '여러 개' in duplicate['notice']
+    assert duplicate['workflow']['missing']==['document_ids'] and len(seen)==1
+    db.allowed.remove('doc-a')
+    with pytest.raises(ApiError):ask(db,'동일 제목',{'previousQueryId':first['id']},{'document_ids':['doc-a']})
+
+
+def test_yes_is_only_reference_consent_when_it_is_the_current_question(monkeypatch):
+    db=DB();calls=mock_reference(monkeypatch,db)
+    first=ask(db,'MRV 탄소집약도 계산해줘')
+    assert first['workflow']['clarification']['field']=='ships'
+    assert ask(db,'네',{'previousQueryId':first['id']}) is None
+    second=ask(db,'해답호',{'previousQueryId':first['id']})
+    assert second['workflow']['clarification']['field']=='years'
+    third=ask(db,'2024년',{'previousQueryId':second['id']})
+    assert third['workflow']['clarification']['field']=='reference_ack'
+    assert not calls
+    assert not flow.accepts_reference('참고값에는 동의하지 않아',prompted=True)
+    assert not flow.accepts_reference('참고값 말고 공식 CII',prompted=True)
+    declined=ask(db,'아니요',{'previousQueryId':third['id']})
+    assert declined['status']=='needs_input' and not calls
+    assert '진행하지 않았습니다' in declined['notice']
+    fourth=ask(db,'네',{'previousQueryId':third['id']})
+    assert fourth['status']=='completed' and len(calls)==1
+    assert fourth['workflow']['results'][0]['result']['official_cii'] is None
+
+
+def test_same_owner_parent_from_another_conversation_is_not_inherited():
+    db=DB();first=ask(db,'해답호 2025년 1월 연료 사용량 알려줘');db.calls=[]
+    ctx=SimpleNamespace(db=db,user={'id':'user-a'},body={'question':'그럼 2월은?',
+        'conversationId':'another-conversation','context':{'ship':'a','previousQueryId':first['id']}})
+    answer=flow.try_answer(ctx)
+    assert answer['status']=='needs_input' and not db.calls

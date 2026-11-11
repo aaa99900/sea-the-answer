@@ -109,6 +109,37 @@ def test_followup_uses_explicit_owned_parent_and_requeries_current_sources(multi
     assert nav['context'] == parent['navigation']['context']
 
 
+def test_ship_name_only_reply_keeps_pending_port_and_numeric_filters(multiple,monkeypatch):
+    ctx,loader,calculator=multiple
+    ctx.body.update(question='우리 배가 헬싱키에 입항 가능한 선석 중 흘수 제한이 8m 이상인 곳만 알려줘',context={})
+    first=parent_context(ctx,monkeypatch)
+    assert first['navigation']['status']=='needs_ship'
+    assert calculator.call_count==0
+    ctx.body['question']='검증 선박으로 해줘'
+    nav=query.try_answer(ctx)['navigation']
+    assert nav['status']=='reference_only' and nav['matched_berth_count']==3
+    assert calculator.call_args.args[1]=='ship-1' and calculator.call_args.kwargs['port_ids']==[HEL]
+    assert nav['previous_query_id']==first['id']
+    assert nav['request_question']==first['question'] and nav['admission']=='not_assessed'
+
+
+def test_pending_navigation_cannot_cross_conversations_or_intercept_another_topic(multiple,monkeypatch):
+    ctx,loader,calculator=multiple;ctx.body['context']={}
+    first=parent_context(ctx,monkeypatch)
+    ctx.body.update(question='검증 선박',conversationId='another-conversation')
+    assert query.try_answer(ctx) is None and not calculator.called
+    ctx.body.pop('conversationId');ctx.body['question']='검증 선박의 입항 절차를 알려줘'
+    assert query.try_answer(ctx) is None and not calculator.called
+
+
+def test_port_name_without_prefix_is_a_bounded_followup(multiple,monkeypatch):
+    ctx,loader,calculator=multiple;parent=parent_context(ctx,monkeypatch)
+    ctx.body['question']='예테보리는?'
+    nav=query.try_answer(ctx)['navigation']
+    assert nav['previous_query_id']==parent['id']
+    assert calculator.call_args.kwargs['port_ids']==['WPI:24020']
+
+
 def test_filter_carries_only_for_followup_and_current_values_are_used(multiple, monkeypatch):
     ctx, loader, calculator = multiple
     ctx.body['question'] = '우리 배가 헬싱키에 입항 가능한 선석 중 흘수 제한이 8m 이상인 곳만 알려줘'

@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 
 async function setup(page) {
-  const state = { calls: [], errors: [], delay: null, needsShip: false, unsupported: false, filtered: false };
+  const state = { calls: [], errors: [], delay: null, needsShip: false, unsupported: false, filtered: false, catalogStatus:false };
   page.on('pageerror', e => state.errors.push(e.message));
   const ship = { id: 'real-ship', name: 'VIKING CINDERELLA', imo: '8719188', dwt: 4228, type: 'Passenger ship', version: 1 };
   await page.route('**/api/**', async route => {
@@ -24,7 +24,14 @@ async function setup(page) {
         ship: state.needsShip ? null : ship, context: { imo_number: ship.imo },
         ship_options: state.needsShip ? [ship] : [], port_options: [{ port_id: 'WPI:28190', name: 'Helsinki' }],
         results: [], ports: [] };
-      if (!state.needsShip && !state.unsupported) {
+      if (state.catalogStatus) {
+        Object.assign(nav,{kind:'catalog-status',status:'available',ship:null,catalog:{
+          ais_observation_count:307,ais_unique_vessels:307,generated_at:'2026-11-06T01:43:00Z',
+          ais_source_counts:{ais:307},sources:[{...source,id:'ais',url:'https://www.digitraffic.fi/en/marine-traffic/',retrieved_at:'2026-11-06T01:43:00Z'}],
+          freshness:{assessed_at:'2026-11-10T01:00:00Z',ais_capture_issue:'AIS_CAPTURE_STALE',ais_record_age_counts:{AIS_RECORD_STALE:307}}
+        }});
+      }
+      if (!state.catalogStatus && !state.needsShip && !state.unsupported) {
         nav.ports = ['Gothenburg', 'Helsinki'].map((name, i) => ({ port_id: 'port-'+i, name,
           berth_count: 1, partial_reference_check: 1, published_reference_exceeded: 0, insufficient_data: 0 }));
         nav.results = nav.ports.map(p => ({ ...p, port_name: p.name, assessed_at: '2026-11-04T02:00:00Z',
@@ -42,13 +49,14 @@ async function setup(page) {
         }
       }
       return json({ id: 'nav-'+state.calls.length, question: body.question, language: 'ko', generation: 'tool',
-        status: nav.results.length ? 'reference_found' : 'needs_input', notice: state.unsupported ? '요청한 항구 자료가 없습니다.' : '일부 공개 수치 비교입니다. 실제 입항 허가 판정은 아닙니다.',
+        status: state.catalogStatus ? 'completed' : nav.results.length ? 'reference_found' : 'needs_input', notice: state.catalogStatus ? '연결된 AIS 수집본에 307개 기록, 307척이 있습니다. 실시간 수신 여부를 뜻하지 않습니다.' : state.unsupported ? '요청한 항구 자료가 없습니다.' : '일부 공개 수치 비교입니다. 실제 입항 허가 판정은 아닙니다.',
         warnings: ['NAVIGATION_REFERENCE_ONLY'], statements: [], evidence: [], toolRuns: [], reportSuggested: false, navigation: nav });
     }
     return json({ documents: [], reports: [], history: [], skills: [] });
   });
   await page.goto('/chat');
-  await expect(page.locator('#ship')).toHaveValue('sample');
+  await expect(page.locator('#question')).toBeVisible();
+  await expect(page.locator('.query-context')).toHaveCount(0);
   return state;
 }
 async function ask(page, question) {
@@ -64,7 +72,7 @@ test('question alone compares available ports and exact IMO aligns the existing 
   await expect(answer).toContainText('VIKING CINDERELLA');
   await expect(answer.locator('table').first()).toContainText('Gothenburg');
   await expect(answer.locator('table').first()).toContainText('Helsinki');
-  await expect(page.locator('#ship')).toHaveValue('real-ship');
+  expect(state.calls[0].body.question).toContain('IMO 8719188');
   await expect(page.locator('.answer')).not.toContainText('문서 근거가 부족합니다');
   await expect(page.locator('.answer')).not.toContainText('CO₂');
   await answer.getByText('Helsinki · 선석별 근거·부족 항목 (1)', { exact: true }).click();
@@ -82,10 +90,27 @@ test('question alone compares available ports and exact IMO aligns the existing 
   await expect(page.locator('[data-answer-id="nav-2"] [data-navigation-answer]')).toBeVisible();
   await expect(answer).toBeVisible();
   await expect(page.locator('.chat-turn')).toHaveCount(2);
-  expect(state.calls[0].body.context.ship).toBe('sample');
+  expect(state.calls[0].body.context.ship).toBe('');
   expect(state.calls[1].body.context.ship).toBe('real-ship');
   expect(state.calls[1].body.context.previousQueryId).toBe('nav-1');
   expect(state.calls.every(c => c.headers.authorization === undefined && c.headers['x-haedap-token'] === 'nav-csrf')).toBe(true);
+  expect(state.errors).toEqual([]);
+});
+
+test('AIS data existence question shows actual catalog facts and stale snapshot warning',async({page},testInfo)=>{
+  const state=await setup(page);state.catalogStatus=true;
+  await ask(page,'AIS 관련 데이터 있어?');
+  const answer=page.locator('[data-answer-id="nav-1"]');
+  await expect(answer).toContainText('AIS 자료 현황');
+  await expect(answer).toContainText('연결된 AIS 수집본');
+  await expect(answer).toContainText('307');
+  await expect(answer).toContainText('AIS 수집 자료가 24시간 기준을 지남');
+  await expect(answer).toContainText('실시간 AIS 수신·현재 위치·입항 가능 여부를 뜻하지 않습니다.');
+  await expect(answer.getByRole('link',{name:'Fintraffic AIS'})).toHaveAttribute('href','https://www.digitraffic.fi/en/marine-traffic/');
+  await expect(answer).not.toContainText('문서 근거가 부족합니다');
+  await expect(answer).not.toContainText('항구 참조 비교');
+  expect(state.calls[0].body.context.ship).toBe('');
+  await page.screenshot({path:testInfo.outputPath('ais-status.png'),fullPage:true});
   expect(state.errors).toEqual([]);
 });
 
@@ -101,29 +126,24 @@ test('followup sends only the displayed ship answer ID and shows applied referen
   await expect(page.locator('[data-navigation-conditions]')).toContainText('8 / 4');
   await expect(page.locator('[data-navigation-conditions]')).toContainText('미확인으로 필터에서 제외: 1');
   await expect(page.locator('[data-navigation-conditions]')).toContainText('현재 자료를 다시 조회');
-  await page.locator('.query-context > summary').click();
-  await expect(page.locator('#ship')).toBeVisible();
-  await page.locator('#ship').selectOption('another');
-  await ask(page, '그럼 예테보리는?');
+  await ask(page, 'IMO 9074729 선박이 예테보리에 입항 가능한지 확인해줘');
   await expect.poll(() => state.calls.length).toBe(3);
-  expect(state.calls[2].body.context.previousQueryId).toBeUndefined();
+  expect(state.calls[2].body.question).toContain('IMO 9074729');
   await expect(page.locator('[data-answer-id="nav-3"]')).toBeVisible();
   await expect(page.locator('[data-answer-id="nav-1"]')).toBeVisible();
   expect(state.errors).toEqual([]);
 });
 
-test('a context change while a response is pending discards the previous ship answer', async ({ page }) => {
+test('starting a new question while navigation is pending discards the late answer', async ({ page }) => {
   const state = await setup(page);
   let release; state.delay = new Promise(resolve => { release = resolve; });
   await ask(page, 'IMO 8719188 선박이 입항 가능한 항구는?');
   await expect.poll(() => state.calls.length).toBe(1);
-  await page.locator('.query-context > summary').click();
-  await expect(page.locator('#ship')).toBeVisible();
-  await page.locator('#ship').selectOption('another');
+  await page.getByRole('button',{name:'새 질문',exact:true}).click();
   const pendingResponse = page.waitForResponse('**/api/ask');
   release(); state.delay = null;
   await pendingResponse;
-  await expect(page.locator('#ship')).toHaveValue('another');
+  await expect(page.locator('#question')).toHaveValue('');
   await expect(page.locator('[data-navigation-answer]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '질문 보내기', exact: true })).toBeEnabled();
   expect(state.errors).toEqual([]);

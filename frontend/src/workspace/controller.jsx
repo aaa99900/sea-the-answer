@@ -213,6 +213,8 @@ export function createWorkspace() {
     state.user = null;
     state.ready = false;
     state.ship = '';
+    state.answerModePreference = '';
+    state.mode = 'extractive';
     state.compare = [];
     state.conflict = null;
     state.calc = null;
@@ -226,7 +228,9 @@ export function createWorkspace() {
     state.ships = o.ships;
     state.operationRecords = o.records;
     state.reports = r.reports;
-    if (!state.ships.some((s) => s.id === state.ship)) state.ship = state.ships[0]?.id || '';
+    if (!state.ships.some((s) => s.id === state.ship)) {
+      state.ship = state.ships[0]?.id || '';
+    }
     state.compare = state.compare.filter((id) => state.ships.some((s) => s.id === id));
     if (!state.compare.length) state.compare = state.ships.slice(0, 2).map((s) => s.id);
     render();
@@ -260,7 +264,7 @@ export function createWorkspace() {
       }
       await refreshAll();
       state.ready = true;
-      if (!health.llmConfigured) state.mode = 'extractive';
+      state.mode = health.llmConfigured ? state.answerModePreference || 'llm' : 'extractive';
       if (previous !== state.user.id) {
         try {
           state.draft = validateDraft(readLocal(draftKey()));
@@ -385,13 +389,21 @@ export function createWorkspace() {
     q = q.trim();
     if (!q || state.busy) return;
     if (!state.ready) throw Error('서버 연결을 먼저 확인해 주세요.');
+    const displayShip = state.ship;
     const parent = parentAnswerId ? state.turns.find(t => t.id === parentAnswerId)?.answer : state.answer;
+    const scope=parent?.workflow?.scope;
+    const selectedShip=state.task!=='auto' ? state.ship : scope
+      ? (scope.ships?.length===1 ? scope.ships[0].id : '')
+      : parent?.navigation?.ship?.id || parent?.operations?.ship?.id || '';
+    const period=state.task!=='auto' ? {start:state.from,end:state.to}
+      : scope?.periods?.length===1 ? scope.periods[0]
+      : parent?.operations ? {start:parent.operations.from,end:parent.operations.to} : null;
     const workflowParent = parent?.workflow &&
-      (parent.workflow.scope.action==='selected_document' || (parent.workflow.scope.ships.length ? parent.workflow.scope.ships.some(s=>s.id===state.ship) : !state.ship))
+      (parent.workflow.scope.action==='selected_document' || !selectedShip || (parent.workflow.scope.ships.length ? parent.workflow.scope.ships.some(s=>s.id===selectedShip) : !selectedShip))
       ? parent.id : undefined;
     if (workflowInput && !workflowParent) throw Error('현재 업무 답변에서 조건을 보완해 주세요.');
-    const previousQueryId = workflowParent || (parent?.navigation?.ship?.id === state.ship &&
-      ['reference_only', 'no_reference_matches'].includes(parent?.navigation?.status)
+    const previousQueryId = workflowParent || ((!selectedShip || parent?.navigation?.ship?.id === selectedShip || parent?.navigation?.status === 'needs_ship') &&
+      ['reference_only', 'no_reference_matches', 'needs_ship'].includes(parent?.navigation?.status)
       ? parent.id : undefined);
     const sequence = ++state.askSequence;
     state.chatScrollRequest = {sequence, phase: 'pending'};
@@ -408,9 +420,8 @@ export function createWorkspace() {
       task: state.task,
       ...(workflowInput ? {workflowInput} : {}),
       context: {
-        ship: state.ship,
-        from: state.from,
-        to: state.to,
+        ship: selectedShip,
+        ...(period ? {from:period.start,to:period.end} : {}),
         ...(previousQueryId ? { previousQueryId } : {}),
       },
       criterion: state.criterion,
@@ -426,7 +437,7 @@ export function createWorkspace() {
       const answer = await api.ask(body);
       if (sequence !== state.askSequence) return;
       const resolvedShip = answer.navigation?.ship?.id || answer.workflow?.scope?.ships?.[0]?.id;
-      if (resolvedShip && state.ship === body.context.ship && state.ships.some(s => s.id === resolvedShip)) {
+      if (resolvedShip && state.ship === displayShip && state.ships.some(s => s.id === resolvedShip)) {
         state.ship = resolvedShip;
       }
       state.answer = answer;
@@ -1659,8 +1670,9 @@ export function createWorkspace() {
       return;
     }
     if (el.dataset.question) {
+      if(el.dataset.parentAnswer && (state.busy || state.answer?.id!==el.dataset.parentAnswer))return;
       state.question = el.dataset.question;
-      run(() => ask(el.dataset.question));
+      run(() => ask(el.dataset.question,undefined,el.dataset.parentAnswer));
       return;
     }
     const fn = actions[el.dataset.action];
@@ -1855,6 +1867,7 @@ export function createWorkspace() {
         state[k] = old;
         toast('시작일과 종료일을 확인해 주세요.');
       }
+      if (k === 'mode' && ['llm','extractive'].includes(t.value)) state.answerModePreference = t.value;
       if (['ship', 'from', 'to'].includes(k)) state.criterion = null;
       if (['ship', 'from', 'to', 'filter', 'language', 'mode', 'task'].includes(k)) {
         state.askSequence++;

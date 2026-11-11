@@ -1,5 +1,6 @@
 """Natural questions select current app identities and sources without touching generic RAG."""
 from copy import deepcopy
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -88,6 +89,56 @@ def test_explicit_documents_mode_is_never_intercepted(setup):
     ctx,loader,calculator=setup;ctx.body['task']='documents'
     assert query.try_answer(ctx) is None
     loader.assert_not_called()
+
+
+@pytest.mark.parametrize('question',['AIS 관련 데이터 있어?','AIS데이터 있어?','AIS 자료 등록되어 있어?','AIS 데이터 출처와 수집 현황 알려줘','Do we have AIS data?'])
+def test_ais_availability_uses_loaded_catalog_not_document_search_or_ship_mapping(setup,question,monkeypatch):
+    ctx,loader,calculator=setup;ctx.body['question']=question
+    summarize=query.catalog_summary
+    clock=max(s.retrieved_at for s in loader.return_value[0].sources)+timedelta(days=2)
+    monkeypatch.setattr(query,'catalog_summary',lambda c,h:summarize(c,h,now=clock))
+    answer=query.try_answer(ctx);nav=answer['navigation'];catalog=loader.return_value[0]
+    assert nav['kind']=='catalog-status' and nav['status']=='available'
+    assert nav['catalog']['ais_observation_count']==len(catalog.observations)
+    assert nav['catalog']['ais_unique_vessels']==len({o.vessel_id for o in catalog.observations})
+    assert nav['catalog']['sources'] and nav['catalog']['freshness']['ais_capture_issue']=='AIS_CAPTURE_STALE'
+    assert nav['ship'] is None and answer['evidence']==[] and answer['status']=='completed'
+    assert 'ship_check' not in nav and nav['admission']=='not_assessed'
+    calculator.assert_not_called()
+
+
+def test_ais_availability_distinguishes_empty_snapshot_from_unreadable_connection(setup):
+    ctx,loader,calculator=setup;ctx.body['question']='AIS 데이터 있어?'
+    catalog,sha=loader.return_value
+    loader.return_value=(catalog.model_copy(update={'observations':[]}),sha)
+    empty=query.try_answer(ctx)['navigation']
+    assert empty['status']=='empty' and empty['catalog']['ais_observation_count']==0
+    loader.side_effect=ApiError(503,'DATA_SOURCE_UNAVAILABLE','synthetic-private-path')
+    unavailable=query.try_answer(ctx)
+    assert unavailable['navigation']['status']=='unavailable' and unavailable['navigation']['catalog'] is None
+    assert 'synthetic-private-path' not in str(unavailable) and '전혀 없다는 뜻' in unavailable['notice']
+    calculator.assert_not_called()
+
+
+def test_specific_ship_ais_presence_uses_exact_current_registered_imo(setup):
+    ctx,loader,calculator=setup;ctx.body['question']='우리 배 AIS 데이터 있어?'
+    nav=query.try_answer(ctx)['navigation']
+    assert nav['ship_check']['status']=='found' and nav['ship_check']['imo_number']==IMO
+    ctx.body['question']='IMO 9074729 선박의 AIS 자료 있어?'
+    nav=query.try_answer(ctx)['navigation']
+    count=sum(o.vessel_id=='REAL:IMO:9074729' for o in loader.return_value[0].observations)
+    assert nav['ship']['id']=='ship-2' and nav['ship_check']['observation_count']==count
+    assert nav['ship_check']['status']==('found' if count else 'not_in_snapshot')
+    ctx.db.rows[0]['sample']=True;ctx.body['question']='우리 배 AIS 자료 있어?'
+    assert query.try_answer(ctx)['navigation']['ship_check']['status']=='sample_ship'
+    calculator.assert_not_called()
+
+
+@pytest.mark.parametrize('question',['AIS가 뭐야?','AIS 데이터의 정의를 알려줘','AIS 자료 등록하는 방법은?','AIS 데이터 문서만 사용해서 설명해줘'])
+def test_ais_explanations_keep_document_search(setup,question):
+    ctx,loader,calculator=setup;ctx.body['question']=question
+    assert query.try_answer(ctx) is None
+    loader.assert_not_called();calculator.assert_not_called()
 
 
 @pytest.mark.parametrize('question',['미등록호가 입항 가능한 항구는?','Can vessel TITAN enter Helsinki?',

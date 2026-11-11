@@ -2,6 +2,13 @@
 
 버전을 올리거나 검증을 수행하면 이 파일에 기록합니다. 검증은 **실제로 수행한 것만** 날짜·환경과 함께 적고, 수행하지 않은 범위는 따로 적습니다.
 
+## 2026-11-11 — 최신 main 통합 및 PR 충돌 해결
+
+- `feature/rag-vector`의 `6254da0`에 `upstream/main=e69e81d`를 통합했다. README·변경 이력·계획 목록의 충돌은 팀의 질문/LLM 안내와 RAG 검색 설명·기록을 함께 보존해 해결했다. 자동 병합된 구조 문서의 이전 fallback 설명도 현재 정책에 맞췄다. OpenSearch·벡터·RRF·청킹·문서 저장 핵심 코드는 기존 RAG 커밋 그대로 유지했다.
+- 신규 질문 API의 계산식 설명 검사는 실제 검색 경로를 사용하므로 기존 `prepared_lexical` 테스트 fixture를 연결했다. 첫 전체 검사는 1,148 passed / 4 skipped / 2 failed(신규 검사 색인 미준비, Windows 임시 Chroma의 HNSW 파일 읽기 오류)였고, 보완 후 관련 파일 38 passed 및 최종 전체 **1,150 passed / 4 skipped**, 311.62초를 확인했다. Chroma 오류는 관련/전체 재실행에서 재현되지 않아 운영 코드를 변경하지 않았다.
+- 전체 backend: 격리 PostgreSQL 17·OpenSearch 3.9.0에서 `HAEDAP_TEST_OPENSEARCH_URL`을 테스트 엔진으로 지정하고 `uv run --no-sync --project backend python .verification/bm25-db-tests.py -o faulthandler_timeout=60`. 4개 건너뜀은 `MARITIME_DATA_TEST_DATABASE_URL`의 별도 해사 자료가 필요한 기존 검사다. frontend `npm.cmd test` **36 passed**, Docker production 빌드 성공.
+- 별도 `haedap-rag-conflict-check` Compose 프로젝트의 빈 환경 파일·임시 PostgreSQL/OpenSearch에서 Docker E2E **38 passed (2.1분)**. `docker compose --env-file .verification/lexical-e2e.env -p haedap-rag-conflict-check --profile e2e build ...` 후 `up --no-build --force-recreate --exit-code-from e2e e2e`로 실행하고 같은 프로젝트만 `down --volumes`로 정리했다. 실제 앱 재시작·DB/PDF/벡터 색인·개인 .env 변경은 하지 않았다.
+
 ## 2026-11-11 — OpenSearch/Nori 키워드 검색 전환
 
 - Python Kiwi/rank-bm25·청크 토큰 캐시를 OpenSearch 3.9.0/Nori 역인덱스로 대체했다. 기존 httpx를 사용하며 세 의존성(kiwipiepy, kiwipiepy-model, rank-bm25)을 잠금 환경에서 제거했다. Nori 플러그인은 전용 이미지 빌드에 포함한다. E5·Chroma·청킹·Python RRF·UI는 유지한다.
@@ -31,6 +38,31 @@
 - Docker E2E **19 passed (1.4분), 종료 코드 0**. `docker compose --env-file .env.example -f compose.yaml -f .verification/readiness-cached-compose.yaml -p haedap-readiness-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`로 별도 tmpfs DB/비공개 테스트 스택을 사용했다. 임시 override는 이전 검증 이미지의 동일한 고정 모델/잠긴 의존성을 재사용하고 현재 `api/`를 COPY했다. 새 기본 이미지의 모델 다운로드가 장시간 대기해 해당 빌드는 중단했으며, 새 기본 이미지로의 전체 재다운로드 빌드 완료는 미검증이다. 프로젝트 Dockerfile/Compose는 바꾸지 않았다.
 - 같은 임시 override의 `e2e-backend`에서 `python tests/verify_auto_index.py`를 실행했다(테스트와 migrations 읽기 전용 마운트, `HAEDAP_CHROMA_HOST=chroma`, 별도 `e2e-db` 스키마). 이미지의 실제 CPU E5를 오프라인으로 사용해 커밋 후 색인·Chroma 장애/재시도·worker 재시작/동시 실행·개정·부분 hybrid·수동 완료 확인·부분 검색 범위를 검증했다. pytest의 결정적 모의 임베딩 검증과 구분한다. 최종 `down --volumes`는 해당 테스트 프로젝트에만 실행해 컨테이너·네트워크·합성 벡터 볼륨을 정리했다.
 - PG 전체 후보 읽기·내용 해시·허용 ID 전달 비용은 남는다. 반환되지 않은 record의 임의 손상은 명시적 verify가 필요하며, 부분 참여에서는 준비 문서만 두 검색에 참여해 순위가 달라질 수 있다. 실제 등록 PDF 정답률·대량 부하·장기 운영은 이번 검증 범위가 아니다. 실제 앱 DB·PDF·벡터·질의 이력은 변경하지 않고 커밋·푸시·머지는 수행하지 않았다.
+
+## 2026-11-10 — 조건 양식 제거·현재 질문에 필요한 후보 제시
+
+- 통합 질문의 선박·기간 양식과 별도 문서 선택 패널, 답변의 조건 보완 양식을 제거했다. 문서 상세의 질문/점검표와 운항·보고서 관리 기능은 유지한다. 현재 되묻는 선박·문서·참고값 확인에만 후보 버튼을 표시하고 날짜/연도는 질문창으로 답한다. 최초 8개 이후 후보도 더 보기로 선택할 수 있다.
+- 같은 이름의 선박은 IMO·선종, 문서는 버전·출처로 구분한다. 후보 클릭의 ID를 기존 계약으로 보내며 현재 소유자·대화·권한·선박 버전을 다시 확인한다. 과거 답변의 후보는 실행하지 않으며 참고값 계산을 거절하면 추가 확인을 닫는다.
+- 다른 화면의 선택값을 질문의 숨은 기본 조건으로 쓰지 않는다. 운항 표·차트도 질문 → 선박 후보 → 기간 답변으로 조회하며 동일 DB 조회의 원본을 계산과 표시에 함께 사용한다. 기존 operations/compliance 응답과 표시 한도·기준 문서 권한 검사도 보존한다.
+- 관련 backend **161 passed / 2 skipped**, frontend **36개+production 빌드**, 새 DB의 Docker 전체 **38개 / 3.5분** 통과를 확인했다. 마지막 compliance 호환성 보완은 관련 backend 재검사에 포함했다. 중간 검사/임시 DB 오류와 검사 범위는 [작업 기록](plans/2026-11-10-conversation-first-queries.md#후속-필요한-순간의-후보-제시-구현검증-완료)에 있다. 새 의존성·migration·모델 교체·운영 배포는 없다.
+
+## 2026-11-10 — 실제 로컬 Qwen 연결·화면 호출 모드 보완
+
+- 설치된 Qwen2.5 3B Q4 모델을 Ollama로 연결했다. 15.7GiB RAM·Intel Iris Xe 노트북에서 실제 추론은 CPU다. 별도 Docker 앱에 실제 MRV 80,552행·DWT 후보 25,240행·AIS 307개를 연결하고, 가상 일별 기록은 실제 자료와 구분했다. 기존 개인/팀 DB와 모델 가중치는 변경하지 않았다.
+- 설정된 모델이 있어도 화면에서 원문 발췌만 요청되던 기본 모드를 보완했다. `답변 방식` 선택을 복구하고 설정 시 AI를 기본으로 요청한다. 명시한 원문 발췌 선택은 현재 계정의 재연결에 유지하며 로그아웃 시 초기화한다.
+- 실제 인증 API 15회에서 AIS 현황·운항 후속 조회·MRV 참고값을 확인했다. 실제 모델 호출 11회는 작업 선택 2회 unknown/규칙 대체, 생성 시간 초과 7회, 선택한 가상 점검표의 정확한 인용 답변 1회, 해당 문서에 없는 이름의 근거 부족 응답 1회였다. 일반 문서 질문의 약 28초 발췌 대체를 모델 성공으로 집계하지 않았다. **모델 연결과 제한된 실제 생성은 확인했지만 전반적인 생성 품질은 통과하지 못했다.**
+- 중계 기록기를 종료한 직접 연결 재검사에서도 같은 근거 부족 질문이 시간 초과로 발췌 대체되었다. 모델 사전 적재 요청은 52.8초, 이후 API 질문은 34.4초였으며 별도 단계다. 앞선 일부 성공도 안정적 성공으로 일반화하지 않는다.
+- 짧은 지시문/인용 제약 실험은 조건 누락·과도한 단정이 남아 채택하지 않았고 생성 코드는 작업 시작본으로 복원했다. 의미 판정은 Codex의 원문 대조이며 독립 전문가 검토가 아니다. 상세 환경·원문 대조·제한·증거는 [실제 LLM 검증 기록](plans/2026-11-10-local-llm-answer-validation.md)에 있다.
+- 관련 backend **182개**, frontend **35개+production 빌드** 통과. 실제 모델에 연결한 별도 브라우저 1개는 AI 기본 요청·시간 초과 후 명시적 발췌 대체·모바일 표시를 확인했으며 모델 품질 통과 검사가 아니다. 별도 PostgreSQL Docker 전체 회귀는 **33 passed / 1 failed**였다. 실패한 기존 화면 검사의 선택 메뉴 수/기본 요청 모드를 새 계약에 맞추고 해당 파일 **2개 재검사 통과**를 확인했다. 수정 후 전체 34개를 재실행한 수치로 합산하지 않는다. 시험 전용 Compose 프로젝트는 볼륨 삭제 없이 종료했다.
+- 새 의존성·migration·모델 다운로드·원격 PR/push·팀 배포는 하지 않았다.
+
+## 2026-11-10 — 질문창 중심 조건 보완·AIS 현황·질문 표현 회귀
+
+- 최신 팀 main(PR #24·#25 병합)을 기준으로 질문창에서 선박·기간·문서명으로 답하는 단계별 되묻기와 짧은 후속 질문을 보완했다. 자동 첫 선박/기본 날짜는 명시 조건으로 보내지 않으며, 선택 양식은 접힌 보조 입력으로 유지한다. 같은 소유자라도 다른 대화의 부모 범위는 이어받지 않는다.
+- AIS 유무·출처·수집 시점·실시간/최신 여부 질문은 실제 catalog summary를 조회한다. 건수·고유 선박·출처·노후화·정확한 IMO 포함 여부를 표시하고, 빈 자료와 연결 확인 불가를 구분한다. 실제 입항 승인·현재 위치·MRV 적재 여부로 확대하지 않는다.
+- 기간+지표 명사구와 같은 문서 후속을 지원했다. 계산식/배출계수/뜻 질문에 요청하지 않은 운항 합계를 덧붙이지 않으며, 원인·예측 요청을 합계로 대신 답하거나 모호한 미래 표현을 과거 UI 범위로 바꾸지 않는다.
+- 검증: 질문 표현 35개를 포함한 관련 **149 passed / 3 skipped**, frontend **33개+빌드**, 최종 Docker 전체 **33개 / 3.2분** 통과. Docker PostgreSQL 전체 backend **1,098 passed / 7 skipped / 1 failed** 후, 실패한 신규 시험자료의 필수 선종을 보완하고 해당 API 파일 **3개 통과**를 확인했다(검사 범위 중복). 실제 로컬 AIS snapshot 7개 표현에서 **307개/307척**과 노후화를 확인하고 원본 해시를 보존했다. 상세 증거·중간 환경 오류·한계는 [작업 기록](plans/2026-11-10-conversation-first-queries.md)에 있다.
+- 새 의존성·migration·원격 PR·push·운영 배포는 추가하지 않았다. 실제 배포 LLM의 자유 생성 품질 평가는 포함하지 않는다.
 
 ## 2026-11-09 — GitHub 검사 오류 및 보고서 저장 상태 수정
 
