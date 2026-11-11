@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 import json
 import os
 import re
+import unicodedata
 from typing import Literal
 
 import httpx
@@ -47,18 +48,73 @@ class Intent(Strict):
 
 
 def selected_document_request(q):
-    return bool(re.search(r'(?:선택|지정)(?:한)?\s*문서|selected documents?',q,re.I))
+    return bool(re.search(r'(?:선택|지정)(?:한)?\s*문서|(?:그|이|같은|해당|다른)\s*문서|selected documents?',q,re.I))
+
+
+def same_document_request(q):
+    return bool(re.search(r'(?:그|이|같은|해당)\s*문서',q))
+
+
+def explanation_request(q):
+    return bool(re.search(r'문서만|문서\s*기반|정의|뜻|번역|절차|방법|어떻게|규정|지침|매뉴얼|기준|한도|함유량|계산식|산식|배출\s*계수|환산\s*계수|what is|how to|regulation|sulphur|sulfur|formula|emission factor',q,re.I))
+
+
+def definition_request(q):
+    return bool(re.search(r'정의|뜻|계산식|산식|배출\s*계수|환산\s*계수|what is|formula|definition|emission factor',q,re.I))
 
 
 def classify(q):
     if selected_document_request(q):return 'selected_document'
     # Explanation/procedure requests keep the evidence-only document path.
-    if re.search(r'문서만|문서\s*기반|정의|뜻|번역|절차|방법|어떻게|규정|지침|매뉴얼|기준|한도|함유량|what is|how to|regulation|sulphur|sulfur',q,re.I):return 'unknown'
-    ask=re.search(r'계산|분석|비교|요약|정리|조회|보여|알려|얼마|구해|calculate|compare|show|summari',q,re.I)
+    if explanation_request(q):return 'unknown'
+    metric_fragment=bool(re.search(r'연료\s*(?:사용량|소비량)|(?:CO[2₂]\s*)?배출량|항해\s*거리|운항\s*실적',q,re.I)
+        and re.search(r'\d{4}|\d월|지난|이번|올해|작년|최근|오늘|어제|(?:은|는)\s*\?',q))
+    ask=metric_fragment or re.search(r'계산|분석|비교|요약|정리|조회|보여|알려|얼마|구해|왜|이유|원인|calculate|compare|show|summari|forecast|predict',q,re.I)
     if not ask:return 'unknown'
     mrv=bool(re.search(r'mrv|cii|탄소\s*집약도|carbon intensity',q,re.I))
-    ops=bool(re.search(r'연료|배출량|항해\s*거리|속력|속도|운항\s*(?:기록|실적|요약)|fuel|emissions?|distance|speed',q,re.I))
+    ops=bool(re.search(r'연료|기름|배출량|(?<![a-z])co[2₂](?![a-z])|항해\s*거리|속력|속도|운항\s*(?:기록|실적|요약)|fuel|emissions?|distance|speed',q,re.I))
     return 'combined' if mrv and ops else 'mrv_reference' if mrv else 'operations_summary' if ops else 'unknown'
+
+
+def normalized(value):
+    return ' '.join(unicodedata.normalize('NFKC', str(value or '')).casefold().split())
+
+
+def slot_reply(question, *, labels=(), dates=False, reference=False, ships=False):
+    """Recognize only a short slot answer, never an arbitrary topic with a date/name.
+
+    Labels must come from the current authorized catalog. This does not resolve
+    identities or dates; the existing validators still do that at execution.
+    """
+    if len(question)>200:return False
+    value=normalized(question)
+    found=False
+    for label in sorted({normalized(v) for v in labels if v},key=len,reverse=True):
+        # Boundaries prevent a short name from matching a different, longer one.
+        pattern=r'(?<![가-힣a-z0-9_-])'+re.escape(label)+r'(?=$|[\s,/.·?!\"\'()]|(?:으로|로|의|와|과|를|을|는|은|도|에|이|가)(?:\s|[?.!]|$))'
+        value,count=re.subn(pattern,' ',value)
+        found=found or bool(count)
+    value,count=re.subn(r'\bimo\s*[:#]?\s*\d{7}\b',' ',value)
+    found=found or bool(count)
+    if ships:
+        value,count=re.subn(r'(?<![가-힣a-z0-9_-])[가-힣a-z0-9_-]{2,30}호(?=$|[\s,/.·?!]|(?:으로|로|는|은|도)(?:\s|[?.!]|$))',' ',value)
+        found=found or bool(count)
+    if dates:
+        # Leave invalid numeric dates recognizable so the calendar validator can
+        # ask for a correction rather than sending them to document retrieval.
+        pattern=(r'(?:최근|지난)\s*\d+\s*일|\d{4}-\d{2}-\d{2}|(?:19|20)\d{2}년?|\d{1,2}\s*월|\d{1,2}\s*일|'
+                 r'재작년|작년|지난해|올해|금년|전월|'
+                 r'(?:지난|이번)\s*(?:달|주)|오늘|어제|그제|last year|this year|last week|this week|today|yesterday')
+        value,count=re.subn(pattern,' ',value)
+        found=found or bool(count)
+    if reference:
+        if re.fullmatch(r'(?:네|예|응|동의|동의합니다|yes|참고값으로\s*(?:해줘|계산해줘|조회해줘)?)\s*[.!?]*',value):return True
+    # Only connective/slot-answer wording may remain, not a new question topic.
+    value=re.sub(r'[\s,/.·?!\"\'():~\-]+',' ',value).strip()
+    connectors={'그럼','그러면','그중','then','what','about','같은','기간','비교해줘','계산해줘','조회해줘',
+                '적용해줘','사용해줘','해줘','할게','입니다','이야','문서','선박','ship','vessel',
+                '으로','으로만','로만','에서만','부터','까지','과','와','은','는','을','를','의','도','로','만','에','이','가'}
+    return found and all(token in connectors for token in value.split())
 
 
 def local_today():
@@ -67,6 +123,9 @@ def local_today():
 
 def date_slots(q,today=None,default_year=None):
     today=today or local_today()
+    q=re.sub(r'지난\s+달','지난달',q)
+    if re.search(r'다음\s*(?:달|주)|내년|모레|내일',q):
+        raise ValueError('미래 기간을 임의의 과거 범위로 바꾸지 않습니다. 기록을 조회할 시작일·종료일을 날짜로 알려 주세요. 미래 예측은 지원하지 않습니다.')
     if re.search(r'(?:최근|지난)\s*\d+\s*개월|분기|반기|항차별|연료별|기관별',q):
         raise ValueError('지원하는 날짜 범위를 시작일·종료일로 알려 주세요. 세부 항차/연료/기관 필터는 지원하지 않습니다.')
     years=list(dict.fromkeys(int(v) for v in re.findall(r'(?<!\d)((?:19|20)\d{2})(?=년|\b)',q)))

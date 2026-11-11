@@ -6,9 +6,11 @@
 
 ## 자연어 업무 실행 JSON (2026-11-06)
 
-새 SQL 테이블이나 migration 없이 기존 `queries.response.workflow`에 검증 범위·되묻기·실행 결과·산술 비교·부모 응답 ID를 저장한다. `query_owner`로 후속/이력 열람을 제한한다. scope에는 선박 id/name/version/IMO, 연도/기간, MRV 매핑, 선택 문서 ID와 원래 질문을 보존하며 이력의 숫자를 다음 질문 답변으로 재사용하지 않는다. 출처 원본·MRV·선박/운항 기록은 조회만 한다. 정확한 필드와 상태는 [통합 답변 계약](specs/integrated-answer.md#자연어-업무-실행-확장-2026-11-06-구현됨)에 둔다. 기존 JSON 백업에 질문/소유자 자료가 포함되며 별도 백업 형식을 추가하지 않는다.
+새 SQL 테이블이나 migration 없이 기존 `queries.response.workflow`에 검증 범위·되묻기·실행 결과·산술 비교·부모 응답 ID를 저장한다. `query_owner`로 후속/이력 열람을 제한한다. scope에는 선박 id/name/version/IMO, 연도/기간, MRV 매핑, 선택 문서 ID와 원래 질문, 운항 표·차트의 presentation_question을 보존하며 이력의 숫자를 다음 질문 답변으로 재사용하지 않는다. 출처 원본·MRV·선박/운항 기록은 조회만 한다. 정확한 필드와 상태는 [통합 답변 계약](specs/integrated-answer.md#자연어-업무-실행-확장-2026-11-06-구현됨)에 둔다. 기존 JSON 백업에 질문/소유자 자료가 포함되며 별도 백업 형식을 추가하지 않는다.
 
 ## 외부 선석 참조 snapshot (2026-11-04)
+
+2026-11-10 확장도 새 migration 없이 기존 질문 JSON에 저장한다. `workflow.clarification`은 다음에 물을 조건/문장이고 `navigation.request_question`은 선박명 보완 전 원래 항구 조건이다. AIS 자료 현황은 `navigation.kind=catalog-status`와 기존 catalog summary, 선택적인 `ship_check`를 보존한다. 저장된 현황·이전 숫자를 새 조회에 사용하지 않으며 현재 파일/권한/식별자로 재확인한다. 실제 필드는 [통합 답변 계약](specs/integrated-answer.md)에 둔다.
 
 새 DB 테이블을 만들지 않는다. 준비한 `catalog.json`은 실제 MRV IMO와 공개 AIS metadata의 교집합, 선석별 게시 제한·조건·중복 변형, 출처 SHA256·수집 시각을 보관하는 별도 읽기 전용 참조 파일이다. 형식·수량 단위·노후화 정책은 [선석 참조 계약](specs/port-references.md)에 정의한다. API는 현재 `maritime_data.vessels`의 REAL ID를 확인하지만 AIS 순간값을 연간 보고 값에 채우거나 기존 계정·운항·제원 테이블을 갱신하지 않는다. 이 외부 파일은 앱 JSON 백업에 포함되지 않으므로 원본·manifest·준비 절차와 함께 별도 보존/배포해야 한다. 복구 후에도 자료의 경과 시간은 요청 시 다시 검사한다.
 

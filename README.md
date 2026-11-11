@@ -1,8 +1,10 @@
 # 해답 — SEA THE ANSWER
 
-현재 버전 **1.4.0** · 마지막 업데이트 **2026-11-09** (UI 변경에 따른 검색 평가 기준·E2E 회귀 검사 수정, MEPC 10건 유지)
+현재 버전 **1.4.0** · 마지막 업데이트 **2026-11-10** (질문창 중심 조건 보완·실제 AIS 자료 현황 조회)
 
 선내 문서 근거와 운항 기록을 함께 보여 주는 선박 업무 지원 앱입니다. 화면은 Next.js, `/api/*`는 Python FastAPI, 저장소는 PostgreSQL이며, 저장소 최상위에서 `docker compose` 하나로 셋을 함께 실행합니다.
+
+통합 질문에서 선택 양식 없이 선박·기간을 문장으로 지정하고, 필요한 순간에만 후보를 눌러 조회를 이어갈 수 있습니다. “AIS 데이터 있어?”는 실제 연결된 수집본의 건수·출처·시점을 확인합니다. [질문 방법과 제한](docs/user-guide.md#자연어-조회비교와-후속-질문)을 참고하세요.
 
 | 화면 | 기능 |
 |---|---|
@@ -15,7 +17,7 @@
 
 업무 기능은 개인 계정으로 로그인한 뒤 사용합니다. 일반 선원은 문서·운항 조회와 자기 보고서 업무를, 관리자는 계정 발급과 원본 자료 변경·승인·백업을 수행합니다. 공용 기본 비밀번호는 없으며 최초 관리자 설정과 기존 버전 전환은 [계정 운영 안내](docs/user-guide.md#2-역할과-승인)를 따릅니다.
 
-**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크의 BM25·로컬 E5 벡터 결과를 RRF로 결합하며, 모델·색인 준비 실패 시 BM25로 대체합니다. BM25 분석 토큰은 제한된 메모리 캐시에 재사용합니다. Docker 이미지에 고정 E5 모델이 포함되며, 저장 후 worker가 자동 색인하고 기존 문서는 명시적 초기 색인이 필요합니다. 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 동국 AI Chat 실제 호출은 2026-10-14에 검증했고 로컬 Ollama 실제 검증 결과는 [변경 이력](docs/changelog.md)에 기록합니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
+**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크의 BM25·로컬 E5 벡터 결과를 RRF로 결합하며, 모델·색인 준비 실패 시 BM25로 대체합니다. BM25 분석 토큰은 제한된 메모리 캐시에 재사용합니다. Docker 이미지에 고정 E5 모델이 포함되며, 저장 후 worker가 자동 색인하고 기존 문서는 명시적 초기 색인이 필요합니다. 모델 미설정 시 답변은 원문 발췌이며, 설정된 경우 통합 질문의 기본 방식은 AI 답변입니다. 입력창의 **답변 방식**에서 원문 발췌를 직접 고를 수 있습니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 동국 AI Chat 실제 호출은 2026-10-14에 검증했고 로컬 Ollama 실제 검증 결과와 품질 한계는 [변경 이력](docs/changelog.md)에 기록합니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
 
 ## 프로젝트 구조
 
@@ -269,7 +271,7 @@ LLM_RESPONSE_FORMAT=text
 
 루트에서 `docker compose up -d --build backend frontend`로 코드와 환경변수를 반영합니다. 직접 실행하는 백엔드에서는 URL을 `http://127.0.0.1:11434/v1`로 바꾸고 재시작하세요. 컨테이너 안의 `localhost`는 컨테이너 자신입니다. 호스트의 Ollama 바인딩·방화벽 설정과 Linux 안내는 [공급자 계약](docs/specs/llm-provider.md#접속-위치별-기본-url)을 따릅니다.
 
-예상 결과: `/api/health`의 `llmConfigured`가 true가 되고 모델 답변 모드를 사용할 수 있습니다. 실제 성공은 근거가 있는 질문에서 `generation=llm`, 유효 인용, 모델 실패 경고 없음까지 확인해야 합니다. 실패·잘린 응답·위조 인용은 `MODEL_FAILED_EXTRACTIVE_FALLBACK`과 원문 발췌로 전환됩니다. 설정이 잘못되면 `MODEL_NOT_CONFIGURED`입니다. 동국은 공식 API 주소·모델·인증 정보를 사용하며 웹 채팅 주소(`/dashboard/chat`)를 API 주소로 넣지 않습니다.
+예상 결과: `/api/health`의 `llmConfigured`가 true가 되면 통합 질문에서 **AI 답변**이 기본 선택됩니다. 원문 발췌를 명시적으로 고르면 현재 계정 세션의 재연결에도 유지됩니다. 설정 유효성과 실제 생성 성공은 다릅니다. 일반 문서 질문에서 `generation=llm`, 유효 인용, 모델 실패 경고 없음까지 확인하고 답변의 의미·조건도 원문과 대조해야 합니다. 업무 workflow는 내부 생성 단계의 실제 공급자 응답도 확인해야 하며 `generation=workflow`만으로 모델 성공을 뜻하지 않습니다. 실패·잘린 응답·위조 인용은 `MODEL_FAILED_EXTRACTIVE_FALLBACK`과 원문 발췌로 전환됩니다. 설정이 잘못되면 `MODEL_NOT_CONFIGURED`입니다. 동국은 공식 API 주소·모델·인증 정보를 사용하며 웹 채팅 주소(`/dashboard/chat`)를 API 주소로 넣지 않습니다.
 
 25초를 넘는 추론은 실패 전환되므로 로컬 모델을 미리 적재해 확인하세요. 기본 호환 요청은 공급자별 선택 필드를 생략하여 기존 2,200 출력 토큰 한도도 보내지 않습니다. 생성 한도는 모델 서버 설정에 따르며 앱은 최대 5개 답변 문장과 인용을 검증합니다. 상세 형식·제약은 [공급자 계약](docs/specs/llm-provider.md)에 있습니다.
 

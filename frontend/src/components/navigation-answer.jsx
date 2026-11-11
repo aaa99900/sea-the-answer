@@ -5,6 +5,7 @@ import styles from './navigation-answer.module.css';
 import { NavigationReadiness, OperationalChecks } from './navigation-readiness';
 import { NavigationContext, HistoricalChecks } from './navigation-context';
 import OfficialGuidance from './navigation-guidance';
+import {useWorkspace} from '../workspace/provider';
 
 function link(value) {
   try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.href : undefined; }
@@ -19,8 +20,11 @@ function shipQuery(ship, port='') {
   return `${ship?.name || ''} ${imo ? 'IMO '+imo : ''} 선박이 ${port ? port+'에' : ''} 입항 가능한지 공개 자료로 비교해줘`;
 }
 export default function NavigationAnswer({ answer }) {
+  const {workspace}=useWorkspace();
+  const current=workspace.state.answer?.id===answer.id;
   const nav = answer.navigation, en = answer.language === 'en';
   if (!nav) return null;
+  if (nav.kind==='catalog-status') return <CatalogStatus value={nav} />;
   const results = Array.isArray(nav.results) ? nav.results : [];
   const sources = [...new Map(results.flatMap(r=>r.sources || []).map(s=>[s.id+':'+s.sha256,s])).values()];
   return <UiControl as="section" className={styles.root} data-navigation-answer aria-label={en?'Port reference answer':'항구 참조 답변'}>
@@ -31,8 +35,10 @@ export default function NavigationAnswer({ answer }) {
       {nav.excluded_unknown_count>0 && <><br /><UiText>{en?'Excluded due to unknown numeric limits: ':'수치 제한 미확인으로 필터에서 제외: '}</UiText>{nav.excluded_unknown_count}</>}
       {nav.previous_query_id && <><br /><UiText>{en?'Previous target/conditions retained; current sources queried again.':'이전 대상·조건을 연결하고 현재 자료를 다시 조회했습니다.'}</UiText></>}
     </p>}
-    {nav.ship_options?.length > 0 && <div className="actions wrap mt">
-      {nav.ship_options.map(s=><button type="button" className="btn ghost sm" key={s.id} data-question={shipQuery(s)}>{s.name}{s.imo ? ' · '+s.imo : ''}</button>)}
+    {current && nav.ship_options?.length > 0 && <div className="actions wrap mt">
+      {nav.ship_options.slice(0,8).map(s=><button type="button" className="btn ghost sm" key={s.id}
+        disabled={workspace.state.busy} data-parent-answer={answer.id}
+        data-question={s.imo ? `IMO ${String(s.imo).replace(/^IMO\s*/i,'')}` : s.name}>{s.name}{s.imo ? ' · '+s.imo : ''}</button>)}
     </div>}
     {results.length > 0 && <>
       <p className="notice warning mt"><UiText>{en?'Partial reported-value comparison only. Berth approval, current verified draught and approach conditions remain unassessed.':'일부 신고값과 공개 수치의 비교입니다. 현재 실측 흘수·선석 승인·접근 항로 등은 추가 확인이 필요합니다.'}</UiText></p>
@@ -72,8 +78,41 @@ export default function NavigationAnswer({ answer }) {
         <small>{s.attribution}{s.license_url && <> · <a href={link(s.license_url)} target="_blank" rel="noreferrer"><UiText>{"이용 조건"}</UiText></a></>}</small>
       </p>)}</details>
     </>}
-    {nav.ship && nav.port_options?.length>0 && ['unsupported_port','unsupported_berth','needs_port'].includes(nav.status) && <div className="actions wrap mt">
-      {nav.port_options.map(p=><button type="button" className="btn ghost sm" key={p.port_id} data-question={shipQuery(nav.ship,p.name)}>{p.name}<UiText>{en?' reference':' 자료로 조회'}</UiText></button>)}
+    {current && nav.ship && nav.port_options?.length>0 && ['unsupported_port','unsupported_berth','needs_port'].includes(nav.status) && <div className="actions wrap mt">
+      {nav.port_options.map(p=><button type="button" className="btn ghost sm" key={p.port_id} disabled={workspace.state.busy}
+        data-parent-answer={answer.id} data-question={shipQuery(nav.ship,p.name)}>{p.name}<UiText>{en?' reference':' 자료로 조회'}</UiText></button>)}
     </div>}
+  </UiControl>;
+}
+
+function CatalogStatus({value}) {
+  const catalog=value.catalog, check=value.ship_check;
+  const shipStates={needs_ship:'어느 선박인지 이름이나 IMO 번호를 알려 주세요.',sample_ship:'가상 선박의 실제 AIS 포함 여부는 확인하지 않습니다.',
+    invalid_imo:'등록 선박의 유효한 IMO 번호를 먼저 확인해야 합니다.',found:'이 수집본에 해당 IMO의 AIS 기록이 있습니다.',
+    not_in_snapshot:'이 수집본에 해당 IMO의 AIS 기록이 없습니다. 다른 시점·지역의 자료까지 없다는 뜻은 아닙니다.'};
+  return <UiControl as="section" className={styles.root} data-navigation-answer aria-label="AIS 자료 현황">
+    {catalog && <>
+      <h3><UiText>{'연결된 AIS 수집본'}</UiText></h3>
+      <dl className="skill-metrics">
+        <div><dt><UiText>{'관측 기록'}</UiText></dt><dd>{catalog.ais_observation_count}</dd></div>
+        <div><dt><UiText>{'고유 선박'}</UiText></dt><dd>{catalog.ais_unique_vessels}</dd></div>
+        <div><dt><UiText>{'수집본 생성 시각'}</UiText></dt><dd>{referenceTime(catalog.generated_at)}</dd></div>
+        <div><dt><UiText>{'현황 확인 시각'}</UiText></dt><dd>{referenceTime(catalog.freshness?.assessed_at)}</dd></div>
+      </dl>
+      <p className="notice warning"><UiText>{'저장된 수집본 현황입니다. 실시간 AIS 수신·현재 위치·입항 가능 여부를 뜻하지 않습니다.'}</UiText></p>
+      <p><UiText>{'24시간 이내 기록'}</UiText>: {catalog.freshness?.ais_record_age_counts?.within_age_window || 0}
+        {' · '}<UiText>{'24시간 경과 기록'}</UiText>: {catalog.freshness?.ais_record_age_counts?.AIS_RECORD_STALE || 0}</p>
+      {Object.entries(catalog.freshness?.ais_record_age_counts || {}).filter(([key])=>!['within_age_window','AIS_RECORD_STALE'].includes(key)).length>0 &&
+        <p className="notice warning"><UiText>{'시각 미확인·미래 시각 기록은 최신 자료로 보지 않습니다.'}</UiText></p>}
+      {catalog.freshness?.ais_capture_issue && <p className="notice warning">{referenceReason(catalog.freshness.ais_capture_issue)}</p>}
+      <h3><UiText>{'AIS 출처와 수집 시각'}</UiText></h3>
+      <ul>{catalog.sources.filter(s=>s.id==='ais' || s.id==='ais_no').map(s=><li key={s.id}>
+        <a href={link(s.url)} target="_blank" rel="noreferrer">{sourceNames[s.id] || s.id}</a>
+        {' · '}{referenceTime(s.retrieved_at)}{' · '}{catalog.ais_source_counts?.[s.id] || 0}<UiText>{'개 기록'}</UiText>
+      </li>)}</ul>
+      <p className="small muted"><UiText>{'확보한 지역·시점의 공개 자료만 포함하며 전 세계 선박 전체를 보장하지 않습니다.'}</UiText></p>
+    </>}
+    {check && <p className="notice mt">{value.ship?.name && <strong>{value.ship.name}{' · '}</strong>}
+      <UiText>{shipStates[check.status] || check.status}</UiText>{check.observation_count!=null && <> ({check.observation_count})</>}</p>}
   </UiControl>;
 }

@@ -12,7 +12,7 @@ export function createMainViews(model, views) {
   const noop = () => {};
   const { state, canWrite, isAdmin } = model;
   const { esc, I, btn, badge, n, options, head, notice, empty, docKind, safeUrl } = helpers;
-  const { operationsPage, contextControls } = views;
+  const { operationsPage } = views;
   const { reportsPage, editorPage } = views;
   const { authPage, adminPage, operationAnswer, roleName } = views;
   const pageNames = {
@@ -55,6 +55,10 @@ export function createMainViews(model, views) {
         ></UiControl>
         <div className={'composer-bottom'}>
           <div className={'query-controls'}>
+            <UiControl as="select" aria-label="답변 방식" data-field="mode" value={state.mode} onChange={noop}>
+              {state.health?.llmConfigured && <option value="llm"><UiText>{'AI 답변'}</UiText></option>}
+              <option value="extractive"><UiText>{'원문 발췌'}</UiText></option>
+            </UiControl>
             <UiControl as="select"
               aria-label={'검색 범위'}
               data-field={'filter'}
@@ -81,7 +85,7 @@ export function createMainViews(model, views) {
             {I('send')}
           </UiControl>
         </div>
-      </form><SkillsPanel group="documents" /></>
+      </form></>
     );
   }
   function answerView(a) {
@@ -99,7 +103,7 @@ export function createMainViews(model, views) {
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}</UiText>
           </h2>
-          {badge(a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
         <p className={'small muted'}>{a.notice}</p>
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
@@ -199,27 +203,9 @@ export function createMainViews(model, views) {
           </div>
         </div>
       ),
-      context = (
-        <details
-          className={'query-context'}
-        >
-          <summary>
-            <UiText>{'운항 분석 대상 '}</UiText>
-            <UiText>{state.ships.find((s) => s.id === state.ship)?.name
-              ? '· ' + state.ships.find((s) => s.id === state.ship).name
-              : '선택'}</UiText>
-          </summary>
-          {contextControls(true)}
-          {state.criterion ? (
-            <p className={'small muted'}>
-              <UiText>{'비교 기준이 설정됨 '}</UiText>
-              {btn('기준 해제', 'clearCriterion', 'ghost sm')}
-            </p>
-          ) : (
-            ''
-          )}
-        </details>
-      );
+      context = state.criterion ? <p className="small muted">
+        <UiText>{'비교 기준이 설정됨 '}</UiText>{btn('기준 해제', 'clearCriterion', 'ghost sm')}
+      </p> : null;
     if (!state.turns.length && !state.busy && !state.askError)
       return (
         <>
@@ -239,8 +225,8 @@ export function createMainViews(model, views) {
               <div className={'grid3'}>
                 {[
                   ['file', '연료 황 함유량 기준을 알려줘', '문서 검색 · 근거 확인'],
-                  ['chart', '선택한 선박의 연료 추이를 분석해줘', '운항 조회 · 지표 확인'],
-                  ['edit', '선택한 기간의 Noon 보고서를 준비해줘', '기록 조회 · 보고서 연결'],
+                  ['chart', '우리 배의 연료 추이를 보여줘', '운항 조회 · 지표 확인'],
+                  ['edit', '지난달 운항 실적을 요약해줘', '기록 조회 · 보고서 연결'],
                 ].map(([i, q, sub], __index) => (
                   <React.Fragment key={__index}>
                     {
