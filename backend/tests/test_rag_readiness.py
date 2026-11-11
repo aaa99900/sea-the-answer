@@ -20,7 +20,7 @@ def test_partial_hybrid_keeps_unindexed_bm25_candidates(index, monkeypatch):
     a, b = chunk("ready"), chunk("pending")
     certify(ix, [a])
     seen = []
-    def lexical(query, rows, k):
+    def lexical(query, rows, k, **kwargs):
         seen.extend(rows)
         return [{**b, "score": 8}, {**a, "score": 2}]
     monkeypatch.setattr("api.rag_search.bm25", lexical)
@@ -202,7 +202,7 @@ def test_no_full_present_and_batched_readiness_cost(index, monkeypatch):
         calls.append((self.name, len(kwargs.get("ids", []))))
         return original(self, *args, **kwargs)
     monkeypatch.setattr(Collection, "get", tracked)
-    monkeypatch.setattr(ix, "present", lambda *args: pytest.fail("search called full present"))
+    monkeypatch.setattr(ix, "present", lambda *args, **kwargs: pytest.fail("search called full present"))
     diagnostics = coverage(rows)
     start = perf_counter()
     assert Readiness(ix).select(rows, diagnostics) == rows
@@ -212,3 +212,6 @@ def test_no_full_present_and_batched_readiness_cost(index, monkeypatch):
     assert calls == [(Readiness(ix).name, 10)] * 2
     print(f"readiness synthetic chunks=1000 documents=10 old_records=1000 new_records=10 "
           f"old_get_calls=4 new_get_calls=1 before_ms={before*1000:.2f} after_ms={after*1000:.2f}")
+
+
+pytestmark = pytest.mark.usefixtures("stub_lexical")

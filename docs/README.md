@@ -100,7 +100,7 @@
 
 - [0020 Chroma 전용 이미지](adr/0020-dedicated-chroma-image.md): 대체됨(0021). 전용 서버 분리는 유지.
 
-- [0017 문서 분석 토큰의 제한된 메모리 재사용](adr/0017-bounded-chunk-token-reuse.md) — 제안·로컬 구현
+- [0017 문서 분석 토큰의 제한된 메모리 재사용](adr/0017-bounded-chunk-token-reuse.md) — 대체됨(0023)
 
 - [0016 개인 계정과 서버의 업무 접근 통제](adr/0016-crew-admin-authentication.md) — 채택
 - [0015 업무 스킬과 선택 LLM](adr/0015-optional-model-workflow-skills.md): 고정 실행기와 런타임 지침.
@@ -134,3 +134,7 @@
 - 문서와 코드가 다르면 코드가 사실입니다. 발견하면 문서를 고칩니다.
 
 - [통합 질문·언어·대화 이력 개선](plans/2026-11-09-ui-conversations-language.md) — 완료 (대화 API·브라우저 회귀 검증, Docker 전체 스택 미실행).
+
+- [OpenSearch 키워드 검색](specs/rag-lexical.md) — 구현됨
+- [OpenSearch 전환 계획](plans/2026-11-11-opensearch-retrieval.md) — 완료
+- [ADR 0023](adr/0023-opensearch-lexical-index.md) — 채택

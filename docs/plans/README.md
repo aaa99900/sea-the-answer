@@ -62,3 +62,5 @@
 - [자동 색인과 이미지 모델](2026-10-29-automatic-vector-indexing.md) — 완료
 
 - [통합 질문·언어·대화 이력 개선](2026-11-09-ui-conversations-language.md) — 완료 (대화 API·브라우저 회귀 검증, Docker 전체 스택 미실행).
+
+- [OpenSearch 전환](2026-11-11-opensearch-retrieval.md) — 완료

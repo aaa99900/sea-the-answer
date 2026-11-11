@@ -2,6 +2,17 @@
 
 버전을 올리거나 검증을 수행하면 이 파일에 기록합니다. 검증은 **실제로 수행한 것만** 날짜·환경과 함께 적고, 수행하지 않은 범위는 따로 적습니다.
 
+## 2026-11-11 — OpenSearch/Nori 키워드 검색 전환
+
+- Python Kiwi/rank-bm25·청크 토큰 캐시를 OpenSearch 3.9.0/Nori 역인덱스로 대체했다. 기존 httpx를 사용하며 세 의존성(kiwipiepy, kiwipiepy-model, rank-bm25)을 잠금 환경에서 제거했다. Nori 플러그인은 전용 이미지 빌드에 포함한다. E5·Chroma·청킹·Python RRF·UI는 유지한다.
+- 독립 lexical outbox migration, 트랜잭션 변경 트리거, 세션 잠금/generation을 사용하는 worker, 초기 색인·검증·재색인/alias CLI를 추가했다. 문서 내용별 record와 문서 snapshot receipt로 준비 범위를 확인한다. 한 엔진만 가능하면 해당 결과, 둘 다 불가하면 SEARCH_UNAVAILABLE(503)이다. 최종 PG 재조회는 반환 청크 ID로 제한한다. alias 전환 후 현재 문서와 삭제 작업을 재요청하며 전환/PG enqueue 사이 실패는 명시적 enqueue/verify로 복구한다.
+- Nori 실제 검증에서 소수·조항 번호 분리, 사용자 사전 뒤 `이`/`의` 품사 오인, `연료의` 분해 차이를 확인했다. 식별자 keyword 필드·사용자 단어·제한적 불용어로 보완했다. 부정·수치·단위·`경우`는 유지한다. Lucene 양수 점수/ID 동점과 전역 통계가 이전 Python 결과와 달라 기존 테스트의 해당 가정을 수정했으며 권한·원문·인용 검사는 유지했다.
+- 격리 PostgreSQL 17 + OpenSearch 3.9.0/Nori로 backend 전체 **1,076 passed / 4 skipped**, 182.07초: `uv run --no-sync --project backend python .verification/bm25-db-tests.py`. 이 로컬 보조 실행기는 앱 `.env`를 읽지 않고 임시 PG 및 테스트 전용 OpenSearch 주소를 사용한다. 표준 재현은 테스트 전용 `HAEDAP_TEST_DATABASE_URL`·`HAEDAP_KNOWLEDGE_TEST_DATABASE_URL`·`HAEDAP_TEST_OPENSEARCH_URL`을 지정하고 backend에서 `uv run pytest`다. 4개는 `MARITIME_DATA_TEST_DATABASE_URL`의 별도 해사 실데이터가 필요한 기존 검사다. 이후 alias 재확인 단위 검사를 포함한 서비스 없는 검사 **11 passed**, `uv run --project backend pytest backend/tests/test_rag_lexical.py -k "not real"`.
+- 실제 Dockerfile로 backend(고정 E5 다운로드·검증 포함)와 OpenSearch/Nori 이미지 빌드 성공. 별도 프로젝트/빈 환경 파일을 사용한 `docker compose --env-file .verification/lexical-e2e.env -p haedap-lexical-e2e --profile e2e up --build --force-recreate --exit-code-from e2e e2e`에서 **31 passed**, 1.6분. 초기 lexical 작업 완료를 기다린 뒤 검색·인용·문서 CRUD·백업/복구를 검증했다. 첫 실행의 테스트 tmpfs YAML 따옴표 오류를 고친 뒤 전체 통과했다. 테스트 프로젝트만 `down --volumes`로 정리했다.
+- 최종 alias 전환 후 재확인·삭제 tombstone 재요청까지 포함한 추가 검사 **20 passed**, 8.93초: 같은 격리 실행기에 `tests/test_rag_lexical.py tests/test_rag_lexical_jobs.py`를 전달했다. 물리 삭제 시험은 기존 FK 정책에 따라 참조 행부터 삭제하며 스키마 제약을 완화하지 않았다. `git diff --check`도 통과했다.
+- 합성 6,000청크 비교(Windows Python ↔ Docker OpenSearch, PG 조회·LLM 제외, 각 1회 측정): 서로 다른 본문에서는 기존 첫 검색 **11.924초**, 반복 **5.236~6.126초**에서 OpenSearch 첫 검색 **0.343초**, 반복 **0.320~0.391초**로 감소했다. 사전 색인·완료 확인은 **15.184초**였다. 반대로 같은 본문이 반복돼 기존 캐시에 적중하는 자료는 기존 반복 **0.040~0.042초**, OpenSearch **0.365~0.463초**로 원격 엔진이 더 느렸다. 두 실험 모두 기존과 동일 corpus를 사용했으며 일반 부하 벤치마크로 보지 않는다.
+- 자원 비용: 기존 독립 비교 프로세스 RSS 약 **550MiB**, 시험 OpenSearch 컨테이너 사용량 약 **1.424GiB**(상한 2GiB), 측정 시 JVM 사용 힙 약 **261MiB**. 서로 다른 계층의 수치이며 OpenSearch 방식은 앱 프로세스 메모리도 별도로 필요하다. 같은 점수의 Top-5 ID는 입력 순서에서 ID 문자열 순서로 달라졌다. 실제 PDF 정답률 향상·대규모 동시 부하·장기 운영·외부 TLS/인증 배포는 검증하지 않았다. PG 전체 후보 읽기·해시·허용 ID 전달과 반환되지 않은 record의 명시적 무결성 감사 비용은 남는다. 실제 앱 DB/PDF/Chroma/질의 이력 변경·웹앱 재시작·커밋·푸시·머지는 하지 않았다.
+
 ## 2026-11-10 — 최신 원본 main을 RAG 브랜치에 통합
 
 - `feature/rag-vector`의 `a0915ba`에 `upstream/main=3c469cb`를 머지했다. 충돌은 docs/README.md·plans/README.md·changelog.md 세 곳이며, 팀 변경과 RAG 기록을 모두 보존했다. RAG 전처리·BM25/캐시·벡터 준비 상태·worker·RRF·store/documents.py는 머지 전과 동일하다. 팀의 질문/대화·운항 자료 등록·MEPC 기본 문서·UI 변경을 유지한다.

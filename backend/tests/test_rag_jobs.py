@@ -235,6 +235,7 @@ def test_preexisting_inactive_jobs_and_explicit_repair_only(db_factory):
     assert not index.stored
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_real_chroma_automatic_index_and_search(db_factory, tmp_path):
     import chromadb
     from chromadb.config import Settings
@@ -277,6 +278,7 @@ def test_retry_limit_and_current_model_only(db_factory):
         assert store.one("SELECT state FROM rag_index_jobs WHERE fingerprint='other-model'")["state"] == "pending"
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_worker_real_chroma_mixed_vectors_after_content_revision(db_factory, tmp_path):
     import chromadb
     from chromadb.config import Settings

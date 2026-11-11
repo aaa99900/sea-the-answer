@@ -140,7 +140,7 @@ def test_dispatch_default_and_fallback(monkeypatch, caplog):
     import api.rag_search as module
     a = chunk("a")
     calls = []
-    monkeypatch.setattr(module, "bm25", lambda q, c, k: calls.append((q, c, k)) or [{**a, "score": 3}])
+    monkeypatch.setattr(module, "bm25", lambda q, c, k, **kwargs: calls.append((q, c, k)) or [{**a, "score": 3}])
     assert search("선급", [a], mode="bm25")["effective_mode"] == "bm25"
     class Failed:
         def search(self, *args, **kwargs):
@@ -157,7 +157,7 @@ def test_hybrid_uses_sufficient_candidates(monkeypatch):
     import api.rag_search as module
     a, b = chunk("a"), chunk("b")
     sizes = []
-    monkeypatch.setattr(module, "bm25", lambda q, c, k: sizes.append(k) or [{**a, "score": 90}, {**b, "score": 1}])
+    monkeypatch.setattr(module, "bm25", lambda q, c, k, **kwargs: sizes.append(k) or [{**a, "score": 90}, {**b, "score": 1}])
     class V:
         def search(self, q, rows, k, **kwargs):
             sizes.append(k)
@@ -179,7 +179,7 @@ def test_web_hybrid_ignores_legacy_environment(monkeypatch, legacy_mode):
         monkeypatch.setenv("HAEDAP_RETRIEVAL_MODE", legacy_mode)
     rows = [chunk(str(i)) for i in range(7)]
     sizes = []
-    def lexical(q, candidates, k):
+    def lexical(q, candidates, k, **kwargs):
         assert candidates == rows
         sizes.append(k)
         return [{**row, "score": 100 - i} for i, row in enumerate(rows)]
@@ -196,7 +196,7 @@ def test_web_hybrid_ignores_legacy_environment(monkeypatch, legacy_mode):
     expected = rrf([lexical("query", rows, 30), V().search("query", rows, 30)])
     assert report["results"] == expected
     store = documents.DocumentStore()
-    monkeypatch.setattr(store, "search_candidates", lambda *args: rows)
+    monkeypatch.setattr(store, "search_candidates", lambda *args, **kwargs: rows)
     evidence = store.search({"role": "operator"}, "query")
     assert len(evidence) == 5
     assert [row["id"] for row in evidence] == [row["id"] for row in expected]
@@ -214,7 +214,7 @@ def test_store_final_current_db_recheck(monkeypatch, legacy_mode):
     a, b = chunk("a"), chunk("b")
     snapshots = iter([[a, b], [{**b, "text": "changed"}]])
     store = module.DocumentStore()
-    monkeypatch.setattr(store, "search_candidates", lambda *args: next(snapshots))
+    monkeypatch.setattr(store, "search_candidates", lambda *args, **kwargs: next(snapshots))
     monkeypatch.setattr(module, "retrieve", lambda q, rows, top_k: rows)
     assert store.search({"role": "guest"}, "선급") == []
 
@@ -235,7 +235,7 @@ def test_compare_explicit_modes_and_fallback(monkeypatch, caplog, reason):
     import api.rag_search as module
     monkeypatch.setenv("HAEDAP_RETRIEVAL_MODE", "bm25")
     a, b = chunk("a"), chunk("b")
-    monkeypatch.setattr(module, "bm25", lambda *args: [{**a, "score": 3}, {**b, "score": 1}])
+    monkeypatch.setattr(module, "bm25", lambda *args, **kwargs: [{**a, "score": 3}, {**b, "score": 1}])
     class V:
         def search(self, *args, **kwargs):
             if reason:
@@ -319,3 +319,6 @@ def test_filter_before_dispatch(monkeypatch, mode):
     result = store.search({"role": "guest"}, "선급 정지", kind="manual")
     assert [row["id"] for row in result] == ["public"]
     assert "score" not in result[0]
+
+
+pytestmark = pytest.mark.usefixtures("stub_lexical")

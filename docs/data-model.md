@@ -76,7 +76,13 @@ erDiagram
 | `chunks` | `id`(=`{revision}-{n}`), `document_id`, `position`, `heading`, `text` | 절을 900자씩 분할 |
 | `chunk_pages` | `id`(청크 ID), `page` | PDF 물리 페이지 번호(없으면 NULL → "페이지 미지정") |
 
-검색(`Workspace.search`): 현재 개정·문서 상태·열람 범위·종류 필터를 통과한 청크를 `api/rag_search.py`에 전달하고 BM25·준비된 문서의 벡터 결과를 RRF로 결합해 상위 5개를 반환합니다. BM25 인덱스는 요청마다 메모리에 만들며 PostgreSQL에는 검색 점수를 저장하지 않습니다. 벡터/준비 정보는 아래 파생 Chroma 구조에 저장합니다. 토큰화와 점수 규칙은 [검색 계약](specs/api.md#문서-검색-bm25), 결합·fallback은 [벡터 계약](specs/rag-vector.md)을 따릅니다.
+검색(`Workspace.search`): 현재 개정·문서 상태·열람 범위·종류 필터를 통과한 청크를 `api/rag_search.py`에 전달하고 BM25·준비된 문서의 벡터 결과를 RRF로 결합해 상위 5개를 반환합니다. BM25 역인덱스는 OpenSearch가 유지하며 PostgreSQL에는 검색 점수를 저장하지 않습니다. 벡터/준비 정보는 아래 파생 Chroma 구조에 저장합니다. 토큰화와 점수 규칙은 [검색 계약](specs/api.md#문서-검색-bm25), 결합·fallback은 [벡터 계약](specs/rag-vector.md)을 따릅니다.
+
+### `rag_lexical_jobs` — OpenSearch 파생 색인 작업
+
+`20261111000000_rag_lexical_jobs.sql`은 문서 ID PK, generation, pending/processing/done/failed 상태, attempts, claim_token, fingerprint, error_code, next_attempt_at, updated_at, source_txid를 추가한다. documents/document_meta/chunks/chunk_pages의 변경 트리거가 같은 트랜잭션에서 enqueue하고 같은 문서의 반복 변경은 트랜잭션별로 합친다. 물리 삭제 뒤에도 정리 작업이 남도록 문서 FK는 없다. 기존 문서를 migration에서 자동 enqueue하지 않는다.
+
+전용 worker가 세션 advisory lock으로 문서별 중복 실행을 막고 원본·generation을 재확인한 뒤 완료한다. PostgreSQL done은 원격 저장소 건강 보증이 아니다. OpenSearch의 내용별 청크 record와 같은 색인의 문서 snapshot receipt가 검색 준비를 결정한다. 삭제·저장소 교체·누락 복구는 [키워드 계약](specs/rag-lexical.md)을 따른다.
 
 ### `document_meta` / `document_files`
 

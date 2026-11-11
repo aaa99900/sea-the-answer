@@ -24,7 +24,7 @@ bash 내장 TCP로 `/api/v2/heartbeat` HTTP 200을 확인한다. backend는 CPU 
 ## 3. 벡터 계약
 
 - passage 입력은 title/reference/heading/text의 자연어를 라벨·줄바꿈으로 결합하고 `passage: `를 붙인다.
-  query 원문에는 `query: `를 붙인다. Kiwi 토큰·별칭 확장은 벡터 입력에 적용하지 않는다.
+  query 원문에는 `query: `를 붙인다. Nori 토큰·키워드 별칭 확장은 벡터 입력에 적용하지 않는다.
 - E5 512토큰 한도를 특수 토큰까지 확인한다. 긴 passage는 문자 손실 없이 구간 분할해 각 구간을
   정규화 임베딩한 뒤 평균·재정규화한다. 긴 query는 명시적 실패/fallback으로 처리한다.
 - 모델 ID·고정 revision·384차원·입력/분할 버전·실행 라이브러리 버전의 fingerprint를 collection에 기록한다.
@@ -45,8 +45,8 @@ bash 내장 TCP로 `/api/v2/heartbeat` HTTP 200을 확인한다. backend는 CPU 
 RRF = 각 목록의 1/(k+rank) 합. rank는 1부터, 같은 목록의 중복 청크는 첫 등장만 센다.
 동점은 첫 등장 순서(BM25 목록 우선)로 결정한다. 원점수는 직접 합산하지 않는다.
 후보 수는 최종 k 이상으로 보장한다. 빈 후보/질문은 빈 결과다.
-미준비 문서는 벡터에서 제외하되 전체 BM25 후보에 남긴다. 준비 문서가 있으면 부분 hybrid를 허용한다.
-준비 문서가 없거나 모델 미준비·검출된 손상·Chroma 장애·잘못된 설정이면 전체 BM25 fallback한다.
+벡터 미준비 문서도 OpenSearch 색인이 준비됐다면 BM25 후보에 남긴다. 준비 문서가 있으면 부분 hybrid를 허용한다.
+벡터 준비 실패 시 OpenSearch가 사용 가능하면 BM25로 대체한다. OpenSearch만 실패하면 벡터로 대체하고 둘 다 불가하면 명시적 503이다([키워드 계약](rag-lexical.md)). 잘못된 검색 설정도 명시적 불가로 처리한다.
 경고 로그는 requested/effective mode와 안전한 reason 코드만 담고 질문·본문·환경값은 출력하지 않는다.
 HTTP 응답 형식은 유지하고 개발자 CLI는 effective mode와 fallback 사유를 명시한다.
 health.retrieval은 `hybrid-rrf` 정책을 나타내며 색인 준비 상태/해당 요청의 성공 보장은 아니다.

@@ -89,3 +89,6 @@ def test_api_hybrid_scope_revisions_and_citations(monkeypatch, tmp_path, mode):
         store.save_document(data)
         store.delete_document(revised)
         assert store.search(crew_user, "선급") == []
+
+
+pytestmark = pytest.mark.usefixtures("prepared_lexical")
