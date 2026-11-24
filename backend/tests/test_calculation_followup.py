@@ -119,6 +119,20 @@ def test_fuel_only_followup_reuses_factor_dwt_and_distance(conversation):
     assert db.plan_calls == [INITIAL]
 
 
+@pytest.mark.parametrize('question', [
+    '연료만 200t로 바꾸면 CO2는?',
+    '연료만200t로바꾸면결과는뭐야?',
+])
+def test_result_question_suffix_keeps_an_explicit_fuel_replacement(conversation, question):
+    db, _, ask = conversation
+    first = ask(INITIAL)
+    result = ask(question, first)
+    assert emission(result)['emission'] == pytest.approx(622.8)
+    assert emission(result)['intensity'] == pytest.approx(10.38)
+    assert db.calculations[-1][1] == {'fuel': 200, 'factor': 3.114, 'dwt': 30000, 'distance': 2000}
+    assert db.plan_calls == [INITIAL]
+
+
 def test_reference_after_unrelated_turn_finds_calculation_in_same_conversation(conversation):
     db, plans, ask = conversation
     first = ask(INITIAL)
@@ -228,6 +242,7 @@ def test_new_scope_and_invalid_replacement_never_run_with_silently_reused_values
     '아까 그 계산에서 연료를 20% 줄이면?',
     '연료를 20t 줄이면?',
     '아까 그 계산에서 연료만 많이 바꾸면?',
+    '연료만20t이하로줄이면?',
 ])
 def test_relative_or_unnumbered_edit_requests_an_absolute_value_without_computing(conversation, question):
     db, _, ask = conversation

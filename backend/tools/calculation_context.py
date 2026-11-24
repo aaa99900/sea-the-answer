@@ -23,7 +23,7 @@ CHANGE = re.compile(r'바꾸|바꿔|변경|대신|수정|늘리|줄이|줄여|�
 REFERENCE = re.compile(r'(?:아까|앞서|이전|직전|방금|그때|앞의|위의|그)\s*(?:그\s*)?(?:배출량\s*)?계산|'
                        r'(?:아까|앞서|이전|직전|방금).{0,25}(?:연료|배출|집약도)|'
                        r'다시\s*계산|\b(?:previous|earlier|last|same)\s+(?:emissions?\s+)?calculation\b', re.I)
-DEFINITION = re.compile(r'정의|무슨\s*뜻|의미|설명|규정|왜|뭐야|무엇|\b(?:define|definition|explain|meaning|what\s+is)\b', re.I)
+DEFINITION = re.compile(r'정의|무슨\s*뜻|의미|설명|규정|왜|\b(?:define|definition|explain|meaning)\b', re.I)
 NEGATED = re.compile(r'(?:바꾸|바꿔|변경|수정|계산).{0,8}(?:지\s*마|하지\s*마|하지\s*않|하지\s*말)|'
                      r'\b(?:do\s+not|don.t|never)\s+(?:change|replace|recalculate)', re.I)
 FIELD_MAP = {'fuel': 'fuel_t', 'factor': 'factor', 'dwt': 'dwt', 'distance': 'distance_nm'}
@@ -78,6 +78,7 @@ def replacements(question):
     remainder = question
     for start, end in sorted(spans, reverse=True):
         remainder = remainder[:start] + ' ' * (end - start) + remainder[end:]
+    remainder = re.sub(r'(?<![A-Za-z])CO[₂2](?![A-Za-z0-9])', '', remainder, flags=re.I)
     if values and re.search(NUMBER, remainder):
         raise ValueError('변경할 계산 항목마다 값 하나씩 지정해 주세요. 여러 조건은 한 번에 하나씩 계산할 수 있습니다.')
     return values
@@ -154,6 +155,8 @@ def resolve(ctx):
         changed = replacements(question)
     except ValueError as exc:
         return Followup(error=str(exc)) if CHANGE.search(question) or explicit_reference else None
+    if re.search(r'뭐야|무엇|\bwhat\s+is\b', question, re.I) and not (changed and CHANGE.search(question)):
+        return None
     if not explicit_reference and (not changed or not CHANGE.search(question) or len(changed) == len(FIELD_MAP)):
         return None
     if not changed and CHANGE.search(question) and any(re.search(label, question, re.I) for label in LABELS.values()):
