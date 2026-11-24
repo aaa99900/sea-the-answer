@@ -81,3 +81,63 @@
 .answer-details > summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .answer-details[open] > summary { margin-bottom: 6px; }
 .answer-details .answer-sources:first-of-type { margin-top: 12px; }
+
+.report-builder{display:grid;gap:1rem}
+.report-builder details,.report-sheet section{padding:.9rem;border:1px solid var(--line,#d6e3e9);border-radius:.65rem}
+.report-builder summary{cursor:pointer;font-weight:600}
+.report-builder summary+.field,.report-builder summary+.report-choices{margin-top:.65rem}
+.report-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.65rem 1rem}
+.report-choices{max-height:14rem;overflow:auto;display:grid;gap:.45rem}
+.report-choices label{display:flex;gap:.6rem;align-items:center}
+.report-sheet{padding:1rem;min-width:0}
+.report-layout>section,.report-grid .field{min-width:0}
+.report-sheet h3{margin-bottom:.7rem}
+.report-table-scroll{overflow-x:auto;margin-bottom:.5rem}
+.report-table-scroll table{width:100%;border-collapse:collapse}
+.report-table-scroll th,.report-table-scroll td{padding:.3rem;text-align:left}
+.report-table-scroll input{width:100%;min-width:6rem}
+.report-paper{color:#172f40;background:white;font-size:.88rem}
+.report-paper header{border-bottom:2px solid #18767c;padding-bottom:.55rem}
+.report-paper h3{font-size:1rem;margin:1rem 0 .4rem}
+.report-paper dl{display:grid;grid-template-columns:1fr 1fr;margin:0}
+.report-paper dl>div,.report-paper th,.report-paper td{border:1px solid #bdcbd3;padding:.35rem}
+.report-paper dt{color:#536773;font-size:.8em}
+.report-paper dd{margin:0;min-height:1.2em}
+.report-paper table{border-collapse:collapse;table-layout:fixed;width:100%}
+.report-paper th,.report-paper td,.report-paper p,.report-paper dd{overflow-wrap:anywhere;white-space:pre-wrap}
+.report-paper thead,.report-paper tfoot{background:#edf3f5}
+@media print{
+  @page{size:A4;margin:12mm}
+  body:has(#printable-report) *{visibility:hidden}
+  body:has(#printable-report) #printable-report,body:has(#printable-report) #printable-report *{visibility:visible}
+  body:has(#printable-report) #dialog{position:absolute;inset:0;display:block;width:100%;max-width:none;height:auto;max-height:none;overflow:visible;border:0;box-shadow:none;margin:0;padding:0}
+  body:has(#printable-report) #dialog::backdrop{background:white}
+  body:has(#printable-report) #dialog .modal-head,body:has(#printable-report) #dialog .modal-footer,body:has(#printable-report) .app,body:has(#printable-report) .skip,body:has(#printable-report) #toasts{display:none}
+  body:has(#printable-report) #dialog .modal-body{overflow:visible;padding:0;max-height:none}
+  #printable-report{position:relative;font-size:9pt}
+  #printable-report h3{break-after:avoid}
+  #printable-report tr,#printable-report dl>div{break-inside:avoid}
+}
+
+.report-text-preview{margin:0 1rem 1rem}.report-text-preview summary{cursor:pointer}
+/* Intrinsic table widths must stop at the scroll container, including populated record IDs. */
+.report-sheet{grid-template-columns:minmax(0,1fr);width:100%;box-sizing:border-box}
+.report-sheet>section,.report-sheet>details,.report-sheet .field,.report-sheet .report-grid,.report-table-scroll{min-width:0;max-width:100%;box-sizing:border-box}
+.report-sheet .field input,.report-sheet textarea,.report-layout .report-title{min-width:0;box-sizing:border-box;max-width:100%}
+.report-sheet .report-table-scroll{display:block;overflow-x:auto;width:100%}
+.report-sheet .report-table-scroll input{box-sizing:border-box}
+.report-sheet details p,.report-request-summary{overflow-wrap:anywhere}
+.report-request-summary{margin:.8rem 0 1rem}
+.report-request-summary dl{display:grid;grid-template-columns:fit-content(48%) minmax(0,1fr);gap:.35rem 1rem}
+.report-request-summary dt{color:var(--muted,#536773)}
+.report-request-summary dd{margin:0}
+.report-request-summary summary{cursor:pointer}
+
+.report-entry-actions { display: grid; gap: 8px; }
+.report-entry-actions .btn:disabled {
+  background: #e5e9ec; border-color: #d5dce1; color: #586874; opacity: 1; cursor: default;
+}
+
+.report-forms-link { text-decoration: none; }
+.btn.report-resume:enabled { background: var(--white); border-color: var(--teal); color: var(--teal); }
+.btn.report-resume:enabled:hover { border-color: var(--teal-dark); color: var(--teal-dark); }

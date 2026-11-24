@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from . import config, dataset_status, llm, navigation_query, question_intent, question_workflows, tool_planner
 from tools import execution as tool_dispatch
+from . import question_catalog, question_requests, workspace_help
 from .dataset_intent import DATASETS, inventory_request, sources
 from .errors import ApiError, require
 from .question_intent import explanation_request
@@ -193,9 +194,101 @@ def finalize(ctx,answer,routing,related=()):
     return answer
 
 
+def answer_document_request(ctx,q,documents):
+    retrieval_question=q
+    matches=question_requests.document_matches(q,documents)
+    excludes=[];includes=[];preferred=False
+    for start,end,identifier in matches:
+        suffix=q[end:end+22].lstrip(" '’”\")")
+        prefix=q[max(0,start-15):start]
+        if re.match(r'(?:문서)?(?:는|은|를|을)?\s*(?:제외|빼고|말고)',suffix) or re.search(r'exclud(?:e|ing)\s*$',prefix,re.I):
+            excludes.append(identifier)
+        else:
+            includes.append(identifier)
+            preferred=preferred or bool(re.match(r'(?:를|을)?\s*우선',suffix))
+    strict=bool(re.search(r'(?:문서|자료|매뉴얼)(?:에서|로|으로)?만|(?:만|에서)\s*(?:인용|참고|찾|답)|only (?:use|from)',q,re.I))
+    reuse=not matches and re.search(r'(?:같은|동일한|그|방금|앞서)\s*(?:문서|자료)|same (?:source|document)',q,re.I)
+    if reuse:
+        prior=question_requests.previous_answer(ctx)
+        routing=prior.get('routing',{})
+        old=routing.get('documentIds') if routing.get('method')=='explicit_scope' else []
+        allowed={d['id'] for d in documents if d.get('active',True)}
+        if old and set(old)<=allowed:
+            includes=list(old)
+            retrieval_question=str(prior.get('question',''))[:500]+'\n'+q
+            matches=[(i,i,id) for i,id in enumerate(includes)]
+        strict=True
+    if not matches and not strict:return None
+    en=ctx.body.get('language')=='en' or ctx.body.get('language','auto')=='auto' and not re.search('[가-힣]',q)
+    def ask_scope():
+        return save(ctx,{'notice':'Please specify the exact title of a readable source document.' if en else '사용할 문서를 확인할 수 없습니다. 열람 가능한 문서의 제목을 지정해 주세요.'},{'method':'rules','route':'clarify'})
+    if not matches:return ask_scope()
+    if len({(a,b) for a,b,_ in matches})!=len(matches):return ask_scope()
+    quoted=re.findall(r'[「“"]([^」”"]+)[」”"]\s*(?:문서|자료|만|에서|를|을)',q)
+    if any(not any(title.casefold() in q[a:b].casefold() for a,b,_ in matches) for title in quoted):return ask_scope()
+    included=list(dict.fromkeys(includes))
+    eligible=[d['id'] for d in documents if d.get('active',True) and d['id'] not in excludes]
+    ids=[i for i in included if i in eligible] if included else eligible
+    if not ids:return ask_scope()
+    def search(ids):
+        items=[]
+        for i in range(0,len(ids),20):
+            items.extend(ctx.db.search(ctx.user,retrieval_question,ctx.body.get('filter','all'),ids[i:i+20]))
+        return items
+    evidence=search(ids)
+    if preferred and not strict:evidence+=search([i for i in eligible if i not in ids])
+    fields={**ctx.body,'task':'documents','mode':'llm'}
+    result=ctx.db.answer(ctx.user,fields,evidence=evidence[:12])
+    return finalize(ctx,result,{'method':'explicit_scope','route':'selected_document','documentIds':ids})
+
+
 def answer(ctx):
     body,q=validate_request(ctx)
+    requested_language=question_requests.language_request(q)
+    if requested_language:body['language']=requested_language
     if body.get('task','auto')!='auto':return ctx.db.answer(ctx.user,body)
+    if body.get('workflowInput') is None:
+        topic = workspace_help.help_topic(q)
+        if topic:
+            return save(ctx,question_catalog.catalog_fields(ctx,'help_'+topic),{'method':'rules','route':'workspace_help'})
+        listing=question_catalog.catalog_intent(q)
+        if listing:
+            return save(ctx,question_catalog.catalog_fields(ctx,*listing),{'method':'rules','route':'workspace_catalog'})
+        prior=question_requests.previous_answer(ctx) if body.get('conversationId') else {}
+        focus=prior.get('catalog',{})
+        follow_kind=focus.get('form') if focus.get('kind')=='report_forms' and re.search(r'그럼|그러면|그걸로|하나|then|that',q,re.I) else None
+        old_scope=prior.get('workflow',{}).get('scope',{})
+        old_years=old_scope.get('years') or [p['start'][:4] for p in old_scope.get('periods',[])]
+        draft_year=int(old_years[0]) if len(set(old_years))==1 and re.search(r'그해|그 해|같은 해|that year',q,re.I) else None
+        draft=question_requests.report_request(q,follow_kind,draft_year)
+        if draft:
+            try:
+                ships=question_requests.named_ships(q,ctx.db.ships())
+            except ValueError:
+                ships=[]
+            if len(ships)==1:
+                draft['shipId']=ships[0]['id']
+                draft['values'].update(ship=ships[0]['name'],imo=ships[0].get('imo') or '')
+            question_requests.enrich_draft(ctx,draft,q)
+            en=body.get('language')=='en' or body.get('language','auto')=='auto' and not re.search('[가-힣]',q)
+            draft['language']='en' if en else 'ko'
+            return save(ctx,{'task':'report_draft','status':'completed','reportDraft':draft},
+                {'method':'rules','route':'report_draft'})
+        record_query=q
+        pending=prior.get('pendingRecordRequest',{})
+        if pending.get('field')=='ship' and len(q)<100:
+            from .ship_identity import resolve_ship_name
+            try:
+                complete=resolve_ship_name(q.strip(' .!?'),ctx.db.ships())
+            except ValueError:
+                complete=None
+            if complete:record_query=pending['question']+' '+complete
+        elif pending.get('field')=='period' and question_intent.slot_reply(q,dates=True):
+            record_query=pending['question']+' '+q
+        elif pending.get('field')=='period' and question_requests.ALL_RECORDS.fullmatch(q.strip(' .!?')):
+            record_query=pending['question']+' '+q
+        selection=question_requests.record_selection(ctx,record_query,save)
+        if selection is not None:return selection
     if router_mode()=='legacy':return legacy_answer(ctx)
     # A clarification card reply is structured input, not wording to interpret.
     if body.get('workflowInput') is not None:
@@ -210,10 +303,19 @@ def answer(ctx):
     calls=None;error=None
     with ThreadPoolExecutor(max_workers=1) as pool:
         planned=monotonic()
-        titles=[d.get('title','') for d in ctx.db.documents(ctx.user)]
+        documents=ctx.db.documents(ctx.user)
+        titles=[d.get('title','') for d in documents]
+        scoped=answer_document_request(ctx,q,documents)
+        if scoped is not None:return scoped
         future=pool.submit(tool_planner.plan,q,today=question_intent.local_today(),summary=summary,documents=titles,settings=settings)
         searched=monotonic()
-        evidence=ctx.db.search(ctx.user,q,body.get('filter','all'))
+        search_failure=None
+        try:
+            evidence=ctx.db.search(ctx.user,q,body.get('filter','all'))
+        except ApiError as exc:
+            if exc.code!='SEARCH_UNAVAILABLE':raise
+            search_failure=exc
+            evidence=[]
         search_ms=round((monotonic()-searched)*1000,3)
         try:calls=future.result()
         except tool_planner.PlanError as exc:error=exc.code
@@ -221,7 +323,7 @@ def answer(ctx):
         except (ValueError,KeyError,IndexError,TypeError):error='MODEL_RESPONSE_INVALID'
         plan_ms=round((monotonic()-planned)*1000,3)
     log=[{'name':'search_documents','arguments':{'filter':body.get('filter','all')},'status':'completed',
-          'resultCount':len(evidence),'durationMs':search_ms}]
+          'resultCount':len(evidence),'durationMs':search_ms}] if not search_failure else []
     routing={'method':'model_tools','toolCalls':log,'searchMs':search_ms,'planMs':plan_ms}
     if error:
         routing['error']=error
@@ -234,6 +336,7 @@ def answer(ctx):
             '확인할 작업 하나를 골라 다시 질문해 주세요.')
         return finalize(ctx,result,routing,evidence)
     if not calls:
+        if search_failure:raise search_failure
         result=ctx.db.answer(ctx.user,{**body,'task':'documents','mode':'llm'},evidence=evidence)
         return finalize(ctx,result,routing)
     call=calls[0]

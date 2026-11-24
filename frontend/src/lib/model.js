@@ -1,3 +1,4 @@
+import {validReportBody} from './report-forms.js';
 // One workspace model per React provider; never shared between requests.
 export function createModel() {
   const reportTypes = ['규정 검토', '일일 운항', '배출량 검토', '종합 검토'];
@@ -40,6 +41,7 @@ export function createModel() {
       typeof r.text !== 'string' ||
       r.text.length > 200000 ||
       !reportTypes.includes(r.type) ||
+      !validReportBody(r.body) ||
       !Array.isArray(r.sources) ||
       r.sources.some((s) => typeof s !== 'string')
     )
@@ -64,6 +66,7 @@ export function createModel() {
     ships: [],
     operationRecords: [],
     reports: [],
+    examplePreview: null,
     users: [],
     logs: [],
     changes: [],
@@ -162,6 +165,14 @@ export function createModel() {
       anomalies: rows.filter((r) => r.note && !r.sample).length,
     };
   }
+  function resumableDraft() {
+    if (!canWrite()) return null;
+    const d = state.draft;
+    const saved = d.id && state.reports.find(r => r.id === d.id);
+    if (d.status === 'draft' && (!d.id || (saved?.owner === state.user.id && saved.status === 'draft')) &&
+        (!d.owner || d.owner === state.user.id) && (d.title || d.text || d.sources.length || d.body?.started)) return d;
+    return state.reports.find(r => r.owner === state.user.id && r.status === 'draft') || null;
+  }
   function draftKey() {
     return keys.draft + '-' + state.user.id;
   }
@@ -183,6 +194,7 @@ export function createModel() {
     state,
     persistDraft,
     snapshotDraft,
+    resumableDraft,
     metrics,
     records,
     currentShip,

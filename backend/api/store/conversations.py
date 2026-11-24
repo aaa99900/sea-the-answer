@@ -28,6 +28,19 @@ class ConversationStore:
         return [{"id": r["id"], "question": r["question"], "at": stamp(r["updated"]),
                  "count": r["count"]} for r in rows]
 
+    def can_read_answer(self, user, answer):
+        if not all(self.can_read_document(user,e['document_id']) for e in answer.get('evidence',[])):
+            return False
+        catalog=answer.get('catalog',{})
+        for item in catalog.get('items',[]):
+            if catalog['kind']=='documents' and not self.can_read_document(user,item['id']):
+                return False
+            if catalog['kind']=='saved_reports':
+                report=self.report(item['id'])
+                if not report or report['owner']!=user['id'] or not self.can_read_report(user,report):
+                    return False
+        return True
+
     def conversation(self, user, conversation_id):
         self.lock_conversation(user, conversation_id)
         rows = self.all("""SELECT q.* FROM queries q JOIN query_owner o ON o.id=q.id
@@ -36,7 +49,7 @@ class ConversationStore:
         turns = []
         for row in rows:
             answer = row["response"]
-            visible = all(self.can_read_document(user, e["document_id"]) for e in answer.get("evidence", []))
+            visible = self.can_read_answer(user,answer)
             turns.append({"id": row["id"], "question": row["question"], "at": stamp(row["created_at"]),
                           "answer": answer if visible else None, "unavailable": not visible})
         return {"id": conversation_id, "turns": turns}

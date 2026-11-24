@@ -51,7 +51,8 @@ class UpgradeStore:
             {'id': 'custom', 'logical_id': 'custom', 'title': '직접 등록한 문서', 'active': True},
             {'id': 'prefixed', 'logical_id': 'prefixed', 'title': '(테스트용) 기존 표시 (가상)', 'active': True},
         ]
-        self.settings, self.saved = {}, []
+        from api.report_examples import MARKER
+        self.settings, self.saved = {MARKER: "installed"}, []
 
     def one(self, sql, params=()):
         if 'WHERE key=' in sql:

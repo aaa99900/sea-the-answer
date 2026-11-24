@@ -14,6 +14,7 @@ import psycopg
 from ..config import BACKEND_DIR
 from ..errors import ApiError
 from ..knowledge_update import apply_mepc_update, document_payload
+from ..report_examples import install_report_examples
 from ..validation import text
 from .answers import AnswerStore
 from .conversations import ConversationStore
@@ -49,3 +50,4 @@ class Workspace(Database, UserStore, DocumentStore, OperationStore, ChangeStore,
             for raw in json.loads((knowledge / "seed.json").read_text(encoding="utf-8")):
                 self.save_document(document_payload(raw, knowledge))
         apply_mepc_update(self, BACKEND_DIR / "knowledge")
+        install_report_examples(self, BACKEND_DIR / "knowledge")

@@ -380,7 +380,7 @@ def test_model_path_forces_model_generation_for_downstream_executors(monkeypatch
         seen['mode'] = ctx.body['mode']
         return {'id': 'wf', 'status': 'completed', 'evidence': []}
     monkeypatch.setattr(router.tool_dispatch, 'workflow', workflow)
-    ask('선박 안전 문서만 근거로 요약해줘', [('ask_selected_documents', {'document_mentions': ['선박 안전 문서']})],
+    ask('이 선박의 운항 실적을 보여줘', [('summarize_operations', {})],
         monkeypatch, body={'mode': 'extractive'})
     assert seen == {'mode': 'llm'}
 

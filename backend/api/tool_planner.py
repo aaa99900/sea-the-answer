@@ -16,7 +16,9 @@ from tools import registry
 
 MAX_CALLS = 3
 RULES = (
-    '문서 검색은 서버가 항상 실행합니다. '
+    '문서 제목 목록, 지원하는 보고서 양식, 내 저장 보고서를 물으면 list_workspace_items를 고릅니다. '
+    '프로그램 자체 또는 탭 사용법은 list_workspace_items의 help_overview, help_chat, help_documents, help_operations, help_reports를 선택하세요. '
+    '개별 운항 기록 목록은 summarize_operations의 listing=true로, 상·하위 기록은 rank_by와 rank_order로 조회하고 전체 기간 합계는 all_records_metric을 사용하세요. '
     '용어 정의·규정·기준·절차 설명처럼 문서만으로 답할 질문은 answer_from_documents를 고르세요. '
     '사용자가 특정 문서 제목(documents 목록 참고)을 대며 그 문서만 근거로 하라고 하면 ask_selected_documents를 고르세요. '
     '등록 자료 현황·운항 실적·MRV 참고값·항구 선석 비교·배출량·항해 시간 계산은 해당 도구를 고르세요. '

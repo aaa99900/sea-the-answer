@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from .schemas import (
     Args, DatasetStatusArgs, AisStatusArgs, OperationsArgs, PositionArgs,
     MrvArgs, CombinedArgs, PortArgs, SelectedDocumentArgs, EmissionsArgs,
-    VoyageTimeArgs, ClarifyArgs, NoArgs, DeclineArgs, VesselListArgs,
+    VoyageTimeArgs, ClarifyArgs, NoArgs, DeclineArgs, VesselListArgs, WorkspaceListArgs,
 )
 
 
@@ -54,6 +54,7 @@ TOOLS = {tool.name: tool for tool in (
     Tool('get_dataset_status', '서버에 등록된 해사 자료(AIS·MRV·DWT·Noon·운항기록·문서·항만)의 유무·건수·출처·수집일을 확인한다. '
          'IMO 번호로 특정 선박의 MRV·DWT 자료 유무도 확인한다.',
          DatasetStatusArgs, 'data'),
+    Tool('list_workspace_items','등록 문서 제목을 열거·검색하거나, 작성 가능한 보고서 양식 또는 내 저장 보고서 목록을 안내한다.', WorkspaceListArgs,'data'),
     Tool('list_vessels', '등록된 선박 목록이나 IMO 번호 예시를 조회한다. 실제 저장된 선박명·IMO·선종·DWT를 보여준다. '
          '"등록된 IMO 번호 10개 예시"처럼 번호가 질문에 없어도 목록을 조회한다.', VesselListArgs, 'data'),
     Tool('get_ais_catalog_status', '연결된 AIS 수집본의 관측 수와 특정 선박의 관측 여부를 확인한다.', AisStatusArgs, 'data'),

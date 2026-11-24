@@ -12,6 +12,22 @@ class OperationStore:
     def ships(self) -> list[dict]:
         return [{**row["body"], "version": row["version"]} for row in self.all("SELECT * FROM ships ORDER BY seq,id")]
 
+    def ship_records(self, ship_id):
+        return [row["body"] for row in self.all(
+            "SELECT body FROM operations WHERE ship=%s ORDER BY date,id",(ship_id,))]
+
+    def record_page(self, ship_ids, start, end, limit, latest, sample):
+        filters, params = [], []
+        for condition, value in (("ship=ANY(%s)", ship_ids or None), ("date>=%s", start),
+                                 ("date<=%s", end), ("COALESCE((body->>'sample')::boolean,false)=%s", sample)):
+            if value is not None:
+                filters.append(condition)
+                params.append(value)
+        where = ' WHERE ' + ' AND '.join(filters) if filters else ''
+        order = ' DESC' if latest else ' ASC'
+        return self.all('SELECT body,count(*) OVER() AS matches FROM operations' + where +
+                        ' ORDER BY date' + order + ',ship,id LIMIT %s', tuple([*params,limit]))
+
     def operations(self) -> list[dict]:
         return [{**row["body"], "version": row["version"]}
                 for row in self.all("SELECT * FROM operations ORDER BY date,id")]

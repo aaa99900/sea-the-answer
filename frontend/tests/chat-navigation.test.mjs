@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {createModel} from '../src/lib/model.js';
+import * as reportForms from '../src/lib/report-forms.js';
 const require = createRequire(import.meta.url);
 const React = require('react');
 const babel = require('next/dist/compiled/babel/bundle');
@@ -24,13 +25,14 @@ function setup({llmConfigured=false}={}) {
     documents:async()=>({documents:[]}),operations:async()=>({ships:[],records:[]}),reports:async()=>({reports:[]}),
     ask:body=>{requests.push(body);return new Promise((resolve,reject)=>pending.push({resolve,reject}));}};
   const {createWorkspace}=load('../src/workspace/controller.jsx', {
-    react:React, '../lib/model':{createModel}, '../lib/api':{createApiClient:()=>api},
+    react:React, '../lib/model':{createModel}, '../lib/report-forms':reportForms,
+    '../components/report-builder':{ReportChooser:()=>null, ReportPaper:()=>null}, '../lib/api':{createApiClient:()=>api},
     '../views':{createViews:()=>({})},
   },browser);
   const workspace=createWorkspace();
   workspace.attach({push:(...args)=>routes.push(args)});
   workspace.state.ready=true;workspace.state.user={id:'u1',role:'admin'};
-  const click=dataset=>workspace.events.onClick({target:{closest:()=>({dataset})}});
+  const click=dataset=>workspace.events.onClick({target:{closest:()=>({dataset,closest:()=>({dataset:{answerId:dataset.answerId}})})}});
   const reconnect=()=>new Promise(resolve=>{
     const stop=workspace.subscribe(()=>{if(!workspace.state.connecting){stop();resolve();}});
     click({action:'reconnect'});
@@ -138,5 +140,26 @@ test('chat DOM commit scrolls to the bottom; cancelled requests and other pages 
   WorkspacePage({name:'chatPage'});w.state.page='reports';frames.get(nextId)();cleanup();
   assert.equal(t.scrolls.length,1);
   WorkspacePage({name:'reportPage'});assert.equal(frames.size,0);
+  w.dispose();
+});
+
+test('report creation chooser can start all forms without records, and chat opens a prefilled editor', async()=>{
+  for(const kind of ['free',...Object.keys(reportForms.forms)]){
+    const x=setup(), w=x.workspace;
+    x.click({action:'newReport'});
+    await w.modal.body.props.create(kind,[],null,[]);
+    assert.equal(w.state.page,'editor');
+    assert.equal(w.state.draft.body.formType,kind==='free'?undefined:kind);
+    w.dispose();
+  }
+  const x=setup(), w=x.workspace;
+  w.state.uiLanguage='en';
+  w.state.answer={id:'q1',question:'부산항 입항 보고서를 작성해줘',reportDraft:{kind:'arrival',values:{fore:'7.5',port:'부산항'},language:'ko'}};
+  x.click({action:'suggestedReport',answerId:'q1'});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(w.state.page,'editor');
+  assert.equal(w.state.draft.body.values.fore,'7.5');
+  assert.match(w.state.draft.text,/부산항/);
+  assert.equal(w.state.draft.body.language,'ko');
   w.dispose();
 });

@@ -422,9 +422,10 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     await login('E2e-personal-crew-2026', 'e2e-crew');
     await page.locator('#question').waitFor();
     await go('reports');
-    await action('templateNoon').click();
-    await page.waitForFunction(() => document.querySelector('#report-text')?.value.includes('Noon'));
-    expect(page.url()).toMatch(/\/reports\/(?!new)/);
+    await action('newReport').click();
+    await page.locator('#new-report-kind').selectOption('daily');
+    await page.locator('#create-selected-report').click();
+    await expect(page.locator('#report-text')).toHaveValue(/일일 운항 보고서/);
     await page.locator('#report-title').fill('게스트 Next 보고서');
     await action('saveReport').click();
     await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent === '저장된 내용');
@@ -432,7 +433,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     await page.goBack();
     await expect(page.locator('#report-title')).toHaveValue('게스트 Next 보고서');
     await page.reload();
-    await page.locator('#report-text').waitFor();
+    await page.locator('#report-text').waitFor({state:'attached'});
     await expect(page.locator('#report-title')).toHaveValue('게스트 Next 보고서');
     if (await action('submitReport').isDisabled()) {
       await action('saveReport').click();
@@ -440,7 +441,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     }
     await action('submitReport').click();
     await confirm();
-    await page.waitForFunction(() => document.querySelector('#report-text')?.readOnly);
+    await expect(page.getByLabel('IMO 번호',{exact:true})).toHaveAttribute('readonly','');
     await expect(action('deleteReport')).toHaveCount(0);
     const guestReportId = decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1));
     expect((await api('/api/reports/delete', { id: guestReportId, version: 1 })).status).toBe(403);
@@ -601,44 +602,29 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     await expect(page.locator('.skill-metrics')).toContainText('계산 CO₂');
     const before = (await api('/api/reports')).data.reports.length;
     await go('reports');
-    const reportPanel = page.locator('[data-workflow=reports]');
-    await reportPanel.locator('summary').first().click();
-    await reportPanel.getByLabel('선박', { exact: true }).selectOption(ship.id);
-    await reportPanel.getByLabel('시작일', { exact: true }).fill(days[0]);
-    await reportPanel.getByLabel('종료일', { exact: true }).fill(days.at(-1));
-    await reportPanel.getByLabel('질문 또는 작업 목적').fill('보고서 초안을 만들어줘');
-    const response = page.waitForResponse(r => r.url().endsWith('/api/skills/run') && r.request().method() === 'POST');
-    await reportPanel.getByRole('button', { name: '실행', exact: true }).click();
-    const value = await (await response).json();
-    await expect(page.getByLabel('보고서 초안 내용')).toContainText('검토용');
+    await go('chat');
+    const response=page.waitForResponse(r=>r.url().endsWith('/api/ask') && r.request().method()==='POST');
+    await page.locator('#question').fill('부산항 입항 보고서를 작성해 줘. 선수 흘수 7.5 m');
+    await page.locator('#askForm').evaluate(f=>f.requestSubmit());
+    const value=await (await response).json();
+    await action('suggestedReport').click();
+    if(await action('confirm').isVisible()) await confirm();
+    await expect(page.getByLabel('선수 흘수 (m)',{exact:true})).toHaveValue('7.5');
     expect((await api('/api/reports')).data.reports).toHaveLength(before);
-    let releaseSave;
-    const saveGate = new Promise(resolve=>{releaseSave=resolve;});
-    const holdSave = async route=>{if(route.request().method()==='POST')await saveGate; await route.continue();};
-    await page.route('**/api/reports',holdSave);
-    await page.getByRole('button', { name: '새 보고서 초안으로 저장', exact: true }).click();
-    try {
-      await expect(reportPanel.getByRole('button',{name:'실행',exact:true})).toBeDisabled();
-      await expect(reportPanel.getByLabel('선박',{exact:true})).toBeDisabled();
-    } finally { releaseSave(); }
-    await expect(page.getByRole('button', { name: '초안 저장됨', exact: true })).toBeDisabled();
-    await page.unroute('**/api/reports',holdSave);
-    await expect(reportPanel).toContainText('새 보고서 초안으로 저장했습니다. 제출되지 않았습니다.');
-    expect((await api('/api/reports')).data.reports).toHaveLength(before + 1);
-    await page.getByRole('button', { name: '저장한 초안 열기', exact: true }).click();
-    await expect(page).toHaveURL(/\/reports\//);
-    await expect(page.locator('#report-title')).toHaveValue(value.result.draft.title);
-    await expect(page.locator('#report-text')).toHaveValue(value.result.draft.text);
-    await go('reports');
-    const savedRow = page.locator('.docrow').filter({ hasText: value.result.draft.title });
-    await expect(savedRow).toContainText(`${value.result.from} ~ ${value.result.to}`);
+    await action('saveReport').click();
+    await expect(page.locator('#saveStatus')).toHaveText('저장된 내용');
+    expect((await api('/api/reports')).data.reports).toHaveLength(before+1);
     await go('chat');
     await action('history').click();
     await page.locator(`[data-action=historyAnswer][data-id="${value.id}"]`).click();
     const restoredAnswer = page.locator(`[data-answer-id="${value.id}"]`);
-    // Evaluation now lives inside the answer's collapsed evidence/details section.
-    await restoredAnswer.getByTestId('answer-details').locator(':scope > summary').click();
-    const evaluation = restoredAnswer.locator('[data-workflow=evaluation]');
+    await expect(restoredAnswer.getByTestId('answer-details')).toHaveCount(0);
+    await page.getByRole('button',{name:'새 질문',exact:true}).click();
+    await page.locator('#question').fill('연료 황 함유량 기준을 알려줘');
+    await submit('#askForm');
+    const documentAnswer = page.locator('.answer').last();
+    await documentAnswer.getByTestId('answer-details').locator(':scope > summary').click();
+    const evaluation = documentAnswer.locator('[data-workflow=evaluation]');
     await evaluation.locator(':scope > summary').click();
     await evaluation.getByRole('button', { name: '응답 점검 실행', exact: true }).click();
     await expect(page.locator('.skill-result table')).toContainText('사람 검토 필요');

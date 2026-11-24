@@ -1,7 +1,8 @@
 import {UiText} from '../components/ui-language';
 import {UiControl} from '../components/ui-language';
 import React from 'react';
-import SkillsPanel from '../components/skills-panel';
+import {ReportFields, ReportPaper} from '../components/report-builder';
+import {forms, label} from '../lib/report-forms';
 import * as helpers from '../components/common';
 export function createReportViews(model, views) {
   const noop = () => {};
@@ -12,7 +13,7 @@ export function createReportViews(model, views) {
   function reportsPage() {
     const templatesLoading = !state.ready || state.connecting;
     const rows = state.reports.filter((r) =>
-      (r.title + ' ' + r.type).toLowerCase().includes(state.reportQuery.toLowerCase()),
+      (r.title + ' ' + r.type + ' ' + (forms[r.body?.formType]?.name || '')).toLowerCase().includes(state.reportQuery.toLowerCase()),
     );
     return (
       <>
@@ -21,34 +22,18 @@ export function createReportViews(model, views) {
             {head(
               '보고서',
               '여러 보고서를 따로 보관하고 검토 상태를 확인하세요.',
-              canWrite() ? btn('빈 초안 작성', 'newReport', 'primary', 'plus') : '',
+              canWrite() ? <div className="report-entry-actions">
+                {btn('보고서 생성', 'newReport', 'primary', 'plus', {disabled: templatesLoading})}
+                {btn('이어 작성하기', 'resumeReport', 'report-resume', 'edit', {
+                  disabled: templatesLoading || !model.resumableDraft(),
+                })}
+              </div> : null,
             )}
-            {canWrite() ? (
-              <details
-                className={'card pad mb'}
-                {...(!state.reports.length
-                  ? {
-                      open: true,
-                    }
-                  : {})}
-              >
-                <summary><UiText>{'운항 기록으로 초안 만들기'}</UiText></summary>
-                {contextControls()}
-                <div className={'actions wrap'}>
-                  {btn('Noon Report', 'templateNoon', '', 'ship', { disabled: templatesLoading })}
-                  {btn('MRV 검토 보고서', 'templateMrv', '', 'chart', { disabled: templatesLoading })}
-                  {btn('작성 중인 초안', 'editReport', 'ghost', 'edit')}
-                  {btn('초안 JSON 가져오기', 'importDraft', 'ghost', 'database')}
-                </div>
-                <p className={'footnote mt'}>
-                  <UiText>{
-                    'Noon은 선택 기간의 마지막 하루, MRV는 선택 기간 전체 기록을 사용합니다. 팀 검토용 양식이며 제출 전 필수 항목을 확인해 주세요.'
-                  }</UiText>
-                </p>
-              </details>
-            ) : (
-              ''
-            )}
+            <div className="actions mb">
+              <a className="btn report-forms-link" href="/report-forms.pdf" target="_blank" rel="noreferrer">
+                <UiText>보고서 양식 확인</UiText>
+              </a>
+            </div>
           </>
         }
         {
@@ -75,9 +60,9 @@ export function createReportViews(model, views) {
                           <div className={'docmain'}>
                             <h3>{r.title}</h3>
                             <p className={'small muted'}>
-                              {r.type}
+                              {Object.hasOwn(forms,r.body?.formType) ? label(forms[r.body.formType].name,state.uiLanguage) : r.type}
                               {' · '}
-                              {dateText(r.updatedAt)}
+                              {dateText(r.updatedAt,state.uiLanguage)}
                               <UiText>{' · 버전 '}</UiText>
                               {r.version}
                             </p>
@@ -85,7 +70,7 @@ export function createReportViews(model, views) {
                               {r.body?.from ? `${r.body.from} ~ ${r.body.to}` : ''}
                             </p>
                             {badge(
-                              statusName[r.status],
+                              r.status === 'example' ? '예시' : statusName[r.status],
                               r.status === 'approved'
                                 ? 'good'
                                 : r.status === 'review'
@@ -104,11 +89,15 @@ export function createReportViews(model, views) {
             </div>
           </>
         }
-        <SkillsPanel group="reports" />
+
       </>
     );
   }
   function editorPage() {
+    if (state.examplePreview) return <>
+      {head('예시 보고서', state.examplePreview.title, btn('목록으로','reportList','','arrowback'))}
+      <ReportPaper draft={state.examplePreview} documents={state.docs}/>
+    </>;
     const d = state.draft,
       editable =
         !state.deletingReport && canWrite() && d.status === 'draft' && (!d.owner || d.owner === state.user.id || isAdmin());
@@ -131,7 +120,7 @@ export function createReportViews(model, views) {
             <div className={'controls report-controls'}>
               <div className={'field'}>
                 <label htmlFor={'report-type'}><UiText>{'보고서 유형'}</UiText></label>
-                <select
+                {forms[d.body?.formType] ? <strong id="report-type">{label(forms[d.body.formType].name,state.uiLanguage)}</strong> : <select
                   id={'report-type'}
                   data-report={'type'}
                   {...(!editable
@@ -143,7 +132,7 @@ export function createReportViews(model, views) {
                   onChange={noop}
                 >
                   {options(reportTypes)}
-                </select>
+                </select>}
               </div>
               {badge(statusName[d.status] || '작성 중', d.status === 'approved' ? 'good' : '')}
               <span className={'small muted'}>
@@ -194,22 +183,15 @@ export function createReportViews(model, views) {
                     : {})}
                   onChange={noop}
                 />
-                <label className={'a11y-hidden'} htmlFor={'report-text'}>
-                  <UiText>{'보고서 본문'}</UiText>
-                </label>
-                <textarea
-                  id={'report-text'}
-                  className={'editor'}
-                  data-report={'text'}
-                  maxLength={'200000'}
-                  {...(!editable
-                    ? {
-                        readOnly: true,
-                      }
-                    : {})}
-                  value={d.text}
-                  onChange={noop}
-                ></textarea>
+                {forms[d.body?.formType] && <ReportFields body={d.body} disabled={!editable} language={state.uiLanguage} onEdit={model.editReportBody}/>}
+                {forms[d.body?.formType] ? <details className="report-text-preview">
+                  <summary><UiText>{'출력용 본문'}</UiText></summary>
+                  <textarea id="report-text" aria-label="출력용 본문" className="editor" readOnly value={d.text}/>
+                </details> : <>
+                  <label className="a11y-hidden" htmlFor="report-text"><UiText>{'보고서 본문'}</UiText></label>
+                  <textarea id="report-text" className="editor" data-report="text" maxLength={200000}
+                    readOnly={!editable} value={d.text} onChange={noop}/>
+                </>}
                 <div className={'report-actions'}>
                   <span id={'saveStatus'} className={'saved-state'}>
                     <UiText>{state.localFailed
@@ -219,7 +201,7 @@ export function createReportViews(model, views) {
                         : '저장된 내용'}</UiText>
                   </span>
                   <div className={'actions wrap'}>
-                    {btn('파일 출력', 'downloadReport', '', 'download')}
+                    {btn(state.downloadingReport ? 'PDF 생성 중…' : '다운로드', 'downloadReport', '', 'download', {disabled:state.downloadingReport})}
                     <UiText>{editable
                       ? btn(
                           state.saving ? '저장 중…' : '저장',

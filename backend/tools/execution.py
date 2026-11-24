@@ -294,8 +294,26 @@ def port_comparison(ctx, args):
 
 def run(ctx, call, period=None):
     name, args = call.tool.name, call.args
+    if name=='summarize_operations' and args.rank_by:
+        from api.question_requests import record_selection
+        result=record_selection(ctx,ctx.body['question'],lambda c,fields,routing:save(c,fields),args.rank_by,args.rank_order)
+        if result is not None:
+            return result
+    if name=='summarize_operations' and args.listing:
+        from api.question_requests import list_records
+        return list_records(ctx,ctx.body['question'],lambda c,fields,routing:save(c,fields),args.ship_mentions)
+    if name=='summarize_operations' and args.all_records_metric:
+        from api import question_requests
+        q=ctx.body['question']
+        # A tool suggestion cannot turn an omitted date into an all-time request.
+        if args.period_text and compact(args.period_text) in compact(q) and question_requests.ALL_RECORDS.search(q):
+            result=question_requests.record_selection(ctx,q,lambda c,fields,routing:save(c,fields),args.all_records_metric)
+            if result is not None:return result
     if call.tool.action:
         return workflow(ctx, call.tool.action, args, period)
+    if name == 'list_workspace_items':
+        from api.question_catalog import catalog_fields
+        return save(ctx,catalog_fields(ctx,args.kind,args.term,args.match))
     if name == 'list_vessels':
         return save(ctx, vessel_list.answer(ctx, args))
     if name == 'get_dataset_status':
