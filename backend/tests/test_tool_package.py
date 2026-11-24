@@ -83,7 +83,7 @@ def test_workflow_catalogue_stays_separate_from_model_allowlist_and_keeps_resour
     assert workflows.catalog() == catalogue
     assert len(catalogue['skills']) == 6
     assert {s['id'] for s in catalogue['skills']} == set(SkillRequest.model_json_schema()['properties']['skill']['enum'])
-    assert len(registry.TOOLS) == 13
+    assert len(registry.TOOLS) == 14
     assert not {'report-draft', 'checklist', 'qa-evaluation'} & set(registry.TOOLS)
     for item in catalogue['skills']:
         assert workflows.instructions(item['id']).strip()

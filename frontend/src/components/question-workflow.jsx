@@ -39,10 +39,12 @@ function Workflow({answer, part, results}) {
     catch(e){setError(e.message);}
   }
   const showScope=part!=='answer', showClarify=part!=='details';
+  const shipScope=scope.source_imos?.length ? scope.source_imos.map(imo=>`IMO ${imo}`).join(' / ')
+    : scope.ships?.map(s=>s.name+(s.imo ? ` · IMO ${String(s.imo).replace(/^IMO\s*/i,'')}` : '')).join(' / ');
   return <section className="mt" data-question-workflow={part}>
     {showScope && <>
     <h3><UiText>{"해석한 실행 범위"}</UiText></h3>
-    <p><UiText>{scope.action==='selected_document' ? `선택 문서 ${scope.document_ids.length}개` : scope.ships?.map(s=>s.name+(s.imo ? ` · IMO ${String(s.imo).replace(/^IMO\s*/i,'')}` : '')).join(' / ') || '선박 미지정'}</UiText>
+    <p><UiText>{scope.action==='selected_document' ? `선택 문서 ${scope.document_ids.length}개` : shipScope || '선박 미지정'}</UiText>
       {documents.length>0 && <> · {documents.join(' / ')}</>}
       {['mrv_reference','combined'].includes(scope.action) && scope.years?.length>0 && <><UiText>{"· MRV 연도"}</UiText>{scope.years.join(', ')}</>}
       {scope.periods?.map((p,i)=><React.Fragment key={i}> · {p.start}~{p.end}</React.Fragment>)}</p>

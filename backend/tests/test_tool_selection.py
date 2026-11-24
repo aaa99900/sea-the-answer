@@ -186,6 +186,32 @@ def test_data_tool_runs_with_validated_arguments_and_keeps_related_documents(mon
     assert not db.document_calls
 
 
+def test_vessel_list_uses_app_source_and_count_explicitly_requested_in_chat(monkeypatch):
+    answer, db = ask('앱에 등록된 선박 1척의 이름, IMO 번호, 선종과 DWT를 보여줘.',
+        [('list_vessels', {'source': 'mrv', 'limit': 20})], monkeypatch)
+    details = answer['vesselList']
+    assert details['source'] == 'app' and details['limit'] == 1 and details['has_more']
+    assert details['items'] == [{'name': '해답호', 'imo': '7422881', 'ship_type': None,
+        'sample': False, 'reporting_year': None, 'dwt_t': '1000', 'dwt_source': 'app'}]
+    assert db.answers[answer['id']]['vesselList'] == details
+
+
+def test_imo_number_examples_default_to_mrv_and_preserve_requested_count(monkeypatch):
+    adapter = router.tool_dispatch.vessel_list
+    calls = []
+    monkeypatch.setattr(adapter, 'create_engine_for', lambda *_: SimpleNamespace(dispose=lambda: None))
+    monkeypatch.setattr(adapter, 'mrv_vessels', lambda _, limit: calls.append(limit) or [])
+    answer, _ = ask('등록된 IMO 번호 10개 예시들어줘', [('list_vessels', {'limit': 3})], monkeypatch)
+    details = answer['vesselList']
+    assert details['source'] == 'mrv' and details['limit'] == 10 and not details['items']
+    assert calls == [11] and answer['status'] == 'empty'
+
+
+def test_vessel_list_does_not_query_an_out_of_range_explicit_count(monkeypatch):
+    answer, _ = ask('MRV 선박 100개를 보여줘', [('list_vessels', {'limit': 50})], monkeypatch)
+    assert answer['task'] == 'clarification' and '1~50척' in answer['notice']
+
+
 def test_planner_failure_asks_the_user_again(monkeypatch):
     answer, _ = ask('MRV 자료 있어?', planner.PlanError('MODEL_TIMEOUT'), monkeypatch)
     assert answer['status'] == 'needs_input' and 'MODEL_ROUTING_UNAVAILABLE' in answer['warnings']
@@ -217,6 +243,70 @@ def test_mrv_reference_consent_is_never_set_without_a_prior_prompt(monkeypatch):
     answer, _ = ask('해답호 2024년 탄소집약도',
         [('calculate_mrv_reference', {'ship_mentions': ['해답호'], 'period_text': '2024년', 'accept_reference': True})], monkeypatch)
     assert answer['status'] == 'needs_input' and answer['workflow']['missing'] == ['reference_ack']
+
+
+@pytest.mark.parametrize('imo, year, blocker', [
+    ('8902929', 2025, None),
+    ('6604690', 2025, 'SHIP_TYPE_CAPACITY_BASIS_UNSUPPORTED'),
+    ('8902929', 2099, 'NO_ELIGIBLE_ANNUAL_RECORD'),
+    ('1234567', 2025, 'SOURCE_VESSEL_NOT_FOUND'),
+])
+def test_mrv_reference_selects_source_imo_without_app_mapping(monkeypatch, imo, year, blocker):
+    flow = router.question_workflows
+    calls = []
+    monkeypatch.setattr(flow, 'create_engine_for', lambda *_: SimpleNamespace(dispose=lambda: None))
+    monkeypatch.setattr(flow, 'resolve_source_vessel', lambda _, i: None if i == '1234567' else f'REAL:IMO:{i}')
+
+    def calculate(_, request):
+        calls.append(request.scope.model_dump())
+        return {'status': 'blocked' if blocker else 'estimated', 'reference_only': True,
+                'reference_dwt_intensity': None if blocker else '11.993501',
+                'blockers': [blocker] if blocker else [], 'official_cii_rating': None}
+
+    monkeypatch.setattr(flow, 'calculate_reference', calculate)
+    answer, db = ask(f'IMO {imo} 선박의 {year}년 MRV 참고 탄소집약도를 계산해줘.',
+        [('calculate_mrv_reference', {'ship_mentions': [f'IMO {imo}']})], monkeypatch,
+        body={'context': {'ship': 'a'}})
+    scope = answer['workflow']['scope']
+    row, = answer['workflow']['results']
+    assert not scope['ships'] and scope['source_imos'] == [imo] and scope['years'] == [year]
+    assert row['imo'] == imo and 'ship' not in row
+    assert row['result']['blockers'] == ([blocker] if blocker else [])
+    assert row['result']['official_cii_rating'] is None
+    assert calls == ([] if imo == '1234567' else [{'dataset': 'real_annual', 'vessel_id': f'REAL:IMO:{imo}', 'year': year}])
+    assert all(s.get('imo') != imo for s in db.fleet)
+
+
+@pytest.mark.parametrize('number', ['890292', '8902929.5'])
+def test_mrv_reference_does_not_use_selected_app_ship_for_an_invalid_imo(monkeypatch, number):
+    answer, _ = ask(f'IMO 번호 {number}의 2025년 MRV 참고 탄소집약도 계산해줘',
+        [('calculate_mrv_reference', {})], monkeypatch, body={'context': {'ship': 'a'}})
+    assert answer['status'] == 'needs_input' and '검증 숫자' in answer['notice']
+    assert not answer['workflow']['results']
+
+
+def test_mrv_and_dwt_inventory_use_imo_even_when_model_supplies_no_ship(monkeypatch):
+    adapter = router.dataset_status
+    calls = []
+    monkeypatch.setattr(adapter, 'create_engine_for', lambda *_: SimpleNamespace(dispose=lambda: None))
+    monkeypatch.setattr(adapter, 'resolve_source_vessel', lambda _, imo: f'REAL:IMO:{imo}')
+
+    def status(_, dataset, *, vessel_id=None, years=()):
+        calls.append((dataset, vessel_id, years))
+        return {'status': 'available', 'row_count': 1}
+
+    monkeypatch.setattr(adapter, 'read_status', status)
+    answer, _ = ask('IMO 번호 8902929의 MRV와 DWT 자료가 있어?',
+        [('get_dataset_status', {'datasets': ['mrv', 'dwt']})], monkeypatch)
+    assert answer['status'] == 'completed' and answer['dataStatus']['scope']['imo'] == '8902929'
+    assert calls == [('mrv', 'REAL:IMO:8902929', []), ('dwt', 'REAL:IMO:8902929', [])]
+
+
+def test_daily_operations_still_require_an_app_ship_for_an_imo(monkeypatch):
+    answer, db = ask('IMO 8902929의 2025년 1월 일별 운항 실적을 요약해줘',
+        [('summarize_operations', {'ship_mentions': ['IMO 8902929']})], monkeypatch)
+    assert answer['status'] == 'needs_input' and '앱 선박을 먼저 등록' in answer['notice']
+    assert not db.calls
 
 
 def test_decline_and_clarification_are_saved_answers(monkeypatch):

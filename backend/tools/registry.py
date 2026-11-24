@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from .schemas import (
     Args, DatasetStatusArgs, AisStatusArgs, OperationsArgs, PositionArgs,
     MrvArgs, CombinedArgs, PortArgs, SelectedDocumentArgs, EmissionsArgs,
-    VoyageTimeArgs, ClarifyArgs, NoArgs, DeclineArgs,
+    VoyageTimeArgs, ClarifyArgs, NoArgs, DeclineArgs, VesselListArgs,
 )
 
 
@@ -51,15 +51,19 @@ DOCUMENTS_ONLY = 'answer_from_documents'
 TOOLS = {tool.name: tool for tool in (
     Tool(DOCUMENTS_ONLY, '용어 정의·규정·기준·절차 설명처럼 검색된 해사 문서만으로 답할 질문일 때 쓴다. 데이터 조회·계산이 필요 없을 때.',
          NoArgs, 'control'),
-    Tool('get_dataset_status', '서버에 등록된 해사 자료(AIS·MRV·DWT·Noon·운항기록·문서·항만)의 유무·건수·출처·수집일을 확인한다.',
+    Tool('get_dataset_status', '서버에 등록된 해사 자료(AIS·MRV·DWT·Noon·운항기록·문서·항만)의 유무·건수·출처·수집일을 확인한다. '
+         'IMO 번호로 특정 선박의 MRV·DWT 자료 유무도 확인한다.',
          DatasetStatusArgs, 'data'),
+    Tool('list_vessels', '등록된 선박 목록이나 IMO 번호 예시를 조회한다. 실제 저장된 선박명·IMO·선종·DWT를 보여준다. '
+         '"등록된 IMO 번호 10개 예시"처럼 번호가 질문에 없어도 목록을 조회한다.', VesselListArgs, 'data'),
     Tool('get_ais_catalog_status', '연결된 AIS 수집본의 관측 수와 특정 선박의 관측 여부를 확인한다.', AisStatusArgs, 'data'),
     Tool('summarize_operations', '등록 선박의 기간별 일별 운항기록(연료·CO2·거리)을 합계·비교한다.', OperationsArgs, 'data', action='operations_summary'),
     Tool('get_last_recorded_position', '등록 선박의 기록 위치·기록 시각·실제/가상 자료 구분을 알려준다. '
          '질문에 날짜가 있으면 서버가 그 날짜의 위치만 조회하고, 날짜가 없으면 마지막 완료 기록을 조회한다. '
          '현재 위치 추정·실시간 추적은 아니다.', PositionArgs, 'data'),
     Tool('calculate_mrv_reference', 'MRV 보고 자료로 연도별 참고 탄소집약도를 계산한다(여러 연도 비교 포함). '
-         '탄소집약도·MRV 참고값만 물을 때 쓴다. 공식 CII 등급이 아니다.', MrvArgs, 'data', action='mrv_reference'),
+         '탄소집약도·MRV 참고값만 물을 때 쓴다. 질문에 있는 IMO 번호로 공개 원자료를 조회할 수 있다. 공식 CII 등급이 아니다.',
+         MrvArgs, 'data', action='mrv_reference'),
     Tool('calculate_operations_and_mrv', '일별 운항 실적(연료·CO2·거리 합계)과 MRV 참고 탄소집약도를 함께 계산한다. '
          '질문이 운항 실적과 탄소집약도를 둘 다 명시적으로 요청할 때만 쓴다.', CombinedArgs, 'data', action='combined'),
     Tool('compare_port_conditions', '선박 제원과 항구 선석의 공개 제한값(길이·폭·흘수)을 비교한다. 입항 허가 판정이 아니다.',

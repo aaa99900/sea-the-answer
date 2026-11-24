@@ -8,13 +8,13 @@ from uuid import UUID, uuid4
 import httpx
 from fastapi import HTTPException
 from psycopg.types.json import Jsonb
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, model_validator
 from sqlalchemy.exc import SQLAlchemyError
 
 from . import question_intent as intent, config
 from tools import workflows as skills
 from .errors import ApiError, require
-from .maritime_context import resolve_real_ship
+from .maritime_context import imo_mentions, resolve_real_ship, resolve_source_vessel
 from .validation import utc_now
 from .answer_presentation import UnsupportedMetric, operation_presentation, output_format, wants_operation_table
 from tools.api import create_engine_for
@@ -34,6 +34,7 @@ class Ship(intent.Strict):
 class Scope(intent.Strict):
     action: intent.Action
     ships: list[Ship] = Field(default_factory=list,max_length=2)
+    source_imos: list[str] = Field(default_factory=list,max_length=2)
     years: list[int] = Field(default_factory=list,max_length=3)
     periods: list[intent.Period] = Field(default_factory=list,max_length=2)
     document_ids: list[str] = Field(default_factory=list,max_length=5)
@@ -41,6 +42,14 @@ class Scope(intent.Strict):
     presentation_question: str = Field(default='',max_length=2000)
     reference_ack: bool = False
     mappings: dict[str,str|None] = Field(default_factory=dict,max_length=2)
+
+    @model_validator(mode='after')
+    def validate_source_scope(self):
+        if self.source_imos and (self.action != 'mrv_reference' or self.ships or self.mappings
+                or len(set(self.source_imos)) != len(self.source_imos)
+                or any(not valid_imo(imo) for imo in self.source_imos)):
+            raise ValueError('Invalid source vessel scope')
+        return self
 
 
 class Reply(intent.Strict):
@@ -64,8 +73,7 @@ def snapshot(ship):return Ship(id=ship['id'],name=ship['name'],version=ship['ver
 
 def explicit_ships(question,ships,mentions=()):
     from api.ship_identity import named_ships, name_aliases
-    imos=re.findall(r'\bIMO\s*[:#]?\s*(\d{7})(?=$|[^A-Za-z0-9_])',question,re.I)
-    if any(not valid_imo(i) for i in imos):raise ValueError('IMO 번호의 자리수·검증 숫자를 확인해 주세요.')
+    imos=imo_mentions(question)
     names=named_ships(question,ships,allow_ambiguous=bool(imos))
     if len({norm(s['name']) for s in names})<len(names) and not imos:
         raise ValueError('같은 이름의 선박이 여러 척입니다. IMO 번호 또는 선박 선택으로 구분해 주세요.')
@@ -89,6 +97,20 @@ def explicit_ships(question,ships,mentions=()):
     if not matched and re.search(r'[가-힣A-Za-z0-9_-]{2,30}호(?:의|를|는|도|\s|$)',question):
         raise ValueError('이름이 일치하는 등록 선박을 선택해 주세요.')
     return list(matched.values())
+
+
+def set_source_scope(scope, question):
+    if scope.action != 'mrv_reference':
+        return False
+    imos = imo_mentions(question)
+    if len(imos) > 2:
+        raise ValueError('선박 범위를 최대 두 척으로 좁혀 주세요.')
+    if not imos:
+        return False
+    scope.source_imos = imos
+    scope.ships = []
+    scope.mappings = {}
+    return True
 
 
 def previous(ctx,ships):
@@ -141,20 +163,34 @@ def comparisons(rows):
     return result
 
 
+def reference_rows(engine, vessel_id, years, label, missing_code, **identity):
+    for year in years:
+        if vessel_id:
+            request = ReferenceIntensityRequest(scope={'dataset': 'real_annual', 'vessel_id': vessel_id, 'year': year},
+                                                accept_reference_limitations=True)
+            result = calculate_reference(engine, request)
+        else:
+            result = {'status': 'blocked', 'reference_only': True, 'reference_dwt_intensity': None,
+                      'official_cii': None, 'official_cii_rating': None, 'blockers': [missing_code]}
+        yield {'kind': 'mrv_reference', 'label': f'{label} · {year}', 'year': year,
+               'status': result['status'], 'result': result, **identity}
+
+
 def run_tools(ctx,scope):
     rows=[];evidence=[];statements=[];warnings=[];engine=None;projection={}
     try:
         if scope.action in ('mrv_reference','combined'):
             engine=create_engine_for(os.getenv('MARITIME_DATA_DATABASE_URL') or config.database_url())
+            for imo in scope.source_imos:
+                vessel_id = resolve_source_vessel(engine, imo)
+                rows.extend(reference_rows(engine, vessel_id, scope.years, f'IMO {imo}', 'SOURCE_VESSEL_NOT_FOUND', imo=imo))
             for ship in scope.ships:
                 resolved=resolve_real_ship(ctx.db,engine,ship.id)
                 if ship.id in scope.mappings and scope.mappings[ship.id]!=resolved.vessel_id:
                     raise ApiError(409,'VERSION_CONFLICT','MRV 선박 연결이 바뀌었습니다. 새 질문으로 다시 조회해 주세요.')
                 scope.mappings[ship.id]=resolved.vessel_id
-                for year in scope.years:
-                    request=ReferenceIntensityRequest(scope={'dataset':'real_annual','vessel_id':resolved.vessel_id,'year':year},accept_reference_limitations=True) if resolved.vessel_id else None
-                    result=calculate_reference(engine,request) if request else {'status':'blocked','reference_only':True,'reference_dwt_intensity':None,'official_cii':None,'official_cii_rating':None,'blockers':['SHIP_MAPPING_REQUIRED']}
-                    rows.append({'kind':'mrv_reference','label':f'{ship.name} · {year}','ship':ship.model_dump(),'year':year,'status':result['status'],'result':result})
+                rows.extend(reference_rows(engine, resolved.vessel_id, scope.years, ship.name,
+                                           'SHIP_MAPPING_REQUIRED', ship=ship.model_dump()))
             for ship in scope.ships:
                 if resolve_real_ship(ctx.db,engine,ship.id).vessel_id!=scope.mappings[ship.id]:
                     raise ApiError(409,'VERSION_CONFLICT','MRV 연결이 변경되었습니다. 다시 조회해 주세요.')
@@ -202,7 +238,7 @@ def save(ctx,scope,status,notice,missing,routing,*,rows=(),evidence=(),statement
         {k:s.get(k,'') for k in ('id','name','imo','type','sample','version')} for s in ctx.db.ships()],'name')[:100] if 'ships' in missing else [],
         'documents':candidates(ctx.body['question'],[
             {k:d.get(k,'') for k in ('id','title','version','reference')} for d in ctx.db.documents(ctx.user)],'title')[:50] if 'document_ids' in missing else []}
-    clarification=next_clarification(missing,options) if prompt else None
+    clarification=next_clarification(missing,options,scope.action) if prompt else None
     if clarification and not notice:notice=clarification['question']
     workflow={'version':VERSION,'scope':scope.model_dump(mode='json'),'missing':missing,'options':options,'routing':routing,'clarification':clarification,
         'results':list(rows),'comparisons':comparisons(rows),'previous_query_id':parent}
@@ -226,7 +262,7 @@ def candidates(question,items,label):
 
 def missing_fields(scope):
     missing=[]
-    if scope.action in ('mrv_reference','operations_summary','combined') and not scope.ships:missing.append('ships')
+    if scope.action in ('mrv_reference','operations_summary','combined') and not (scope.ships or scope.source_imos):missing.append('ships')
     if scope.action in ('mrv_reference','combined') and not scope.years:missing.append('years')
     if scope.action in ('mrv_reference','combined') and not scope.reference_ack:missing.append('reference_ack')
     if scope.action in ('operations_summary','combined') and not scope.periods:missing.append('periods')
@@ -234,7 +270,7 @@ def missing_fields(scope):
     return missing
 
 
-def next_clarification(missing,options):
+def next_clarification(missing,options,action):
     if not missing:return None
     field=missing[0]
     questions={
@@ -245,7 +281,9 @@ def next_clarification(missing,options):
         'document_ids':'어느 문서만 근거로 사용할까요? 열람 가능한 문서의 제목을 질문창에 적어 주세요.',
     }
     question=questions[field]
-    if field=='ships' and not options['ships']:
+    if field=='ships' and action=='mrv_reference':
+        question='어느 선박의 MRV 자료를 확인할까요? 선박 이름이나 IMO 번호를 질문창에 적어 주세요.'
+    elif field=='ships' and not options['ships']:
         question='등록된 선박이 없습니다. 관리자에게 선박 등록을 요청한 뒤 다시 질문해 주세요.'
     if field=='document_ids' and not options['documents']:
         question='열람 가능한 문서가 없습니다. 관리자에게 문서 등록·열람 권한을 확인해 주세요.'
@@ -308,14 +346,16 @@ def try_answer(ctx, *, action_hint=None, allow_model=True):
         scope=prior[1]
         if action!='unknown':scope.action=action
         action=scope.action
+        if action!='mrv_reference':scope.source_imos=[]
         if action=='selected_document':scope=Scope(action=action,document_ids=scope.document_ids,document_question=scope.document_question)
     try:
         reply=Reply.model_validate(body['workflowInput']) if body.get('workflowInput') is not None else None
         if operation_display:scope.presentation_question=q
         if scope.action!='selected_document' and re.search(r'왜|이유|원인|예측|예상|forecast|predict',q,re.I):
             raise ValueError('이 조회 도구는 기록된 실적의 합계·기간 비교만 제공합니다. 원인이나 미래 수치를 합계로 대신 답하지 않습니다. 확인할 실적·기간으로 다시 질문해 주세요.')
-        if re.search(r'(?:다른|나머지)\s*(?:선박|배)',q) and not explicit_ships(q,current):
-            scope.ships=[];scope.mappings={}
+        direct_imo = set_source_scope(scope,q)
+        if not direct_imo and re.search(r'(?:다른|나머지)\s*(?:선박|배)',q) and not explicit_ships(q,current):
+            scope.ships=[];scope.mappings={};scope.source_imos=[]
             return save(ctx,scope,'needs_input','비교할 선박을 등록 목록에서 지정해 주세요.',['ships'],routing,parent=prior[0]['id'] if continuing and prior else None)
         if scope.action=='selected_document' and body.get('workflowInput') is None and not short_reply:
             scope.document_question=q
@@ -344,11 +384,12 @@ def try_answer(ctx, *, action_hint=None, allow_model=True):
         if slots.periods:scope.periods=slots.periods
         elif slots.years and scope.action in ('operations_summary','combined'):
             scope.periods=[intent.Period(start=f'{y}-01-01',end=f'{y}-12-31') for y in slots.years]
-        selected=[] if scope.action=='selected_document' or reply and reply.ships is not None else explicit_ships(q,current,slots.ship_mentions)
+        selected=[] if direct_imo or scope.action=='selected_document' or reply and reply.ships is not None else explicit_ships(q,current,slots.ship_mentions)
         if selected:
+            scope.source_imos=[]
             scope.ships=[snapshot(s) for s in selected]
             scope.mappings={s.id:scope.mappings[s.id] for s in scope.ships if s.id in scope.mappings}
-        elif not scope.ships and scope.action!='selected_document':
+        elif not scope.ships and not scope.source_imos and scope.action!='selected_document':
             selected_id=(body.get('context') or {}).get('ship')
             scope.ships=[snapshot(s) for s in current if s['id']==selected_id]
         if accepts_reference(q,prompted=reference_prompt):scope.reference_ack=True
@@ -359,7 +400,9 @@ def try_answer(ctx, *, action_hint=None, allow_model=True):
         if body.get('workflowInput') is not None:
             require(prior is not None,'되묻기 응답의 소유자와 이전 답변을 확인해 주세요.')
             if reply.ships is not None:
+                require(not direct_imo,'질문의 IMO 번호와 선박 선택 중 하나로 지정해 주세요.')
                 require(len(set(reply.ships))==len(reply.ships),'선박을 중복 선택할 수 없습니다.')
+                scope.source_imos=[]
                 scope.ships=[snapshot(s) for s in current if s['id'] in reply.ships]
                 require(len(scope.ships)==len(reply.ships),'등록 선박을 선택해 주세요.')
                 offered={s['id']:s for s in prior[0]['workflow'].get('options',{}).get('ships',[])}
@@ -401,7 +444,7 @@ def execute(ctx,scope,routing,parent=None):
         if scope.presentation_question and (len(scope.ships)!=1 or len(scope.periods)!=1):
             field='ships' if len(scope.ships)!=1 else 'periods'
             return save(ctx,scope,'needs_input','운항 표·차트에는 한 선박·한 기간을 지정해 주세요.',[field],routing,parent=parent)
-        calls=len(scope.ships)*((len(scope.years) if scope.action in ('mrv_reference','combined') else 0)+(len(scope.periods) if scope.action in ('operations_summary','combined') else 0))
+        calls=(len(scope.ships)+len(scope.source_imos))*((len(scope.years) if scope.action in ('mrv_reference','combined') else 0)+(len(scope.periods) if scope.action in ('operations_summary','combined') else 0))
         if calls>4:raise ValueError('한 번에 최대 4회 조회할 수 있습니다. 선박·연도·기간 범위를 좁혀 주세요.')
         rows,evidence,statements,warnings,projection=run_tools(ctx,scope)
         status='partial' if any(r['status'] in ('blocked','unavailable','no_data') for r in rows) else 'completed'

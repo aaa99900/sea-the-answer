@@ -2,7 +2,8 @@ import {UiText,UiControl} from './ui-language';
 import React from 'react';
 
 const labels = {
-  NO_ELIGIBLE_ANNUAL_RECORD: '선택 연도의 승인 MRV 보고가 없습니다.',
+  NO_ELIGIBLE_ANNUAL_RECORD: '선택 연도에 계산에 사용할 MRV 연간 보고가 없습니다.',
+  SOURCE_VESSEL_NOT_FOUND: '해사 원자료에서 이 IMO 번호의 선박을 찾지 못했습니다.',
   MULTIPLE_ANNUAL_RECORDS_REQUIRE_REVIEW: '보고가 여러 건이라 검토가 필요합니다.',
   CAPACITY_REFERENCE_UNAVAILABLE: 'DWT 후보가 없습니다.',
   MISSING_OR_INVALID_REFERENCE_DWT: '유효한 DWT 후보가 없습니다.',

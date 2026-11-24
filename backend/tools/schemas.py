@@ -24,6 +24,13 @@ class DatasetStatusArgs(Args):
     period_text: PeriodText = Field(default='', description='질문에 적힌 기간 표현 그대로(예: 2024년). 계산하지 않는다.')
 
 
+class VesselListArgs(Args):
+    source: Literal['auto', 'app', 'mrv'] = Field(default='auto',
+        description='앱 등록 선박을 명시하면 app, MRV 보고 선박을 명시하면 mrv. 출처가 없으면 auto.')
+    limit: int = Field(default=10, strict=True, ge=1, le=50,
+        description='요청한 선박 수. 숫자를 지정하지 않으면 10. 최대 50.')
+
+
 class AisStatusArgs(Args):
     ship_mentions: list[Mention] = Field(default_factory=list, max_length=1,
         description='질문에 적힌 선박 이름이나 IMO 표기 그대로. 없으면 빈 배열.')

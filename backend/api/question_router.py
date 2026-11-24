@@ -120,7 +120,7 @@ def inventory_followup(ctx,q):
     if isinstance(value,dict):
         scope=value.get('scope') or {}
         if not isinstance(scope,dict):return clarify(ctx,'INVENTORY_SCOPE_REQUIRED')
-        if scope.get('ship') or scope.get('years') or scope.get('periods'):
+        if scope.get('ship') or scope.get('imo') or scope.get('years') or scope.get('periods'):
             return clarify(ctx,'RESTATEMENT_OF_INVENTORY_SCOPE_REQUIRED')
         entries=value.get('datasets',[])
         if not isinstance(entries,list) or any(not isinstance(d,dict) for d in entries):return clarify(ctx,'INVENTORY_SCOPE_REQUIRED')
@@ -172,6 +172,7 @@ def previous_summary(ctx):
         scope=flow['scope']
         summary.update(action=scope.get('action'),ships=[s.get('name') for s in scope.get('ships',[]) if isinstance(s,dict)],
             years=scope.get('years',[]),periods=scope.get('periods',[]),missing=flow.get('missing',[]))
+        if scope.get('source_imos'):summary['source_imos']=[f'IMO {imo}' for imo in scope['source_imos']]
     nav=prior.get('navigation')
     if isinstance(nav,dict):
         summary.update(navigation=nav.get('kind'),ship=(nav.get('ship') or {}).get('name'),

@@ -13,6 +13,7 @@ export default function DatasetStatus({value}) {
     <h3><UiText>자료 등록 현황</UiText></h3>
     <p className="small muted"><UiText>확인 시각</UiText>: {value.assessed_at}</p>
     {scope.ship && <p>{scope.ship.name} · {scope.ship.imo}</p>}
+    {scope.imo && <p>IMO {scope.imo}</p>}
     {scope.years?.length>0 && <p><UiText>보고 연도</UiText>: {scope.years.join(', ')}</p>}
     <div className="tablewrap"><table><thead><tr>
       {['자료','상태','등록 건수','고유 선박','집계/후보 적격 건수','기간'].map(label=><th key={label}><UiText>{label}</UiText></th>)}

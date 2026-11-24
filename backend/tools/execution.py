@@ -18,6 +18,7 @@ from .registry import http_payload
 from api.ship_identity import resolve_ship_name
 from api.ship_context import calendar_defaults, previous_answer, previous_position
 from .position_records import select_record, as_of, end_of_day
+from . import vessel_list
 
 CLARIFY = {'task': '확인할 작업', 'ships': '선박', 'periods': '기간', 'years': '보고 연도', 'documents': '문서', 'ports': '항구'}
 DECLINE = {
@@ -179,24 +180,30 @@ def workflow(ctx, action, args, period=None):
             scope.periods = [intent.Period(start=f'{y}-01-01', end=f'{y}-12-31') for y in years]
         if not text and earlier:
             scope.years, scope.periods = earlier.years, earlier.periods
-        names = [resolve_ship(m, q, current) for m in args.ship_mentions]
-        ships = flow.explicit_ships(q, current)
-        if not ships and names:
-            ships = flow.explicit_ships(' '.join(names), current, names)
-        if ships:
-            scope.ships = [flow.snapshot(s) for s in ships]
-        elif earlier and earlier.ships:
-            scope.ships = earlier.ships
-        else:
-            selected = (ctx.body.get('context') or {}).get('ship')
-            scope.ships = [flow.snapshot(s) for s in current if s['id'] == selected]
+        if not flow.set_source_scope(scope, q):
+            prior_imos = earlier.source_imos if earlier else []
+            names = [resolve_ship(m, q, current) for m in args.ship_mentions
+                     if compact(m).removeprefix('imo').lstrip(':#') not in prior_imos]
+            ships = flow.explicit_ships(q, current)
+            if not ships and names:
+                ships = flow.explicit_ships(' '.join(names), current, names)
+            if ships:
+                scope.ships = [flow.snapshot(s) for s in ships]
+            elif prior_imos:
+                scope.source_imos = prior_imos
+            elif earlier and earlier.ships:
+                scope.ships = earlier.ships
+            else:
+                selected = (ctx.body.get('context') or {}).get('ship')
+                scope.ships = [flow.snapshot(s) for s in current if s['id'] == selected]
         if action == 'operations_summary' and args.display != 'text':
             scope.presentation_question = q
         if action in ('mrv_reference', 'combined'):
             earlier = prior[1] if prior and prior[1].action in ('mrv_reference', 'combined') else None
             prompted = bool(earlier and prior[0]['workflow'].get('missing', [None])[:1] == ['reference_ack'])
-            # Consent comes from the user's reply to an explicit prompt, or a consent already given in this thread.
-            scope.reference_ack = bool(args.accept_reference and prompted) or bool(earlier and earlier.reference_ack)
+            # An explicit reference request comes from the user, never from the model flag alone.
+            explicit_reference = bool(scope.source_imos and flow.accepts_reference(q))
+            scope.reference_ack = explicit_reference or bool(args.accept_reference and prompted) or bool(earlier and earlier.reference_ack)
         result = flow.execute(ctx, scope, routing, parent)
         if result.get('status') == 'needs_input':
             result['continuation'] = continuation_request(ctx, '',
@@ -289,6 +296,8 @@ def run(ctx, call, period=None):
     name, args = call.tool.name, call.args
     if call.tool.action:
         return workflow(ctx, call.tool.action, args, period)
+    if name == 'list_vessels':
+        return save(ctx, vessel_list.answer(ctx, args))
     if name == 'get_dataset_status':
         names = [resolve_ship(m, ctx.body['question'], ctx.db.ships()) for m in args.ship_mentions]
         scope_text = ' '.join([args.period_text if period is None else period, *names]).strip()

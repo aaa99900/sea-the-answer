@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, event
 
 from api import dataset_status, main
 from tools.dataset_status import read_status
+from tools.vessel_list import mrv_vessels
 from test_maritime_migrations import postgres_dsn, apply_initial, apply_maritime, seed_source_data
 from test_workflow_skills import database
 from rag_postgres_support import login
@@ -41,6 +42,20 @@ def test_actual_rows_eligible_rows_empty_sources_and_year_scope_are_distinct(inv
     assert any('READ ONLY' in c for c in commands) and any('statement_timeout' in c for c in commands)
     with psycopg.connect(dsn) as db:
         assert db.execute('SELECT count(*) FROM maritime_data.annual_reports').fetchone()[0]==1
+
+
+def test_vessel_list_reads_report_particulars_and_excludes_partial_year(inventory):
+    engine, dsn = inventory
+    with psycopg.connect(dsn) as db:
+        db.execute("""UPDATE maritime_data.annual_reports SET vessel_name='Published ship',
+            ship_type='Bulk carrier', dwt_t=15000""")
+        db.execute("""INSERT INTO maritime_data.annual_reports
+            (record_id, source_id, source_sheet, source_row, vessel_id, vessel_name, reporting_year,
+             report_type, period_label, quality_status, aggregate_eligible, provenance_json)
+            SELECT 'partial-report', source_id, source_sheet, 3, vessel_id, 'Partial ship', 2026,
+             'PARTIAL', 'partial', 'VALID', false, '{}'::jsonb FROM maritime_data.annual_reports""")
+    assert mrv_vessels(engine, 10) == [{'name': 'Published ship', 'imo': '9074729', 'ship_type': 'Bulk carrier',
+        'reporting_year': 2025, 'dwt_t': '15000', 'dwt_source': 'mrv_report', 'sample': False}]
 
 
 @pytest.mark.parametrize('dataset,vessel,years',[

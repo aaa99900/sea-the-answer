@@ -9,6 +9,7 @@ import * as helpers from '../components/common';
 import NavigationAnswer from '../components/navigation-answer';
 import QuestionWorkflow from '../components/question-workflow';
 import DatasetStatus from '../components/dataset-status';
+import VesselList from '../components/vessel-list';
 import {generationFailureMessage} from '../lib/generation-failure';
 export function createMainViews(model, views) {
   const noop = () => {};
@@ -112,7 +113,7 @@ export function createMainViews(model, views) {
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}</UiText>
           </h2>
-          {badge(a.task === 'clarification' ? '질문 확인' : a.task === 'unsupported' ? '지원 범위 밖' : a.task === 'position' ? (a.position?.projected ? '예상 기록 위치' : '기록 기준 위치') : a.task === 'tool' ? '계산 도구' : a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.task === 'clarification' ? '질문 확인' : a.task === 'unsupported' ? '지원 범위 밖' : a.task === 'position' ? (a.position?.projected ? '예상 기록 위치' : '기록 기준 위치') : a.vesselList ? '선박 목록' : a.task === 'tool' ? '계산 도구' : a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
         {noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
@@ -153,7 +154,7 @@ export function createMainViews(model, views) {
           );
         })}
         <AnswerPresentation answer={a} presentation={presentation} />
-        <UiText>{!a.evidence.length && !['clarification', 'unsupported', 'tool', 'position'].includes(a.task) && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
+        <UiText>{!a.evidence.length && !['clarification', 'unsupported', 'tool', 'position'].includes(a.task) && !a.vesselList && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
           ? notice(
               en
                 ? 'Insufficient document evidence. Ask the responsible officer.'
@@ -204,6 +205,7 @@ export function createMainViews(model, views) {
         )}
         {a.navigation && <NavigationAnswer answer={a} />}
         {a.dataStatus && <DatasetStatus value={a.dataStatus} />}
+        {a.vesselList && <VesselList value={a.vesselList} />}
         {a.workflow && <QuestionWorkflow answer={a} part={'answer'} results={!presentationIsAnswer} />}
         <details className={'answer-details'} data-testid={'answer-details'}>
           <summary>
