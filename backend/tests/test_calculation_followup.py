@@ -316,5 +316,3 @@ def test_explicit_new_question_boundary_stops_old_calculation_lookup(conversatio
     answer = ask('아까 그 계산에서 연료만 200t로 바꾸면?', reset)
     assert answer['status'] != 'completed'
     assert len(db.calculations) == 1 and not answer.get('toolRuns')
-
-
