@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from . import config, dataset_status, llm, navigation_query, question_intent, question_workflows, tool_planner
 from tools import execution as tool_dispatch
+from tools import calculation_context
 from .dataset_intent import DATASETS, inventory_request, sources
 from .errors import ApiError, require
 from .question_intent import explanation_request
@@ -205,12 +206,14 @@ def answer(ctx):
         raise ApiError(503,'MODEL_NOT_CONFIGURED','AI 모델이 연결되어 있지 않아 질문을 처리할 수 없습니다. 관리자에게 모델 설정을 요청해 주세요.')
     # Answer mode is no longer a user choice (ADR 0024): every generator downstream uses the model.
     body['mode']='llm'
+    calculation=calculation_context.resolve(ctx)
     summary=previous_summary(ctx)
     calls=None;error=None
     with ThreadPoolExecutor(max_workers=1) as pool:
         planned=monotonic()
         titles=[d.get('title','') for d in ctx.db.documents(ctx.user)]
-        future=pool.submit(tool_planner.plan,q,today=question_intent.local_today(),summary=summary,documents=titles,settings=settings)
+        future=(pool.submit(lambda: [calculation.call] if calculation.call else []) if calculation is not None else
+                pool.submit(tool_planner.plan,q,today=question_intent.local_today(),summary=summary,documents=titles,settings=settings))
         searched=monotonic()
         evidence=ctx.db.search(ctx.user,q,body.get('filter','all'))
         search_ms=round((monotonic()-searched)*1000,3)
@@ -222,6 +225,11 @@ def answer(ctx):
     log=[{'name':'search_documents','arguments':{'filter':body.get('filter','all')},'status':'completed',
           'resultCount':len(evidence),'durationMs':search_ms}]
     routing={'method':'model_tools','toolCalls':log,'searchMs':search_ms,'planMs':plan_ms}
+    if calculation is not None:
+        routing['method']='calculation_followup'
+        if calculation.error:
+            result=tool_dispatch.clarification(ctx,'CALCULATION_CONTEXT_REQUIRED',calculation.error)
+            return finalize(ctx,result,routing,evidence)
     if error:
         routing['error']=error
         result=tool_dispatch.clarification(ctx,'MODEL_ROUTING_UNAVAILABLE','AI 모델이 질문에 필요한 도구를 고르지 못했습니다. '
@@ -245,6 +253,8 @@ def answer(ctx):
     period,origin=tool_dispatch.period_source(call,q,summary)
     started=monotonic()
     result=tool_dispatch.run(ctx,call,period if origin!='none' else None)
+    if calculation is not None:
+        calculation_context.annotate(result,calculation)
     entry={'name':call.tool.name,'arguments':call.args.model_dump(mode='json'),'status':result.get('status'),
            'durationMs':round((monotonic()-started)*1000,3)}
     if origin=='question':entry['periodSource']='question'
