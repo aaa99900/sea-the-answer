@@ -107,6 +107,16 @@ def emission(answer):
     return next(run for run in answer['toolRuns'] if run['name'] == 'calculate_emissions')
 
 
+@pytest.mark.parametrize('question', ['그럼 연료는 2026년 11월 합계로 보여줘', '그럼 거리만 2026년 11월로 바꿔서 조회해줘'])
+def test_dated_operations_question_is_not_a_numeric_calculator_edit(conversation, question):
+    db, plans, ask = conversation
+    first = ask(INITIAL)
+    plans[question] = []
+    answer = ask(question, first)
+    assert db.plan_calls == [INITIAL, question]
+    assert len(db.calculations) == 1 and not answer.get('toolRuns')
+
+
 def test_fuel_only_followup_reuses_factor_dwt_and_distance(conversation):
     db, _, ask = conversation
     first = ask(INITIAL)

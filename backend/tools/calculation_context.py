@@ -18,7 +18,7 @@ LABELS = {
     'dwt': r'DWT|재화\s*중량(?:\s*톤수)?',
     'distance': r'항해\s*거리|운항\s*거리|거리|distance(?:_nm)?',
 }
-CHANGE = re.compile(r'바꾸|바꿔|변경|대신|수정|늘리|줄이|줄여|낮추|높이|라면|이면|그럼|그러면|만\s*' + NUMBER +
+CHANGE = re.compile(r'바꾸|바꿔|변경|대신|수정|늘리|줄이|줄여|낮추|높이|라면|이면|만\s*' + NUMBER +
                     r'|\b(?:change|replace|instead|what\s+if|recalculate)\b', re.I)
 REFERENCE = re.compile(r'(?:아까|앞서|이전|직전|방금|그때|앞의|위의|그)\s*(?:그\s*)?(?:배출량\s*)?계산|'
                        r'(?:아까|앞서|이전|직전|방금).{0,25}(?:연료|배출|집약도)|'
@@ -151,6 +151,8 @@ def resolve(ctx):
     if re.search(r'(?:기록|자료|데이터|문서|보고서).{0,30}(?:수정|바꾸|바꿔|변경|등록|삭제)', question):
         return None
     explicit_reference = bool(REFERENCE.search(question))
+    if not explicit_reference and re.search(r'\d{4}-\d{2}-\d{2}|\d+\s*[년월일]|오늘|어제|지난달|이번달', question):
+        return None
     try:
         changed = replacements(question)
     except ValueError as exc:
