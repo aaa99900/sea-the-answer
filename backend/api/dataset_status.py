@@ -12,7 +12,7 @@ from tools.navigation_references import catalog_summary
 from . import config, navigation_query, navigation_service
 from .dataset_intent import DATASETS
 from .errors import ApiError
-from .maritime_context import resolve_real_ship
+from .maritime_context import imo_mentions, resolve_real_ship, resolve_source_vessel
 from .question_intent import date_slots
 from .validation import utc_now
 
@@ -28,15 +28,25 @@ def answer(ctx, datasets, *, scope_text=None):
     result={'datasets':[],'scope':{'coverage':'server_inventory'},'assessed_at':utc_now()}
     try:
         years,periods=date_slots(q)
-        ships=ctx.db.ships() if any(d!='documents' for d in datasets) else []
+        source_imo=None;source_vessel=None
+        if set(datasets)<={'mrv','dwt'}:
+            try:
+                numbers=imo_mentions(ctx.body['question'])
+                if len(numbers)>1:
+                    raise ValueError('MRV·DWT 현황은 한 번에 IMO 번호 하나로 조회해 주세요.')
+                source_imo=next(iter(numbers),None)
+            except ValueError as exc:
+                return {'status':'needs_input','notice':str(exc),'dataStatus':result,'warnings':['DATASET_SCOPE_REQUIRED']}
+        ships=ctx.db.ships() if not source_imo and any(d!='documents' for d in datasets) else []
         scoped=bool(re.search(r'우리\s*(?:배|선박)|본선|\b(?:IMO|ship|vessel)\b|[0-9]{7}|[가-힣a-z0-9_-]{2,30}호(?:의|는|\s|$)',q,re.I)
                     or any(navigation_query.mentions(q,s['name']) for s in ships))
-        ship=navigation_query.select_ship(q,ships,ctx.body.get('context') or {}) if scoped else None
-        if scoped and (not ship or ship.get('sample')):
+        ship=navigation_query.select_ship(q,ships,ctx.body.get('context') or {}) if scoped and not source_imo else None
+        if scoped and not source_imo and (not ship or ship.get('sample')):
             return {'status':'needs_input','notice':'자료를 확인할 실제 등록 선박의 이름이나 IMO 번호를 알려 주세요.',
                     'dataStatus':result,'warnings':['DATASET_SCOPE_REQUIRED']}
         result['scope'].update(years=years,periods=[p.model_dump() for p in periods],
                               ship={k:ship.get(k) for k in ('id','name','imo','version')} if ship else None)
+        if source_imo:result['scope']['imo']=source_imo
         for dataset in datasets:
             item={'dataset':dataset,'label':LABELS[dataset]}
             try:
@@ -46,7 +56,13 @@ def answer(ctx, datasets, *, scope_text=None):
                     else:
                         if engine is None:engine=create_engine_for(os.getenv('MARITIME_DATA_DATABASE_URL') or config.database_url())
                         vessel=None
-                        if scoped:
+                        if source_imo:
+                            if source_vessel is None:source_vessel=resolve_source_vessel(engine,source_imo)
+                            if source_vessel is None:
+                                return {'status':'needs_input','notice':f'해사 원자료에서 IMO {source_imo} 선박을 찾지 못했습니다.',
+                                        'dataStatus':result,'warnings':['SOURCE_VESSEL_NOT_FOUND']}
+                            vessel=source_vessel
+                        elif scoped:
                             identity=resolve_real_ship(ctx.db,engine,ship['id'])
                             if not identity.vessel_id:
                                 raise ApiError(503,'MAPPING_REQUIRED','실제 선박 매핑을 확인해 주세요.')

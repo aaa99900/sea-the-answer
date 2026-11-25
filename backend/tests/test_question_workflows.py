@@ -52,7 +52,7 @@ def test_months_years_and_relative_dates_are_explicit_and_bounded():
     assert intent.date_slots('지난달과 이번달',today)[1][1].end=='2026-11-06'
     assert intent.date_slots('작년',today)[0]==[2025]
     assert intent.date_slots('최근 7일',today)[1][0].start=='2026-10-31'
-    with pytest.raises(ValueError):intent.date_slots('1월',today)
+    assert intent.date_slots('1월',today)[1][0].start=='2026-01-01'
     with pytest.raises(ValueError):intent.date_slots('2025-02-30',today)
     with pytest.raises(ValueError):intent.date_slots('최근 3개월',today)
 

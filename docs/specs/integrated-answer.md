@@ -4,6 +4,14 @@
 - 최종 확인: 2026-11-10 (대화형 조건·AIS 현황·질문 표현 보완, 실제 로컬 Qwen 연결·제한된 생성 확인; 전반적 생성 품질은 미달, 검증 기록 참조)
 - 관련: [`api.md`](api.md), [`../architecture.md`](../architecture.md#23-통합-질문-post-apiask), [`../plans/2026-10-08-team-module-integration.md`](../plans/2026-10-08-team-module-integration.md)
 
+## 등록 목록·기간·응답 표시 (2026-11-23)
+
+명시적인 목록 및 지원 양식 질문은 본문 색인을 사용하지 않는다. 모델 선택 경로에도 읽기 전용 `list_workspace_items`가 등록되어 있다. `workspace_catalog`는 열람 가능한 등록 문서 제목, 자신의 저장 보고서, 또는 `report_forms` 식별자를 반환한다. 양식 이름은 생성 화면의 양식 목록으로 표시한다. 문서 설명은 기존 인용 검색을 사용한다.
+
+운항 기록 누계는 해당 선박의 저장 기록 전체에서 집계하고 실제 기간과 건수를 반환한다. 월·일만 주어지면 문맥상 확인된 연도나 한국 시간 기준 올해를 사용한다. 연료·거리·배출량 일별 순위는 일 합계, 속력 일별 순위는 기록 속력의 일평균을 사용한다. 부분 비교의 문서 부족 안내는 요청한 문서 부분에 적용하며, 단순 목록·운항 조회의 빈 결과는 정상 응답이다. 단순 보고서 생성에는 상세 패널을 표시하지 않고 질문 문장을 새 초안에 복사하지 않는다.
+
+프로그램·탭 사용법은 권한에 맞는 안내를 `task=workspace_help`의 `helpLines`에 담습니다. 개별 기록 요청은 `recordSelection`의 columns/rows를 반환합니다. 선박을 생략한 목록은 전체 등록 선박을 조회하고 건수와 표시 범위를 밝힙니다. 수치 합계와 순위는 원본 기록으로 계산합니다. MEPC 회기별 제목 조회는 활성·열람 가능한 문서의 식별번호를 대조합니다. 모델도 같은 목록·도움말 및 순위 기능을 선택할 수 있습니다.
+
 ## 1. 목적
 
 ### LLM 도구 선택 (2026-11-12 초안)
@@ -26,10 +34,11 @@
 | 도구 | 인자 | 서버 검증·변환 | 실행기 |
 |---|---|---|---|
 | `get_dataset_status` | `datasets`: `ais`·`mrv`·`dwt`·`noon`·`operations`·`documents`·`ports` 1~7개(중복 불가), `ship_mentions` ≤1, `period_text` ≤100자 | 자료 종류 allowlist, 선박 대조, 기간 해석 | `dataset_status` |
+| `list_vessels` | `source`: `auto`·`app`·`mrv`, `limit`: 1~50척(기본 10) | 명시한 출처·수량이 우선한다. 생략한 출처는 소유권을 확인한 이전 답변과 IMO 번호 예시 요청 여부로 정한다. | `vessel_list` |
 | `get_ais_catalog_status` | `ship_mentions` ≤1 | 선박 대조 | `navigation_query.catalog_status_answer` |
 | `summarize_operations` | `ship_mentions` ≤2, `period_text` ≤100자, `display`: `text`·`table`·`chart` | 기간 ≤2개·각 366일 이하, 표·차트는 1척·1기간 | `question_workflows` |
 | `get_last_recorded_position` | `ship_mentions` ≤1 | 선박 1척 대조(없으면 대화의 선박, 그래도 없으면 되묻기). 위치가 저장된 가장 최근 일별 기록을 고른다. 24:00 UTC 위치를 담는 가상 기록(`note`에 `UTC 일자`)은 그 UTC 날짜가 끝난 뒤에만 쓴다. `note`에 `예상 운항`·`입항 예정`이 있으면 `projected=true`, 안내 문구 앞에 `[예상 기록]`, `warnings`에 `PROJECTED_OPERATIONS`. 실시간 추적이 아님을 항상 밝힌다 | `OperationStore.recent_positions` → `task="position"`, `position` 필드 |
-| `calculate_mrv_reference` | `ship_mentions` ≤2, `period_text`(보고연도), `accept_reference`(bool) | 연도 ≤3, `accept_reference`는 직전 소유 답변이 참고값 동의를 물었을 때만 반영 | `question_workflows` |
+| `calculate_mrv_reference` | `ship_mentions` ≤2, `period_text`(보고연도), `accept_reference`(bool) | 연도 ≤3, 총 조회 ≤4회. 질문의 IMO 번호로 실제 원자료를 직접 조회한다. 모델 인자 `accept_reference`는 직전 소유 답변이 동의를 물었을 때만 반영한다. | `question_workflows` |
 | `calculate_operations_and_mrv` | 위 두 도구의 인자 | 동일, 총 조회 ≤4회 | `question_workflows` |
 | `compare_port_conditions` | `ship_mention`, `port_mentions` ≤5, `berth_mention`, `filters` ≤3(`dimension`: `length`·`beam`·`draught`, `op`: `>=`·`<=`·`>`·`<`·`=`, `value_m` 0 초과 ≤1000), `sort`(`dimension`, `direction`: `asc`·`desc`), `status_filter` | 항구 카탈로그 이름 대조, 실제 MRV 연결 선박만 | `navigation_query` |
 | `ask_selected_documents` | `document_mentions` ≤5 | 열람 가능한 문서 제목 대조 | `question_workflows` |
@@ -54,6 +63,10 @@
 기존 규칙과 대화 조건을 우선 재사용한다. 그 경로가 처리하지 못한 AI 모드 질문에는 폐쇄형 의미 분류를 사용할 수 있다. 모델은 문서·선택 문서·운항 요약·MRV 참고 계산·결합·항만 비교·자료별 현황·되묻기·지원 밖 중 **action 하나만** 출력한다(최대 32토큰·12초·질문 4,096바이트). 서버가 이를 내부 route/dataset으로 바꾼다. 모델의 자기 평가 점수를 신뢰도 수치로 사용하지 않는다. 식별자·날짜·SQL·계산값을 모델에서 받지 않으며 기존 실행 검증을 유지한다. 분류 실패/모호함과 지원 밖 요청은 안내하고 명시한 문서 전용 모드는 유지한다. 일반 LLM 생성 실패를 도구 현황 실패나 데이터 부재로 해석하지 않는다.
 
 자료 현황 응답은 기존 answer 필드를 유지하고 `dataStatus`에 `datasets`(자료별 상태·건수·기간·출처·주의사항), `scope`, `assessed_at`을 추가한다. `routing`은 규칙/모델/대화 경로와 제한된 사유만 기록하며 내부 URL·키·원시 오류는 반환하지 않는다. 기존 AIS `navigation.kind=catalog-status` 계약도 유지한다.
+
+MRV 참고 계산과 MRV·DWT 현황 조회는 질문에 명시한 IMO 7자리와 검증 숫자를 확인한 뒤 준비된 실제 원자료의 선박 키로 조회한다. 계산은 `workflow.scope.source_imos`와 결과별 `imo`에, 현황은 `dataStatus.scope.imo`에 대상을 기록한다. 이 조회에는 앱 선박 등록이 필요 없다. 계산 요청의 참고값 명시를 동의로 처리하며, 원자료에 선박 없음·해당 연도 계산 적격 보고 없음·지원하지 않는 선종·DB 연결 실패를 구분한다. DWT 공개 후보의 기준연도 검증은 지원하지 않는다.
+
+선박 목록 답변은 `task="vessel_list"`와 `vesselList`를 반환한다. `vesselList`에는 `source`, `source_label`, `limit`, `has_more`, `items`가 있으며, 행은 선박명(`name`), 검증한 `imo`, `ship_type`, `dwt_t`, `dwt_source`, `reporting_year`, `sample`을 담는다. 일반 선박 목록은 기본적으로 앱 등록 자료를 읽고, IMO 번호 예시 요청은 기본적으로 MRV 자료를 읽는다. MRV는 IMO당 최신 유효 연간 보고의 정보를 사용하며, 표시할 DWT가 있는 예시를 우선한다. 보고값과 검증 조건을 통과한 공개 후보는 출처를 구분하고, 후보값의 보고연도 일치와 실제 제원은 별도 확인 사항이다. 앱 등록 선박의 가상 예시와 미기입 값은 화면에 표시한다. 빈 목록(`empty`)과 DB 이용 불가(`unavailable`)를 구분한다.
 
 ### 필요한 순간에만 후보 제시 (2026-11-10 구현됨)
 
@@ -192,3 +205,9 @@
 - 기존 `/api/history` 계약은 호환 유지한다. 대화 식별자가 없는 기존 질문/스킬 실행은 각 1개 질문 대화로 표시한다.
 - 새 대화/로고 클릭은 화면을 비우고 이후 첫 질문부터 새 대화로 저장한다. 화면 전환으로 진행 중 응답을 떠나더라도 서버 완료 기록은 이력에 남을 수 있다.
 - UI 기본값은 `task:auto`, `language:auto`, `mode:extractive`를 유지한다. 화면 언어 `ko/en`은 API 질문 필드와 독립적이다. 전문 LLM 다중 대화 메모리를 추가하지 않고 기존 제한적 후속 질문 처리만 유지한다.
+
+## 보고서 작성 및 명시 조건
+
+작성 요청은 답변에 선택적인 `reportDraft`(kind, values, sources, 선택적 shipId·fuelUsed·fuelGrade)를 반환한다. 서버는 질문과 응답을 기존 대화에 보관하며 보고서는 편집자가 저장할 때 생성한다. 문서 제목·MEPC 번호·지정 문서 별칭은 활성 열람 문서 안에서 해석한다. 전용 범위는 검색 전에 적용하고, “제외”, “우선”, “같은 문서”를 구분한다. 근거를 찾지 못한 전용 범위를 묵시적으로 전체 문서로 넓히지 않는다.
+
+명시적 답변 언어는 요청의 UI 언어와 독립적이다. 등록 선박의 일별 기록에 대한 순위·임계값 요청은 `recordSelection`에 조회 조건, 표시 형식, 열과 행을 반환한다. 연료·거리·속력·CO₂ 중 한 지표와 한 선박·기간을 지정한다. 같은 대화에서 “같은 조건으로”는 소유권을 검사한 이전 선택을 이어받고, 새 선박·언어·기간 등 명시한 조건을 우선한다. 계산 근거가 부족하면 조건을 묻는다.

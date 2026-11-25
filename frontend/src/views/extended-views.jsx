@@ -185,12 +185,9 @@ export function createExtendedViews(model, views) {
             </div>
           </>
         ) : (
-          notice(
-            en ? 'No records for this period.' : '해당 기간의 운항 기록이 없습니다.',
-            'warning',
-          )
+          <p>{en ? 'No records for this period.' : '해당 기간의 운항 기록이 없습니다.'}</p>
         )}
-        <div className={'card pad mt'}>
+        {(a.compliance?.rule || a.comparisonRequested || /규정.{0,12}(비교|대조)|기준.{0,12}(충족|비교)|compliance/i.test(a.question || '')) ? <div className={'card pad mt'}>
           <div className={'sectiontitle'}>
             <h3><UiText>{en ? 'Rule comparison' : '규정 기준 비교'}</UiText></h3>
             {badge(
@@ -223,7 +220,7 @@ export function createExtendedViews(model, views) {
               : c.reason}
           </p>
           {btn(en ? 'Review criterion' : '적용 기준 확인', 'criterion', 'sm mt')}
-        </div>
+        </div> : btn(en ? 'Review criterion' : '적용 기준 확인', 'criterion', 'sm mt')}
         <p className={'footnote mt'}>{ciiText(s.cii, en)}</p>
       </section>
     );

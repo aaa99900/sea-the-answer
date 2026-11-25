@@ -74,7 +74,7 @@ class AnswerStore:
         if payload.get("calculation") is not None:
             runs.append(self.calculate_emissions(payload["calculation"]))
         summary = None
-        notice = "검색된 문단을 그대로 표시합니다. 인용과 적용 조건을 확인하세요."
+        notice = "Source excerpts are shown below. Check citations and applicability." if en else "검색된 문단을 그대로 표시합니다. 인용과 적용 조건을 확인하세요."
         operation_notice = None
         compliance = None
         if needs_ops:
@@ -162,7 +162,7 @@ class AnswerStore:
                            "운항 합계는 선택 기간의 전체 기록으로 계산했으며 입력 기록 미리보기는 처음 200건만 표시합니다.")
         status = "data_found" if summary and summary["count"] else "evidence_found" if statements else "insufficient_evidence"
         if status == "insufficient_evidence":
-            notice = "근거 또는 운항 데이터가 부족합니다. 담당자에게 확인해 주세요."
+            notice = "There is insufficient evidence or operation data. Check the source records." if en else "근거 또는 운항 데이터가 부족합니다. 담당자에게 확인해 주세요."
         answer_id = str(uuid4())
         answer = {"id": answer_id, "question": question, "task": "integrated" if needs_ops else "documents",
                   "language": language, "generation": generation, "status": status, "notice": notice,
@@ -171,6 +171,10 @@ class AnswerStore:
                   "timings": {"retrievalMs": round(retrieval_ms, 3), "generationMs": round(generation_ms, 3),
                               "totalMs": round(max(0, (monotonic() - started) * 1000), 3)},
                   "reportSuggested": task == "report" or bool(re.search(r"보고서|noon|mrv|report", question, re.I))}
+        if task in ('documents','integrated') or (task=='auto' and not needs_ops):
+            answer['documentEvidence']='found' if statements or presentation and evidence else 'missing'
+        if status=='insufficient_evidence' and needs_ops:
+            answer['notice']=operation_notice or ('No matching operation records.' if en else '조건에 맞는 운항 기록이 없습니다.')
         if failure:
             answer['generationFailure']=failure
             self.audit(user,'error','AI 답변 생성 실패',answer_id,{
@@ -184,6 +188,7 @@ class AnswerStore:
                                     "rowsTruncated": len(summary["rows"]) > 200,
                                     "totalRows": len(summary["rows"])}
             answer["compliance"] = compliance
+            answer["comparisonRequested"]=bool(payload.get("criterion"))
         if operation_notice:
             answer["operationNotice"] = operation_notice
         self.run("INSERT INTO queries VALUES(%s,%s,%s,%s)", (answer_id, question, Jsonb(answer), utc_now()))
@@ -211,7 +216,7 @@ class AnswerStore:
         result = []
         for row in rows:
             answer = row["response"]
-            visible = all(self.can_read_document(user, item["document_id"]) for item in answer.get("evidence", []))
+            visible = self.can_read_answer(user,answer)
             result.append({"id": row["id"], "question": row["question"], "at": stamp(row["created_at"]),
                            "answer": answer if visible else None, "unavailable": not visible})
         return result

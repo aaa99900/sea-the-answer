@@ -11,6 +11,8 @@ import { extractPdf } from '../lib/pdf';
 import { documentSavePayload } from '../lib/document-save';
 import { toCsv } from '../lib/csv';
 import { uuid } from '../lib/id';
+import {ReportChooser, ReportPaper} from '../components/report-builder';
+import {forms, label, makeBody, formText, suggestedRecords} from '../lib/report-forms';
 import OperationImport from '../components/operation-import';
 import BulkPdfRegistration from '../components/bulk-pdf-registration';
 import {UI_LANGUAGE_KEY} from '../lib/ui-language';
@@ -117,6 +119,7 @@ export function createWorkspace() {
     closeModal();
     state.menu = false;
     state.page = page;
+    state.examplePreview = null;
     if (page === 'document') state.doc = id;
     const url =
       page === 'document'
@@ -130,6 +133,7 @@ export function createWorkspace() {
     if (page === 'admin' && isAdmin()) run(refreshAdmin);
   }
   async function routeChanged(path) {
+    state.examplePreview = null;
     state.routeError = '';
     const chunks = path.split('/').filter(Boolean);
     state.page =
@@ -203,6 +207,7 @@ export function createWorkspace() {
     state.operationRecords = [];
     state.ships = [];
     state.reports = [];
+    state.examplePreview = null;
     state.users = [];
     state.logs = [];
     state.changes = [];
@@ -402,7 +407,7 @@ export function createWorkspace() {
     if (workflowInput && !workflowParent) throw Error('현재 업무 답변에서 조건을 보완해 주세요.');
     const previousQueryId = workflowParent || ((!selectedShip || parent?.navigation?.ship?.id === selectedShip || parent?.navigation?.status === 'needs_ship') &&
       ['reference_only', 'no_reference_matches', 'needs_ship'].includes(parent?.navigation?.status)
-      ? parent.id : undefined);
+      ? parent.id : parent?.id);
     const sequence = ++state.askSequence;
     state.chatScrollRequest = {sequence, phase: 'pending'};
     state.pendingQuestion = q;
@@ -626,7 +631,10 @@ export function createWorkspace() {
       d.type = type;
       d.title = d.title || '선박 운항 검토 보고서';
     }
-    d.text += (d.text ? '\n\n' : '') + text;
+    if(forms[d.body?.formType]) {
+      d.body.notes=[d.body.notes,text].filter(Boolean).join('\n\n');
+      d.text=formText(d.body);
+    } else d.text += (d.text ? '\n\n' : '') + text;
     d.sources = [...new Set([...d.sources, ...sources])];
     persistDraft();
     navigate('editor');
@@ -669,19 +677,63 @@ export function createWorkspace() {
       ))
     );
   }
-  async function newReport() {
-    if (!(await mayReplaceDraft())) return;
-    state.draft = blankDraft();
-    state.conflict = null;
-    state.reportError = '';
+  model.editReportBody = body => {
+    if (!canWrite() || state.draft.status !== 'draft') return;
+    state.draft.body=body;
+    state.draft.text=formText(body);
     persistDraft();
-    navigate('editor');
+    render();
+  };
+  function chooseReport(seed={}) {
+    if (!canWrite()) return;
+    const create=async (kind,rows,ship,sources)=>{
+      if (!(await mayReplaceDraft()) || !canWrite()) return;
+      const draft=blankDraft();
+      draft.sources=sources;
+      if (forms[kind]) {
+        draft.body=makeBody(kind,rows,ship,seed,seed.language || 'ko');
+        draft.type=forms[kind].type;
+        draft.title=[draft.body.values.ship,label(forms[kind].name,draft.body.language)].filter(Boolean).join(' · ');
+        draft.text=formText(draft.body);
+      } else {
+        draft.text=[seed.note,seed.contextNote,...rows.map(r=>[r.date,r.id,r.fuel+' t',r.distance+' nm',r.sample?'(sample)':''].join(' · '))].filter(Boolean).join('\n');
+        draft.body={started:true,recordIds:rows.map(r=>r.id)};
+      }
+      state.draft=draft;
+      state.conflict=null;
+      state.reportError='';
+      persistDraft();
+      navigate('editor');
+    };
+    if (forms[seed.kind]) {
+      const rows=suggestedRecords(seed,state);
+      if (seed.kind==='daily' && rows.length>1) {
+        openModal('보고서 생성', <ReportChooser state={state} seed={seed} create={create}/>);
+        return;
+      }
+      return create(seed.kind,rows,state.ships.find(s=>s.id===seed.shipId), (seed.sources || []).filter(id=>state.docs.some(d=>d.id===id && d.active)));
+    }
+    openModal('보고서 생성', <ReportChooser state={state} seed={seed} create={create}/>);
+  }
+  function newReport(){chooseReport();}
+  function suggestedReport(id) {
+    const answer=state.turns.find(t=>t.id===id)?.answer || state.answer;
+    if(answer?.reportDraft) return chooseReport(answer.reportDraft);
   }
   async function openReport(id) {
     const userId = state.user?.id,
       snapshot = snapshotDraft(),
       { report } = await api.report(id);
     if (state.user?.id !== userId) return;
+    if (report.status === 'example') {
+      if (state.page === 'editor') {
+        state.examplePreview = report;
+        render();
+      } else {
+        openModal('예시 보고서', <ReportPaper draft={report} documents={state.docs}/>);
+      }
+      return;
+    }
     if (snapshotDraft() !== snapshot)
       throw Error('불러오는 동안 편집 내용이 바뀌었어요. 다시 시도해 주세요.');
     if (!(await mayReplaceDraft())) return;
@@ -713,6 +765,7 @@ export function createWorkspace() {
         state.draft.id = report.id;
         state.draft.version = report.version;
         state.draft.owner = report.owner;
+        if (!snapshot.id && state.page==='editor') router?.replace?.('/reports/'+encodeURIComponent(report.id),{scroll:false});
         state.conflict = null;
         state.dirty = state.draftRevision !== revision;
         state.localFailed = !writeLocal(draftKey(), state.draft);
@@ -777,15 +830,6 @@ export function createWorkspace() {
     state.reportError = '';
     writeLocal(draftKey(), state.draft);
     navigate('editor');
-  }
-  function reportFile() {
-    const d = state.draft;
-    return `# ${d.title}\n\n유형: ${d.type}\n상태: ${d.status}\n\n${d.text}\n\n## 근거 문서\n${d.sources
-      .map((id) => {
-        const s = state.docs.find((d) => d.id === id);
-        return s ? `${s.title} / ${s.version} / ${s.reference}` : '열람 불가 문서';
-      })
-      .join('\n')}`;
   }
   function backupDraft() {
     download(
@@ -1500,7 +1544,11 @@ export function createWorkspace() {
     },
     answerReport: (id, el) => answerToReport(el.closest('[data-answer-id]')?.dataset.answerId),
     newReport,
-    editReport: () => navigate('editor'),
+    suggestedReport: (_,el)=>suggestedReport(el.closest('[data-answer-id]')?.dataset.answerId),
+    resumeReport: () => {
+      const draft = model.resumableDraft();
+      if (draft) return draft === state.draft ? navigate('editor') : openReport(draft.id);
+    },
     reportList: () => navigate('reports'),
     deleteReport,
     openReport,
@@ -1529,11 +1577,13 @@ export function createWorkspace() {
     previewReport: () =>
       openModal(
         '보고서 미리보기',
-        <>
+        forms[state.draft.body?.formType] ? <ReportPaper draft={state.draft} documents={state.docs}/> : <>
           <h2>{state.draft.title || '제목 없음'}</h2>
           <pre className={'preview-text mt'}>{state.draft.text}</pre>
         </>,
+        forms[state.draft.body?.formType] ? btn('인쇄 / PDF 저장','printReport','primary') : null,
       ),
+    printReport: () => window.print(),
     viewConflict: () => {
       const r = state.conflict;
       if (r)
@@ -1557,34 +1607,21 @@ export function createWorkspace() {
       persistDraft();
       render();
     },
-    downloadReport: () =>
-      download(
-        (state.draft.title || '해답_보고서') + '.md',
-        reportFile(),
-        'text/markdown;charset=utf-8',
-      ),
+    downloadReport: async () => {
+      if(state.downloadingReport)return;
+      const draft=structuredClone(state.draft), docs=state.docs, userId=state.user?.id;
+      state.downloadingReport=true;
+      render();
+      try {
+        const {reportPdfBytes}=await import('../lib/report-pdf');
+        const bytes=await reportPdfBytes(draft,docs);
+        if(state.user?.id===userId)download((draft.title || '선박 운항 보고서')+'.pdf',bytes,'application/pdf');
+      } finally {
+        state.downloadingReport=false;
+        render();
+      }
+    },
     backupDraft,
-    importDraft: () =>
-      openModal(
-        '보고서 초안 가져오기',
-        form(
-          'importForm',
-          <>
-            <input
-              className={'file-input'}
-              name={'file'}
-              type={'file'}
-              accept={'.json,application/json'}
-              required
-              onChange={noop}
-            />
-            <p className={'small muted'}>
-              <UiText>{'가져온 내용은 새 초안으로 열립니다. 서버에 저장된 보고서를 덮어쓰지 않습니다.'}</UiText>
-            </p>
-          </>,
-          '가져오기',
-        ),
-      ),
     submitReport: async () => {
       if (state.dirty) throw Error('먼저 편집 내용을 저장해 주세요.');
       if (
@@ -1737,7 +1774,6 @@ export function createWorkspace() {
         'recordForm',
         'userForm',
         'csvForm',
-        'importForm',
         'restoreForm',
         'criterionForm',
         'backupImportForm',
@@ -1787,23 +1823,6 @@ export function createWorkspace() {
             await connect();
             toast('계정 정보를 변경했습니다. 다시 로그인해 주세요.');
           } else await refreshAdmin();
-        }
-        if (f.id === 'importForm') {
-          const file = f.querySelector('[name=file]').files[0];
-          if (!file || file.size > 1024 * 1024)
-            throw Error('1MB 이하의 초안 JSON을 선택해 주세요.');
-          const draft = validateDraft(JSON.parse(await file.text()));
-          if (!(await mayReplaceDraft())) return;
-          state.draft = {
-            ...draft,
-            id: '',
-            version: 0,
-            owner: '',
-            status: 'draft',
-          };
-          state.conflict = null;
-          persistDraft();
-          navigate('editor');
         }
         if (f.id === 'backupImportForm') {
           const file = f.querySelector('[name=file]').files[0];

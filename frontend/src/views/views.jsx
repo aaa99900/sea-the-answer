@@ -1,3 +1,6 @@
+import {forms,label} from '../lib/report-forms';
+import ReportRequestSummary from '../components/report-request-summary';
+import RecordSelection from '../components/record-selection';
 import {UiControl} from '../components/ui-language';
 import React from 'react';
 import {UiText} from '../components/ui-language';
@@ -9,6 +12,7 @@ import * as helpers from '../components/common';
 import NavigationAnswer from '../components/navigation-answer';
 import QuestionWorkflow from '../components/question-workflow';
 import DatasetStatus from '../components/dataset-status';
+import VesselList from '../components/vessel-list';
 import {generationFailureMessage} from '../lib/generation-failure';
 export function createMainViews(model, views) {
   const noop = () => {};
@@ -101,6 +105,7 @@ export function createMainViews(model, views) {
       // A requested chart/table is the whole answer; the summary and per-period results move behind the toggle.
       presentationIsAnswer = !!presentation,
       showSources = !a.navigation && sources.length > 0,
+      missingDocument = a.documentEvidence === 'missing' || (!a.documentEvidence && a.task === 'documents' && a.status === 'insufficient_evidence' && !a.evidence.length),
       documentCount = (showSources ? sources.length : 0) + relatedSources.length;
     return (
       <article className={'card answer'} data-answer-id={a.id}>
@@ -112,9 +117,9 @@ export function createMainViews(model, views) {
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}</UiText>
           </h2>
-          {badge(a.task === 'clarification' ? '질문 확인' : a.task === 'unsupported' ? '지원 범위 밖' : a.task === 'position' ? (a.position?.projected ? '예상 기록 위치' : '기록 기준 위치') : a.task === 'tool' ? '계산 도구' : a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.helpLines ? (en?'Workspace help':'사용 안내') : a.catalog ? (en?'Workspace list':'목록 조회') : a.task==='operation_total' ? (en?'Operation total':'운항 합계') : a.reportDraft ? '보고서 초안' : a.recordSelection ? (en?'Operation records':'운항 기록 조회') : a.task === 'clarification' ? '질문 확인' : a.task === 'unsupported' ? '지원 범위 밖' : a.task === 'position' ? (a.position?.projected ? '예상 기록 위치' : '기록 기준 위치') : a.vesselList ? '선박 목록' : a.task === 'tool' ? '계산 도구' : a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
-        {noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
+        {!a.reportDraft && !(missingDocument && a.task==='documents') && noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
         <UiText>{a.warnings.some((w) => w === 'MODEL_FAILED_EXTRACTIVE_FALLBACK' || w === 'MODEL_NOT_CONFIGURED')
           ? notice(
@@ -153,11 +158,11 @@ export function createMainViews(model, views) {
           );
         })}
         <AnswerPresentation answer={a} presentation={presentation} />
-        <UiText>{!a.evidence.length && !['clarification', 'unsupported', 'tool', 'position'].includes(a.task) && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
+        <UiText>{missingDocument
           ? notice(
               en
-                ? 'Insufficient document evidence. Ask the responsible officer.'
-                : '문서 근거가 부족합니다. 관련 문서를 등록하거나 담당자에게 확인해 주세요.',
+                ? 'No supporting passage was found in the requested documents.'
+                : '요청한 문서에서 답을 뒷받침할 근거를 찾지 못했습니다.',
               'warning',
             )
           : ''}</UiText>
@@ -204,13 +209,26 @@ export function createMainViews(model, views) {
         )}
         {a.navigation && <NavigationAnswer answer={a} />}
         {a.dataStatus && <DatasetStatus value={a.dataStatus} />}
+        {a.vesselList && <VesselList value={a.vesselList} />}
         {a.workflow && <QuestionWorkflow answer={a} part={'answer'} results={!presentationIsAnswer} />}
-        <details className={'answer-details'} data-testid={'answer-details'}>
+        {a.helpLines && <ul>{a.helpLines.map(line => <li key={line}>{line}</li>)}</ul>}
+        {a.catalog?.kind==='report_forms' && <section>
+          <p>{Object.hasOwn(forms,a.catalog.form)
+            ? label(forms[a.catalog.form].name,en?'en':'ko') + (en?' is available.':'를 작성할 수 있습니다.')
+            : en?'Available report forms':'작성 가능한 보고서 양식'}</p>
+          <ul>{Object.entries(forms).map(([id,form])=><li key={id}>{label(form.name,en?'en':'ko')}</li>)}</ul>
+          <p>{en?'You can also start with a blank report.':'빈 양식으로 자유 작성할 수도 있습니다.'}</p>
+        </section>}
+        {a.catalog?.items?.length>0 && <ul>{a.catalog.items.map(item=><li key={item.id}>{item.title}</li>)}</ul>}
+        {a.recordSelection && <RecordSelection result={a.recordSelection} en={en}/>}
+        {a.reportDraft && <ReportRequestSummary answer={a} state={state}/>}
+        {a.reportDraft && canWrite() && btn(a.reportDraft.kind==='free' ? (en?'Choose report form':'양식 선택') : (en?'Open report draft':'보고서 초안 열기'), 'suggestedReport', 'primary', 'edit')}
+        {!a.reportDraft && !a.catalog && !a.helpLines && <details className={'answer-details'} data-testid={'answer-details'}>
           <summary>
             <UiText>{en ? 'Evidence and details' : '근거·상세 정보'}</UiText>
             {documentCount ? <UiText>{en ? ` · ${documentCount} documents` : ` · 문서 ${documentCount}개`}</UiText> : ''}
           </summary>
-          {!noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
+          {!a.reportDraft && !noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
           {a.workflow && <QuestionWorkflow answer={a} part={'details'} results={presentationIsAnswer} />}
           {presentationIsAnswer && operationAnswer(a)}
           {/* Tools the server ran after validating the model's choice (ADR 0024); not live progress. */}
@@ -260,7 +278,7 @@ export function createMainViews(model, views) {
               : ''}</UiText>
           </div>
           <SkillsPanel group="evaluation" targetAnswerId={a.id} />
-        </details>
+        </details>}
       </article>
     );
   }

@@ -201,8 +201,7 @@ test('report templates wait for login operation data before generating a draft',
     await go(page, 'reports');
     await expect(page).toHaveURL(/\/reports$/);
     await expect(page.locator('.connection')).toHaveText('연결 확인');
-    await expect(action(page, 'templateNoon')).toBeDisabled();
-    await expect(action(page, 'templateMrv')).toBeDisabled();
+    await expect(action(page, 'newReport')).toBeDisabled();
     expect(state.generationCalls).toEqual([]);
   } finally {
     state.waitForOperations = null;
@@ -210,14 +209,16 @@ test('report templates wait for login operation data before generating a draft',
   }
 
   await expect(page.locator('.connection')).toHaveText('서버 연결됨');
-  await expect(action(page, 'templateNoon')).toBeEnabled();
-  await expect(action(page, 'templateMrv')).toBeEnabled();
-  await action(page, 'templateNoon').click();
-  await expect(page).toHaveURL(/\/reports\/generated-report-1$/);
-  await expect(page.locator('#report-text')).toHaveValue('# Noon Report\n검증 선박의 운항 기록으로 생성한 초안입니다.');
-  expect(state.generationCalls).toEqual([{
-    template: 'noon', ship: 'ship-1', from: '2026-09-22', to: '2026-09-28',
-  }]);
+  await action(page,'newReport').click();
+  await page.locator('#new-report-kind').selectOption('daily');
+  await page.getByText('선박 및 운항 기록 선택', {exact:false}).click();
+  await page.getByRole('combobox',{name:'선박명',exact:true}).selectOption('ship-1');
+  await page.getByRole('radio').check();
+  await page.locator('#create-selected-report').click();
+  await expect(page).toHaveURL(/\/reports\/new$/);
+  await expect(page.locator('#report-text')).toHaveValue(/record-1/);
+  await expect(page.getByLabel('항해 거리 (nm)',{exact:true})).toHaveValue('100');
+  expect(state.generationCalls).toEqual([]);
   expect(state.errors).toEqual([]);
 });
 
@@ -260,6 +261,7 @@ test('report deletion cancel, conflict, success, local draft cleanup and reload'
   expect(state.deleteCalls.at(-1)).toEqual({ id: 'report-1', version: 3 });
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('haedap-workspace-draft-v2-admin')).id)).toBe('');
   await page.reload(); await action(page, 'newReport').click();
+  await page.locator('#create-selected-report').click();
   await expect(page.locator('#report-text')).toHaveValue('');
   await expect(action(page, 'deleteReport')).toHaveCount(0);
   expect(state.errors).toEqual([]);
@@ -384,5 +386,103 @@ test('operation preview labels partial rows while preserving full aggregate tota
   await result.getByText('표시한 기록 보기 (200 / 1,000건)', { exact: true }).click();
   await expect(result.locator('table tbody tr')).toHaveCount(200);
   await expect(result.getByText('계산에 사용한 기록 보기', { exact: true })).toHaveCount(0);
+  expect(state.errors).toEqual([]);
+});
+
+test('record-backed report stays inside its card and downloads current edits as PDF',async({page})=>{
+  await mockWorkspace(page,true);
+  await page.goto('/reports');
+  await action(page,'newReport').click();
+  await page.locator('#new-report-kind').selectOption('fuel');
+  await page.getByText('선박 및 운항 기록 선택',{exact:false}).click();
+  await page.getByRole('combobox',{name:'선박명',exact:true}).selectOption('ship-1');
+  await page.locator('.report-choices input[type=checkbox]:visible').first().check();
+  await page.locator('#create-selected-report').click();
+  await expect(page.locator('.report-sheet')).toContainText('record-1');
+  for(const width of [1280,768,390]){
+    await page.setViewportSize({width,height:900});
+    const layout=await page.locator('.report-sheet').evaluate(sheet=>{
+      const card=sheet.closest('.card').getBoundingClientRect();
+      const within=e=>{
+        const r=e.getBoundingClientRect();
+        return r.left>=card.left-1 && r.right<=card.right+1;
+      };
+      return [...sheet.querySelectorAll('.report-grid input,.report-table-scroll,section')].every(within)
+        && document.documentElement.scrollWidth<=window.innerWidth+1;
+    });
+    expect(layout).toBe(true);
+  }
+  await page.locator('#report-title').fill('부산항 검토');
+  const event=page.waitForEvent('download');
+  await action(page,'downloadReport').click();
+  expect((await event).suggestedFilename()).toBe('부산항 검토.pdf');
+});
+
+test('report answer confirms fields and keeps evidence warning out of the draft flow',async({page})=>{
+  const st=await mockWorkspace(page,true);
+  st.answerPatch={task:'report_draft',status:'completed',reportDraft:{kind:'arrival',values:{port:'부산항',fore:'7.5'}}};
+  await page.goto('/chat');
+  await ask(page,'부산항 입항 보고서를 작성해 줘. 선수 흘수 7.5m');
+  const summary=page.locator('.report-request-summary');
+  await expect(summary).toContainText('입항 보고서');
+  await expect(summary.locator('dd')).toHaveText(['부산항','7.5']);
+  await expect(page.locator('.answer')).not.toContainText('문서 근거가 부족합니다');
+  await expect(page.locator('.answer .answer-details')).toHaveCount(0);
+  await expect(summary).not.toContainText('초안에 함께 담을 요청 원문');
+  await action(page,'suggestedReport').click();
+  await expect(page.getByLabel('선수 흘수 (m)',{exact:true})).toHaveValue('7.5');
+});
+
+test('shows evidence warnings only for document work and uses the live report form catalogue', async ({page}) => {
+  const state = await mockWorkspace(page, true);
+  await page.goto('/chat');
+  state.answerPatch = {task:'operations_selection', language:'en', status:'completed',
+    recordSelection:{format:'table',columns:['Date','Fuel'],rows:[{id:'r',cells:['2026-09-22',15]}]}};
+  await ask(page,'HAE 01 상위 1건 영어 표');
+  const latest = page.locator('.answer').last();
+  await expect(latest.getByRole('cell',{name:'15'})).toBeVisible();
+  await expect(latest.locator('.notice.warning')).toHaveCount(0);
+  state.answerPatch = {task:'workspace_catalog',status:'completed',catalog:{kind:'report_forms',form:'free'}};
+  await ask(page,'어떤 보고서를 만들 수 있어?');
+  await expect(latest.getByRole('listitem')).toHaveCount(5);
+  await expect(latest).toContainText('자유 작성');
+  state.answerPatch = {task:'documents',status:'insufficient_evidence', documentEvidence:'missing'};
+  await ask(page,'지정 문서에서 찾아줘');
+  await expect(latest).toContainText('답을 뒷받침할 근거를 찾지 못했습니다.');
+});
+
+test('report forms are accessible from the list and only an owned draft can be resumed', async ({page}) => {
+  const state = await mockWorkspace(page,true);
+  state.reports.push({
+    id:'example-arrival', title:'[예시] 입항 보고서', type:'종합 검토', text:'가상 예시',
+    sources:[], version:1, status:'example', owner:'system-report-examples',
+    body:{formType:'arrival',values:{ship:'예시선'},tables:{4:[{fuel:'VLSFO',arrivalRob:99}]},language:'ko'}
+  });
+  await page.goto('/reports');
+  const resume = page.getByRole('button',{name:'이어 작성하기',exact:true});
+  await expect(resume).toBeDisabled();
+  await page.locator('[data-action=openReport][data-id=example-arrival]').click();
+  await expect(page.locator('dialog')).toContainText('예시선');
+  await action(page,'closeModal').click();
+  await expect(resume).toBeDisabled();
+  const forms = page.getByRole('link',{name:'보고서 양식 확인'});
+  await expect(forms).toHaveAttribute('href','/report-forms.pdf');
+  const pdf = await page.request.get('/report-forms.pdf');
+  expect(pdf.ok()).toBeTruthy();
+  expect((await pdf.body()).subarray(0,5).toString()).toBe('%PDF-');
+  await expect(page.getByText('초안 JSON 가져오기')).toHaveCount(0);
+  await action(page,'newReport').click();
+  await expect(page.locator('dialog a[href="/report-forms.pdf"]')).toHaveCount(0);
+  await page.locator('#create-selected-report').click();
+  await page.locator('#report-title').fill('이어서 편집할 초안');
+  await go(page,'reports');
+  await expect(resume).toBeEnabled();
+  await page.goto('/reports/example-arrival');
+  await expect(page.locator('#printable-report')).toContainText('예시선');
+  await go(page,'reports');
+  await expect(page).toHaveURL(/\/reports$/);
+  await page.reload();
+  await resume.click();
+  await expect(page.locator('#report-title')).toHaveValue('이어서 편집할 초안');
   expect(state.errors).toEqual([]);
 });

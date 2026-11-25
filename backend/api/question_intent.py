@@ -122,7 +122,12 @@ def local_today():
 
 
 def date_slots(q,today=None,default_year=None,default_month=None):
+    q=re.sub(r'최근\s*(?:일주일|한\s*주)|last seven days','최근 7일',q,flags=re.I)
+    q=re.sub(r'(\d{1,2})\s*[~～–]\s*(\d{1,2})\s*일',r'\1일~\2일',q)
+    q=re.sub(r'(?:최근|지난)\s*(?=\d+\s*(?:건|개(?!월)))','',q)
+    q=re.sub(r'(\d{1,2})월\s*(\d{1,2})(?:일)?\s*[-–~～]\s*(\d{1,2})일?',r'\1월 \2일~\3일',q)
     today=today or local_today()
+    default_year = today.year if default_year is None else default_year
     q=re.sub(r'지난\s+달','지난달',q)
     if re.search(r'다음\s*(?:달|주)|내년|모레|내일',q):
         raise ValueError('미래 기간을 임의의 과거 범위로 바꾸지 않습니다. 기록을 조회할 시작일·종료일을 날짜로 알려 주세요. 미래 예측은 지원하지 않습니다.')
@@ -153,6 +158,12 @@ def date_slots(q,today=None,default_year=None,default_month=None):
             month=int(match[2]) if match[2] else days[-1].month if days else default_month
             if year is None or month is None:raise ValueError('날짜와 함께 연도·월을 알려 주세요.')
             days.append(date(year,month,int(match[3])))
+        duration = re.search(r'일부터\s*(?:(하루|이틀|사흘|나흘|닷새)|(\d+)\s*일)(?:치|간|동안)',q)
+        if duration and days:
+            length = int(duration[2]) if duration[2] else {'하루':1,'이틀':2,'사흘':3,'나흘':4,'닷새':5}[duration[1]]
+            if not 1 <= length <= 367:
+                raise ValueError('유효한 조회 기간을 지정해 주세요.')
+            days = [days[0], days[0]+timedelta(days=length-1)]
         if days:
             if len(days)>2:raise ValueError('일자 범위를 최대 두 날짜로 알려 주세요.')
             if len(days)==2 and re.search(r'부터|까지|~|에서',q) and not re.search(r'비교',q):

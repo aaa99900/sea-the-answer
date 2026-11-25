@@ -22,7 +22,9 @@ class ReportStore:
                 "body": meta["body"] if meta else {}}
 
     def can_read_report(self, user: dict, report: dict) -> bool:
-        return (user["role"] == "admin" or report["owner"] == user["id"] or report["status"] == "approved") \
+        if report["status"] == "retired_example":
+            return False
+        return (user["role"] == "admin" or report["owner"] == user["id"] or report["status"] in ("approved", "example")) \
             and all(self.can_read_document(user, source) for source in report["sources"])
 
     def reports(self, user: dict) -> list[dict]:
@@ -109,17 +111,21 @@ class ReportStore:
         if payload["template"] == "noon":
             last = summary["rows"][-1]
             summary = self.operation_summary({"ship": payload["ship"], "from": last["date"], "to": last["date"]})
+        return self.save_report(user, self.generated_report_payload(summary, payload["template"]))
+
+    @staticmethod
+    def generated_report_payload(summary, template):
         ship, rows = summary["ship"], summary["rows"]
-        label = "Noon Report" if payload["template"] == "noon" else "MRV 검토 보고서"
+        label = "Noon Report" if template == "noon" else "MRV 검토 보고서"
         lines = [f"# {label}", "", "상태: 검토용 초안" + (" · 가상 예시 데이터 포함" if summary["sample"] else ""),
                  f"선박: {ship['name']}", f"기간: {summary['from']} ~ {summary['to']}", "", "## 운항·연료 기록"]
         lines += [f"{row['date']} | 연료 {row['fuel']} t | CO₂ {row['fuel'] * row['factor']} t | 거리 {row['distance']} nm" for row in rows]
         lines += ["", "## 집계", f"연료 합계: {summary['fuel']} t", f"CO₂ 합계: {summary['emission']} t",
                   f"거리 합계: {summary['distance']} nm", f"CII: 산출 불가 — {summary['cii']['reason']}"]
-        return self.save_report(user, {"title": f"{ship['name']} · {label} · {summary['from']}",
-                                       "type": "일일 운항" if payload["template"] == "noon" else "배출량 검토",
+        return {"title": f"{ship['name']} · {label} · {summary['from']}",
+                                       "type": "일일 운항" if template == "noon" else "배출량 검토",
                                        "text": "\n".join(lines), "sources": [], "version": 0,
-                                       "body": {"template": payload["template"], "ship": ship["id"],
+                                       "body": {"template": template, "ship": ship["id"],
                                                 "from": summary["from"], "to": summary["to"],
                                                 "recordIds": [{"id": row["id"], "version": row["version"]} for row in rows],
-                                                "sample": summary["sample"]}})
+                                                "sample": summary["sample"]}}

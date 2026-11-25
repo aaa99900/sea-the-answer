@@ -48,6 +48,11 @@ class DocumentStore:
                            "sections": sections})
         return result
 
+    def document_titles(self, user):
+        rows = self.all("SELECT id,title,reference FROM documents WHERE active ORDER BY title,id")
+        return [row for row in rows if self.can_read_document(user,row['id'])
+                and self.document_meta(row['id']).get('status','active')=='active']
+
     def allowed_document_ids(self, user: dict) -> list[str]:
         return [doc["id"] for doc in self.documents(user) if doc["active"]]
 

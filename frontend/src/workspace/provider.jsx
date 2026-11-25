@@ -130,7 +130,7 @@ export function WorkspacePage({ name, id }) {
   if (workspace.state.routeError) return <div className="card pad"><h2><UiText>{"보고서를 불러올 수 없어요"}</UiText></h2><p>{workspace.state.routeError}</p><Button action="reportList" className="mt"><UiText>{"보고서 목록"}</UiText></Button></div>;
   if (name === 'documentPage' && id && workspace.state.doc !== id)
     return <p role="status"><UiText>{"문서를 불러오고 있어요…"}</UiText></p>;
-  if (name === 'editorPage' && id && id !== 'new' && workspace.state.draft.id !== id)
+  if (name === 'editorPage' && id && id !== 'new' && workspace.state.draft.id !== id && workspace.state.examplePreview?.id !== id)
     return <p role="status"><UiText>{"보고서를 불러오고 있어요…"}</UiText></p>;
   return workspace.views[name]();
 }

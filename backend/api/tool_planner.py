@@ -16,10 +16,13 @@ from tools import registry
 
 MAX_CALLS = 3
 RULES = (
-    '문서 검색은 서버가 항상 실행합니다. '
+    '문서 제목 목록, 지원하는 보고서 양식, 내 저장 보고서를 물으면 list_workspace_items를 고릅니다. '
+    '프로그램 자체 또는 탭 사용법은 list_workspace_items의 help_overview, help_chat, help_documents, help_operations, help_reports를 선택하세요. '
+    '개별 운항 기록 목록은 summarize_operations의 listing=true로, 상·하위 기록은 rank_by와 rank_order로 조회하고 전체 기간 합계는 all_records_metric을 사용하세요. '
     '용어 정의·규정·기준·절차 설명처럼 문서만으로 답할 질문은 answer_from_documents를 고르세요. '
     '사용자가 특정 문서 제목(documents 목록 참고)을 대며 그 문서만 근거로 하라고 하면 ask_selected_documents를 고르세요. '
     '등록 자료 현황·운항 실적·MRV 참고값·항구 선석 비교·배출량·항해 시간 계산은 해당 도구를 고르세요. '
+    '저장된 선박 목록이나 IMO 번호 예시를 달라는 질문은 list_vessels입니다. 선박명이나 IMO 번호를 되묻지 마세요. '
     '운항 실적과 MRV 참고값을 함께 물으면 calculate_operations_and_mrv입니다. '
     '선박이 지금·현재 어디 있는지, 마지막 위치를 물으면 get_last_recorded_position을 고르세요. '
     '직전 위치의 기록 시각·날짜나 실제/가상/예상 여부를 묻는 후속도 get_last_recorded_position입니다. 실시간 연속 추적 요청으로 바꾸지 마세요. '
@@ -95,6 +98,9 @@ def previous_context(prior):
         summary['datasets'] = [item['dataset'] for item in _context_list(status.get('datasets'), 7)
                                if isinstance(item, dict) and isinstance(item.get('dataset'), str)
                                and item['dataset'] in CONTEXT_DATASETS]
+    vessels = prior.get('vesselList')
+    if isinstance(vessels, dict) and vessels.get('source') in ('app', 'mrv'):
+        summary['vesselSource'] = vessels['source']
     routing = prior.get('routing')
     tools = _context_list(routing.get('toolCalls'), MAX_CALLS + 1) if isinstance(routing, dict) else []
     summary['tools'] = [item['name'] for item in tools if isinstance(item, dict)

@@ -1,4 +1,4 @@
-"""Resolve app-owned ship identity through the explicit maritime mapping."""
+"""Resolve app ship mappings and IMO identities in prepared maritime data."""
 from dataclasses import dataclass
 import re
 
@@ -6,6 +6,26 @@ from sqlalchemy import text
 
 from tools.port_reference import valid_imo
 from .errors import require
+
+
+def imo_mentions(question):
+    numbers = re.findall(r'(?<![A-Za-z0-9_])IMO\s*(?:번호\s*)?[:#]?\s*'
+                         r'([0-9]+(?:[.,-][0-9]+)*(?:[A-Za-z_][A-Za-z0-9_]*)?)', question, re.I)
+    if any(not valid_imo(number) for number in numbers):
+        raise ValueError('IMO 번호의 자리수·검증 숫자를 확인해 주세요.')
+    return list(dict.fromkeys(numbers))
+
+
+def resolve_source_vessel(engine, imo):
+    """Look up a real source vessel without consulting or writing app ships."""
+    if not valid_imo(imo):
+        raise ValueError('IMO 번호의 자리수·검증 숫자를 확인해 주세요.')
+    with engine.connect() as connection, connection.begin():
+        connection.execute(text('SET TRANSACTION READ ONLY'))
+        connection.execute(text("SET LOCAL statement_timeout='5s'"))
+        return connection.execute(text("SELECT vessel_id FROM maritime_data.vessels "
+            "WHERE vessel_id=:vessel AND imo_number=:imo AND data_origin='REAL'"),
+            {'vessel': f'REAL:IMO:{imo}', 'imo': imo}).scalar_one_or_none()
 
 
 @dataclass(frozen=True)

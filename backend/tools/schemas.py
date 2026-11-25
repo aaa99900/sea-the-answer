@@ -24,12 +24,31 @@ class DatasetStatusArgs(Args):
     period_text: PeriodText = Field(default='', description='질문에 적힌 기간 표현 그대로(예: 2024년). 계산하지 않는다.')
 
 
+class WorkspaceListArgs(Args):
+    kind: Literal['documents','report_forms','saved_reports','help_overview','help_chat','help_documents','help_operations','help_reports']
+    term: str = Field(default='',max_length=120,description='문서 제목 검색어. 질문에서 그대로 복사.')
+    match: Literal['contains','prefix'] = 'contains'
+
+
+class VesselListArgs(Args):
+    source: Literal['auto', 'app', 'mrv'] = Field(default='auto',
+        description='앱 등록 선박을 명시하면 app, MRV 보고 선박을 명시하면 mrv. 출처가 없으면 auto.')
+    limit: int = Field(default=10, strict=True, ge=1, le=50,
+        description='요청한 선박 수. 숫자를 지정하지 않으면 10. 최대 50.')
+
+
 class AisStatusArgs(Args):
     ship_mentions: list[Mention] = Field(default_factory=list, max_length=1,
         description='질문에 적힌 선박 이름이나 IMO 표기 그대로. 없으면 빈 배열.')
 
 
 class OperationsArgs(Args):
+    rank_by: Literal['','distance','fuel','co2','speed'] = Field(default='',description='상·하위 기록이나 날을 요구할 때의 정렬 지표.')
+    rank_order: Literal['highest','lowest'] = 'highest'
+    listing: bool = Field(default=False,description='개별 저장 운항 기록 목록 요청. 통계·합계·비교는 false.')
+
+    all_records_metric: Literal['','distance','fuel','co2'] = Field(default='',
+        description='전체 저장 기록의 누계만 요청한 경우의 지표. period_text에는 전체 기간을 뜻하는 원문을 복사한다. 날짜 미지정만으로 선택하지 않는다.')
     ship_mentions: list[Mention] = Field(default_factory=list, max_length=2,
         description='질문에 적힌 선박 이름이나 IMO 표기 그대로, 최대 2개.')
     period_text: PeriodText = Field(default='', description='질문에 적힌 기간 표현 그대로(예: 지난달, 2025년 1월과 2월).')

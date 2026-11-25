@@ -45,6 +45,39 @@ test('clarification submits only current parent and shows blocked years without 
  expect(state.errors).toEqual([]);
 });
 
+test('shows an unregistered IMO and the reason its MRV reference value is blocked',async({page})=>{
+ const imo='6604690';
+ await setup(page,()=>answer('bbbbbbb1-bbbb-4bbb-8bbb-bbbbbbbbbbbb',{
+  scope:{...scope,ships:[],source_imos:[imo],years:[2025]},
+  results:[{kind:'mrv_reference',imo,label:`IMO ${imo} · 2025`,status:'blocked',
+   result:{reference_only:true,reference_dwt_intensity:null,blockers:['SHIP_TYPE_CAPACITY_BASIS_UNSUPPORTED']}}],
+ },{status:'partial'}));
+ await ask(page,`IMO ${imo}의 2025년 MRV 참고 탄소집약도를 계산해줘`);
+ const turn=page.locator('.chat-turn').last();
+ await expect(turn.locator('[data-workflow-result]')).toContainText('이 선종은 현재 참고 계산 지원 범위 밖입니다.');
+ await turn.getByTestId('answer-details').locator(':scope > summary').click();
+ const details=turn.locator('[data-question-workflow="details"]');
+ await expect(details).toContainText(`IMO ${imo}`);
+ await expect(details).not.toContainText('선박 미지정');
+});
+
+test('vessel list displays saved particulars, data source and candidate capacity',async({page})=>{
+ const question='등록된 IMO 번호 10개 예시들어줘';
+ const state=await setup(page,()=>answer('ccccccc1-cccc-4ccc-8ccc-cccccccccccc',{}, {
+  question,task:'vessel_list',status:'completed',generation:'tool',notice:'',workflow:undefined,
+  vesselList:{source:'mrv',source_label:'실제 MRV 연간 보고',limit:10,has_more:true,
+   items:[{name:'MKK1',imo:'8902929',ship_type:'Bulk carrier',dwt_t:'13790',dwt_source:'public_candidate',reporting_year:2025}]},
+ }),true);
+ await page.locator('#question').fill(question);
+ await page.getByRole('button',{name:'질문 보내기',exact:true}).click();
+ const list=page.getByTestId('vessel-list');
+ await expect(list).toContainText('실제 MRV 연간 보고');
+ await expect(list.getByRole('row').nth(1)).toContainText(/MKK1.*8902929.*Bulk carrier.*13790.*공개 후보값.*2025/s);
+ await expect(page.locator('.chat-turn').last()).not.toContainText('문서 근거가 부족합니다');
+ expect(state.calls[0].question).toBe(question);
+ expect(state.errors).toEqual([]);
+});
+
 test('selected-document clarification works even when operation ship is selected',async({page})=>{
  const id='33333333-3333-4333-8333-333333333333';
  const docScope={...scope,action:'selected_document',ships:[],document_ids:[]};
